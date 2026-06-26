@@ -1,0 +1,37 @@
+name: Contract Fuzz Tests
+
+# Runs nightly to surface fuzz panics without blocking every PR.
+# Can also be triggered manually.
+on:
+  schedule:
+    - cron: "0 2 * * *" # 02:00 UTC nightly
+  workflow_dispatch:
+
+jobs:
+  fuzz:
+    name: Run relay contract fuzz harness
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            contracts/target/
+          key: ${{ runner.os }}-cargo-fuzz-${{ hashFiles('contracts/Cargo.lock') }}
+
+      - name: Run relay fuzz harness (deterministic)
+        run: cargo test --test relay_contract_fuzz --verbose
+        # Any panic in the fuzz harness exits non-zero and fails this step.
