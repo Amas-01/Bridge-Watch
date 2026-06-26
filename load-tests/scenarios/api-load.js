@@ -1,10 +1,12 @@
 import http from "k6/http";
+import ws from "k6/ws";
 import { check, sleep } from "k6";
 import { Counter, Rate, Trend } from "k6/metrics";
 import { buildThresholds, getProfile } from "../config/profiles.js";
 
 const profile = __ENV.PROFILE || "smoke";
 const baseUrl = __ENV.BASE_URL || "http://127.0.0.1:3001";
+const apiKey = __ENV.API_KEY || "test-key-123";
 
 const profileConfig = getProfile(profile);
 
@@ -22,6 +24,7 @@ function endpointRequest(path, endpointTag) {
   const res = http.get(`${baseUrl}${path}`, {
     tags: { endpoint: endpointTag, profile },
     timeout: "10s",
+    headers: { "x-api-key": apiKey }
   });
 
   requestDurationTrend.add(res.timings.duration, { endpoint: endpointTag });
@@ -39,9 +42,41 @@ function endpointRequest(path, endpointTag) {
   return res;
 }
 
+function wsEndpointRequest() {
+  const wsUrl = baseUrl.replace(/^http/, "ws");
+  const url = `${wsUrl}/api/v1/alerts/stream`;
+  const params = {
+    tags: { endpoint: "ws_stream", profile },
+    headers: { "x-api-key": apiKey }
+  };
+  
+  const res = ws.connect(url, params, function (socket) {
+    socket.on('open', () => {
+      socket.setTimeout(function () {
+        socket.close();
+      }, 1000);
+    });
+    socket.on('error', function (e) {
+      if (e && e.error() !== "websocket: close 1006 (abnormal closure): unexpected EOF") {
+        endpointFailures.add(1, { endpoint: "ws_stream" });
+      }
+    });
+  });
+  
+  if (!res || res.status !== 101) {
+    endpointFailures.add(1, { endpoint: "ws_stream" });
+  }
+}
+
 export default function () {
   endpointRequest("/health", "health_root");
   endpointRequest("/health/live", "health_live");
+
+  endpointRequest("/api/v1/assets", "assets");
+  endpointRequest("/api/v1/bridges", "bridges");
+  endpointRequest("/api/v1/alerts", "alerts");
+  endpointRequest("/api/v1/analytics", "analytics");
+  endpointRequest("/api/v1/price-feeds", "price_feeds");
 
   // readiness hits DB/Redis checks and helps identify dependency bottlenecks
   if (__ITER % 2 === 0) {
@@ -50,6 +85,11 @@ export default function () {
 
   if (profile !== "smoke" && __ITER % 3 === 0) {
     endpointRequest("/health/detailed", "health_detailed");
+  }
+  
+  // Test websocket occasionally to prevent connection limits from being exhausted immediately
+  if (__ITER % 5 === 0) {
+    wsEndpointRequest();
   }
 
   sleep(Math.random() * 0.4 + 0.1);
