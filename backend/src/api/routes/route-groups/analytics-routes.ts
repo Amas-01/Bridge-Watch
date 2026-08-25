@@ -5,6 +5,7 @@ import { metricsAggregationRoutes } from "../metricsAggregation.routes.js";
 import { savedMetricsRoutes } from "../savedMetrics.routes.js";
 import { externalRateLimitMetricsRoutes } from "../externalRateLimitMetrics.routes.js";
 import { performanceBaselineRoutes } from "../performanceBaseline.routes.js";
+import { operationalIntelligenceRoutes } from "../operationalIntelligence.routes.js";
 
 export async function registerAnalyticsRoutes(server: FastifyInstance): Promise<void> {
   server.register(analyticsRoutes, { prefix: "/api/v1/analytics" });
@@ -18,5 +19,8 @@ export async function registerAnalyticsRoutes(server: FastifyInstance): Promise<
   });
   server.register(performanceBaselineRoutes, {
     prefix: "/api/v1/performance-baselines",
+  });
+  server.register(operationalIntelligenceRoutes, {
+    prefix: "/api/v1/operational-intelligence",
   });
 }
