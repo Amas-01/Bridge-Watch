@@ -380,6 +380,11 @@ export class WebhookService extends EventEmitter {
         { webhookEndpointId, consecutiveFailures: newCount, threshold: CONSECUTIVE_FAILURE_THRESHOLD },
         "Webhook consecutive failure recorded"
       );
+
+      if (newCount >= 3) {
+        const currentEndpoint = await this.getEndpoint(webhookEndpointId);
+        await this.sendWebhookFailureNotification(currentEndpoint, newCount);
+      }
     }
   }
 
@@ -420,6 +425,94 @@ export class WebhookService extends EventEmitter {
       threshold: CONSECUTIVE_FAILURE_THRESHOLD,
       trippedAt: new Date().toISOString(),
     });
+
+    await this.sendWebhookFailureNotification(endpoint, failureCount);
+  }
+
+  private async sendWebhookFailureNotification(
+    endpoint: WebhookEndpoint | null | undefined,
+    failureCount: number,
+    statusCode?: number | null
+  ): Promise<void> {
+    if (!endpoint) return;
+    try {
+      const { emailNotificationService } = await import("./email.service.js");
+      const db = getDatabase();
+      let recipientEmail: string | null = null;
+      if (endpoint.ownerAddress.includes("@")) {
+        recipientEmail = endpoint.ownerAddress;
+      } else {
+        try {
+          const user = await db("users")
+            .where({ stellar_address: endpoint.ownerAddress })
+            .orWhere({ address: endpoint.ownerAddress })
+            .first();
+          recipientEmail = user?.email ?? null;
+        } catch {
+          recipientEmail = null;
+        }
+        if (!recipientEmail) {
+          try {
+            const operator = await db("bridge_operators")
+              .where({ bridge_id: endpoint.id })
+              .first();
+            recipientEmail = (operator as any)?.contact_email ?? null;
+          } catch {
+            recipientEmail = null;
+          }
+        }
+      }
+      if (!recipientEmail) {
+        logger.warn(
+          { webhookEndpointId: endpoint.id },
+          "No recipient email found for webhook failure notification"
+        );
+        return;
+      }
+      let failureLogsSummary = "";
+      try {
+        const logs = await db("webhook_delivery_logs")
+          .where("webhook_endpoint_id", endpoint.id)
+          .orderBy("created_at", "desc")
+          .limit(5);
+        failureLogsSummary = logs
+          .map(
+            (l: any) =>
+              `Attempt ${l.attempt_number}: ${l.error_message || `HTTP ${l.response_status ?? "unknown"}`} at ${l.created_at}`
+          )
+          .join("\n");
+        if (!failureLogsSummary) failureLogsSummary = "No recent delivery logs available.";
+      } catch {
+        failureLogsSummary = "Unable to retrieve failure logs.";
+      }
+      await emailNotificationService.sendAlertEmail(
+        { email: recipientEmail },
+        {
+          alertType: "webhook.endpoint_failed",
+          severity: "high",
+          assetCode: "WEBHOOK",
+          message: `Webhook endpoint ${endpoint.url} has been deactivated after ${failureCount} consecutive failures.`,
+          triggeredAt: new Date().toISOString(),
+          metadata: {
+            endpointUrl: endpoint.url,
+            endpointName: endpoint.name,
+            statusCode: statusCode ?? null,
+            failureCount,
+            failureLogsSummary,
+            isActive: false,
+          },
+        }
+      );
+      logger.info(
+        { webhookEndpointId: endpoint.id, recipientEmail },
+        "Webhook failure notification email sent"
+      );
+    } catch (error) {
+      logger.error(
+        { error, webhookEndpointId: endpoint?.id },
+        "Failed to send webhook failure notification email"
+      );
+    }
   }
 
   /**
@@ -956,8 +1049,7 @@ export class WebhookService extends EventEmitter {
     errorMessage?: string;
   }): Promise<void> {
     const db = getDatabase();
-
-    await db("webhook_delivery_logs").insert({
+    const payload = {
       id: crypto.randomUUID(),
       webhook_endpoint_id: params.webhookEndpointId,
       webhook_delivery_id: params.webhookDeliveryId,
@@ -970,7 +1062,46 @@ export class WebhookService extends EventEmitter {
       attempt_number: params.attemptNumber,
       error_message: params.errorMessage || null,
       created_at: new Date(),
-    });
+    };
+
+    try {
+      await db("webhook_delivery_logs")
+        .insert(payload)
+        .onConflict(["webhook_delivery_id", "attempt_number"])
+        .merge({
+          request_headers: payload.request_headers,
+          request_body: payload.request_body,
+          response_status: payload.response_status,
+          response_body: payload.response_body,
+          duration_ms: payload.duration_ms,
+          error_message: payload.error_message,
+          created_at: payload.created_at,
+        });
+    } catch (error: any) {
+      const isUniqueViolation =
+        error?.code === "23505" || /duplicate|unique/i.test(error?.message ?? "");
+      if (isUniqueViolation) {
+        logger.warn(
+          { webhookDeliveryId: params.webhookDeliveryId, attemptNumber: params.attemptNumber },
+          "Delivery log unique collision, resolving via upsert"
+        );
+        await db("webhook_delivery_logs")
+          .where({
+            webhook_delivery_id: params.webhookDeliveryId,
+            attempt_number: params.attemptNumber,
+          })
+          .update({
+            request_headers: payload.request_headers,
+            request_body: payload.request_body,
+            response_status: payload.response_status,
+            response_body: payload.response_body,
+            duration_ms: payload.duration_ms,
+            error_message: payload.error_message,
+          });
+        return;
+      }
+      throw error;
+    }
   }
 
   public async getDeliveryLogs(

@@ -21,6 +21,89 @@ function scoreLabel(score: number) {
   return "Critical";
 }
 
+function exportTimelinePdf(
+  points: Array<{ timestamp: string; score: number; annotation?: string }>,
+  bridgeName: string,
+  period: string
+) {
+  const ts = new Date().toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const avg = points.length
+    ? Math.round(points.reduce((s, p) => s + p.score, 0) / points.length)
+    : "N/A";
+  const min = points.length ? Math.min(...points.map((p) => p.score)) : "N/A";
+  const max = points.length ? Math.max(...points.map((p) => p.score)) : "N/A";
+  const pointRows = points
+    .map(
+      (pt) =>
+        `<tr><td>${new Date(pt.timestamp).toLocaleString()}</td><td style="text-align:center;font-weight:600;color:${pt.score >= 80 ? "#16a34a" : pt.score >= 50 ? "#ca8a04" : "#dc2626"}">${pt.score}</td><td>${pt.score >= 80 ? "Healthy" : pt.score >= 50 ? "Warning" : "Critical"}</td><td>${pt.annotation ?? ""}</td></tr>`
+    )
+    .join("");
+  const annotated = points.filter((p) => p.annotation);
+  const incidentRows = annotated.length
+    ? annotated
+        .map(
+          (pt) =>
+            `<tr><td>${new Date(pt.timestamp).toLocaleString()}</td><td>${pt.annotation}</td><td style="text-align:center;font-weight:600;color:${pt.score >= 80 ? "#16a34a" : pt.score >= 50 ? "#ca8a04" : "#dc2626"}">${pt.score}</td></tr>`
+        )
+        .join("")
+    : `<tr><td colspan="3" style="text-align:center;color:#6b7280;">No incidents in this period</td></tr>`;
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Bridge Health Timeline - ${bridgeName} - ${period}</title>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; margin: 2rem; color: #111; }
+  h1 { font-size: 1.6rem; margin-bottom: 0.25rem; color: #111; }
+  .meta { color: #666; font-size: 0.875rem; margin-bottom: 1.5rem; }
+  .stats { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+  .stat { flex: 1; min-width: 120px; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; text-align: center; }
+  .stat-label { font-size: 0.7rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat-value { font-size: 1.4rem; font-weight: 700; margin-top: 0.25rem; }
+  h2 { font-size: 1.15rem; border-bottom: 2px solid #0057FF; padding-bottom: 0.25rem; margin-top: 2rem; }
+  table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; font-size: 0.85rem; }
+  th { background: #f0f4ff; text-align: left; padding: 0.5rem 0.75rem; border: 1px solid #d0d7ef; }
+  td { padding: 0.4rem 0.75rem; border: 1px solid #e5e7eb; }
+  tr:nth-child(even) td { background: #f9fafb; }
+  .footer { margin-top: 2rem; text-align: center; font-size: 0.75rem; color: #9ca3af; }
+  @media print { button { display: none; } }
+</style>
+</head>
+<body>
+  <h1>Bridge Health Timeline - ${bridgeName}</h1>
+  <p class="meta">Period: ${period} &nbsp;|&nbsp; Generated: ${ts} &nbsp;|&nbsp; Points: ${points.length}</p>
+  <div class="stats">
+    <div class="stat"><div class="stat-label">Average Score</div><div class="stat-value">${avg}</div></div>
+    <div class="stat"><div class="stat-label">Lowest</div><div class="stat-value">${min}</div></div>
+    <div class="stat"><div class="stat-label">Highest</div><div class="stat-value">${max}</div></div>
+    <div class="stat"><div class="stat-label">Incidents</div><div class="stat-value">${annotated.length}</div></div>
+  </div>
+  <h2>Health Score Trend</h2>
+  <table>
+    <thead><tr><th>Timestamp</th><th style="text-align:center;">Score</th><th>Status</th><th>Annotation</th></tr></thead>
+    <tbody>${pointRows}</tbody>
+  </table>
+  <h2>Incident Logs</h2>
+  <table>
+    <thead><tr><th>Time</th><th>Event</th><th style="text-align:center;">Score</th></tr></thead>
+    <tbody>${incidentRows}</tbody>
+  </table>
+  <p class="footer">Bridge Watch - Executive PDF Summary - Generated ${ts}</p>
+</body>
+</html>`;
+  const win = window.open("", "_blank");
+  if (!win) return;
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  setTimeout(() => win.print(), 400);
+}
+
 export default function BridgeHealthTimeline() {
   const { data: bridgesData, isLoading: bridgesLoading } = useBridges();
   const bridges = bridgesData?.bridges ?? [];
@@ -51,6 +134,25 @@ export default function BridgeHealthTimeline() {
           Track health score progression for any bridge over a selected time period.
         </p>
       </header>
+
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => exportTimelinePdf(points, effectiveBridge || "All Bridges", period)}
+          disabled={isLoading || points.length === 0}
+          className="inline-flex items-center gap-2 rounded-lg border border-stellar-blue bg-stellar-blue/10 px-4 py-2 text-sm font-medium text-stellar-blue transition-colors hover:bg-stellar-blue hover:text-white focus:outline-none focus:ring-2 focus:ring-stellar-blue focus:ring-offset-2 focus:ring-offset-stellar-dark disabled:opacity-50 disabled:cursor-not-allowed"
+          aria-label="Export PDF Timeline"
+        >
+          <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
+            <polyline points="10 9 9 9 8 9" />
+          </svg>
+          Export PDF Timeline
+        </button>
+      </div>
 
       {/* Controls */}
       <div className="flex flex-wrap gap-4 items-end">
