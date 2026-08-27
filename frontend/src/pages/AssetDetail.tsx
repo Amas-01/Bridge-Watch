@@ -8,12 +8,14 @@ import { useChartAnnotations } from "../hooks/useChartAnnotations";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
 import {
   getAssetMetadataBySymbol,
+  getHealthScoreHistory,
   upsertAssetMetadata,
 } from "../services/api";
 import { Tabs, TabList, Tab, TabPanel } from "../components/Tabs";
 import HealthScoreCard from "../components/HealthScoreCard";
 import PriceChart from "../components/PriceChart";
 import LiquidityDepthChart from "../components/LiquidityDepthChart";
+import ReserveCoverageHistoryChart from "../components/ReserveCoverageHistoryChart";
 import { TimeRangeSelector } from "../components/TimeRangeSelector";
 import AddToWatchlistButton from "../components/watchlist/AddToWatchlistButton";
 import PullToRefresh from "../components/PullToRefresh";
@@ -87,6 +89,13 @@ export default function AssetDetail() {
     lastUpdated: liquidityLastUpdated,
     refetch: refetchLiquidity,
   } = useLiquidity(symbol ?? "");
+
+  const reserveHistoryQuery = useQuery({
+    queryKey: ["health-score-history", symbol],
+    queryFn: () => getHealthScoreHistory(symbol ?? "", { limit: 100 }),
+    enabled: !!symbol,
+    staleTime: 30_000,
+  });
 
   const metadataQuery = useQuery({
     queryKey: ["asset-metadata", symbol],
@@ -402,6 +411,16 @@ export default function AssetDetail() {
                 data={liquidityChartData}
                 isLoading={liquidityLoading}
                 chartId={`liquidity-${symbol}`}
+              />
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="text-sm font-medium text-stellar-text-secondary uppercase tracking-wide">
+                Reserve Coverage History
+              </h3>
+              <ReserveCoverageHistoryChart
+                records={reserveHistoryQuery.data?.records ?? []}
+                isLoading={reserveHistoryQuery.isLoading}
               />
             </div>
           </div>

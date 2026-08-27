@@ -26,6 +26,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
     query,
     setQuery,
     results,
+    assetFacets,
     isLoading,
     recentSearches,
     addRecentSearch,
@@ -249,6 +250,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
               onSelect={handleSelect}
               onHover={setActiveIndex}
               flatItems={flatItems}
+              assetFacets={assetFacets}
             />
           )}
 

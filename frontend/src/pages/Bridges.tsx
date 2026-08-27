@@ -8,6 +8,7 @@ import { usePullToRefresh } from "../hooks/usePullToRefresh";
 import { useSearchSuggestions } from "../hooks/useSearchSuggestions";
 import BridgeStatusCard from "../components/BridgeStatusCard";
 import BridgeNotesPanel from "../components/BridgeNotesPanel";
+import BridgePauseReasonPanel from "../components/BridgePauseReasonPanel";
 import EvmLockDetailsPanel from "../components/EvmLockDetailsPanel";
 import FavoriteTagChip from "../components/favorites/FavoriteTagChip";
 import RefreshControls from "../components/RefreshControls";
@@ -282,6 +283,7 @@ export default function Bridges() {
       {/* EVM lock details + notes panels — shown when a bridge card is clicked */}
       {selectedBridge && (
         <>
+          <BridgePauseReasonPanel bridgeName={selectedBridge} />
           <EvmLockDetailsPanel bridgeName={selectedBridge} />
           <BridgeNotesPanel bridgeName={selectedBridge} />
         </>
