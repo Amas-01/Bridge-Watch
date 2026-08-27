@@ -7,6 +7,7 @@ import { externalRateLimitMetricsRoutes } from "../externalRateLimitMetrics.rout
 import { performanceBaselineRoutes } from "../performanceBaseline.routes.js";
 import { sorobanInvocationCostRoutes } from "../sorobanInvocationCost.routes.js";
 import { correlationAnalysisRoutes } from "../correlationAnalysis.routes.js";
+import { txFeeForecastHistoryRoutes } from "../txFeeForecastHistory.routes.js";
 
 export async function registerAnalyticsRoutes(server: FastifyInstance): Promise<void> {
   server.register(analyticsRoutes, { prefix: "/api/v1/analytics" });
@@ -26,5 +27,8 @@ export async function registerAnalyticsRoutes(server: FastifyInstance): Promise<
   });
   server.register(correlationAnalysisRoutes, {
     prefix: "/api/v1/analytics/correlation",
+  });
+  server.register(txFeeForecastHistoryRoutes, {
+    prefix: "/api/v1/analytics/fee-forecast",
   });
 }
