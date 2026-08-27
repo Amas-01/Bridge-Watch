@@ -10,6 +10,7 @@ import { operationalAccessAuditRoutes } from "../operationalAccessAudit.js";
 import { providerAllowlistAdminRoutes } from "../providerAllowlistAdmin.routes.js";
 import { eventSourceKeyRoutes } from "../eventSourceKeys.routes.js";
 import { operatorHandoffRoutes } from "../operatorHandoff.routes.js";
+import { operatorAvailabilityRoutes } from "../operatorAvailability.routes.js";
 // #1058 — Request Sampling Controls
 import { samplingRulesRoutes } from "../samplingRules.js";
 // #1059 — Structured Error Catalog
@@ -41,6 +42,9 @@ export async function registerAdminRoutes(server: FastifyInstance): Promise<void
     prefix: "/api/v1/admin/event-source-keys",
   });
   server.register(operatorHandoffRoutes, {
+    prefix: "/api/v1/operator",
+  });
+  server.register(operatorAvailabilityRoutes, {
     prefix: "/api/v1/operator",
   });
 
