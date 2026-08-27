@@ -62,6 +62,32 @@ export interface MetadataVersion {
   timestamp: Date;
 }
 
+export interface BulkMetadataEditItem {
+  assetId: string;
+  symbol: string;
+  metadata: Partial<
+    Omit<
+      AssetMetadata,
+      "id" | "asset_id" | "symbol" | "version" | "created_at" | "updated_at"
+    >
+  >;
+}
+
+export interface BulkMetadataEditItemResult {
+  assetId: string;
+  success: boolean;
+  error?: string;
+  metadata?: AssetMetadata;
+}
+
+export interface BulkMetadataEditResult {
+  batchId: string;
+  total: number;
+  succeeded: number;
+  failed: number;
+  results: BulkMetadataEditItemResult[];
+}
+
 // ─── Asset Metadata Service ──────────────────────────────────────────────────
 
 export class AssetMetadataService {
@@ -448,6 +474,110 @@ export class AssetMetadataService {
       },
       changedBy,
     );
+  }
+
+  /**
+   * Apply metadata edits to multiple assets in a single batch.
+   * Each item is validated and applied independently so that one invalid
+   * or failing item does not block the rest of the batch. The batch outcome
+   * is persisted for auditing.
+   */
+  async bulkUpsertMetadata(
+    items: BulkMetadataEditItem[],
+    updatedBy: string,
+  ): Promise<BulkMetadataEditResult> {
+    const db = getDatabase();
+    const results: BulkMetadataEditItemResult[] = [];
+
+    for (const item of items) {
+      try {
+        const validation = this.validateMetadata(item.metadata);
+        if (!validation.valid) {
+          results.push({
+            assetId: item.assetId,
+            success: false,
+            error: validation.errors.join("; "),
+          });
+          continue;
+        }
+
+        const metadata = await this.upsertMetadata(
+          item.assetId,
+          item.symbol,
+          item.metadata,
+          updatedBy,
+        );
+
+        results.push({ assetId: item.assetId, success: true, metadata });
+      } catch (error) {
+        results.push({
+          assetId: item.assetId,
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    }
+
+    const succeeded = results.filter((r) => r.success).length;
+    const failed = results.length - succeeded;
+    const batchId = randomBytes(16).toString("hex");
+
+    try {
+      await db("bulk_metadata_edit_batches").insert({
+        id: batchId,
+        updated_by: updatedBy,
+        total_items: items.length,
+        succeeded_count: succeeded,
+        failed_count: failed,
+        results: JSON.stringify(results),
+      });
+    } catch (error) {
+      logger.error({ error, batchId }, "Failed to record bulk metadata edit batch");
+    }
+
+    logger.info(
+      { batchId, total: items.length, succeeded, failed, updatedBy },
+      "Bulk asset metadata edit batch completed",
+    );
+
+    return {
+      batchId,
+      total: items.length,
+      succeeded,
+      failed,
+      results,
+    };
+  }
+
+  /**
+   * Get a previously recorded bulk edit batch
+   */
+  async getBulkEditBatch(batchId: string): Promise<BulkMetadataEditResult | null> {
+    const db = getDatabase();
+
+    try {
+      const batch = await db("bulk_metadata_edit_batches")
+        .where({ id: batchId })
+        .first();
+
+      if (!batch) {
+        return null;
+      }
+
+      return {
+        batchId: batch.id,
+        total: batch.total_items,
+        succeeded: batch.succeeded_count,
+        failed: batch.failed_count,
+        results:
+          typeof batch.results === "string"
+            ? JSON.parse(batch.results)
+            : batch.results,
+      };
+    } catch (error) {
+      logger.error({ error, batchId }, "Failed to get bulk metadata edit batch");
+      return null;
+    }
   }
 
   // ─── Private Methods ─────────────────────────────────────────────────────
