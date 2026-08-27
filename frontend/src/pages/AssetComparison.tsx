@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAssetsWithHealth } from "../hooks/useAssets";
 import { useLocalStorageState } from "../hooks/useLocalStorageState";
-import { AssetSelector, AssetComparisonMatrix } from "../components/AssetComparison";
+import { AssetSelector, AssetComparisonMatrix, PriceSourceCoverageMatrix } from "../components/AssetComparison";
 import { getAssetMetadataBySymbol } from "../services/api";
 
 const MAX_COMPARE = 8;
@@ -175,6 +175,12 @@ export default function AssetComparison() {
         </div>
 
         <AssetComparisonMatrix assets={selectedAssets} filter={filter} />
+      </section>
+
+      {/* Price source coverage */}
+      <section className="bg-stellar-card border border-stellar-border rounded-lg p-6">
+        <h2 className="text-lg font-semibold text-white mb-5">Price Source Coverage</h2>
+        <PriceSourceCoverageMatrix symbols={selectedAssets.map((asset) => asset.symbol)} />
       </section>
     </div>
   );
