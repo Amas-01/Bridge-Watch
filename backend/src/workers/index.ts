@@ -14,6 +14,7 @@ import { processStalenessDetection } from "./stalenessDetection.job.js";
 import { logger } from "../utils/logger.js";
 import { initSupplyVerificationJob } from "../jobs/supplyVerification.job.js";
 import { runAuditRetentionJob } from "../jobs/auditRetention.job.js";
+import { runExternalSourceArchiveRetentionJob } from "../jobs/externalSourceArchiveRetention.job.js";
 import { processCachePriming } from "./cachePrimer.job.js";
 import { processAnomalyDetection } from "./anomalyDetection.job.js";
 import { processMetricsAggregation } from "./metricsAggregation.worker.js";
@@ -54,6 +55,9 @@ export async function initJobSystem() {
         break;
       case "audit-retention":
         await runAuditRetentionJob(job.data.retentionDays);
+        break;
+      case "external-source-archive-retention":
+        await runExternalSourceArchiveRetentionJob();
         break;
       case "digest-scheduler-daily":
         await processDigestScheduler(job);
@@ -146,6 +150,13 @@ export async function initJobSystem() {
 
   // Audit log retention: daily at 02:00 UTC, keep 90 days of info-level entries
   await jobQueue.addRepeatableJob("audit-retention", { retentionDays: 90 }, "0 2 * * *");
+
+  // External source response archive retention: daily at 02:30 UTC
+  await jobQueue.addRepeatableJob(
+    "external-source-archive-retention",
+    {},
+    "30 2 * * *"
+  );
 
   // Digest scheduler jobs
   // Daily digest: every hour (service will check user preferences and timezone)

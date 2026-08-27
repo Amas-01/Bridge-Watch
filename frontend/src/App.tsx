@@ -67,6 +67,8 @@ const OperatorAvailabilityCalendar = lazy(() => import("./pages/admin/OperatorAv
 const IncidentOwnershipTransfer = lazy(() => import("./pages/admin/IncidentOwnershipTransfer"));
 // #1143 — Alert Escalation Policy Preview
 const AlertEscalationPolicyPreview = lazy(() => import("./pages/admin/AlertEscalationPolicyPreview"));
+// #1162 — External Source Response Archive
+const ExternalSourceResponseArchive = lazy(() => import("./pages/admin/ExternalSourceResponseArchive"));
 
 function NotificationInitializer() {
   useNotifications();
@@ -155,6 +157,8 @@ function App() {
               <Route path="/admin/incident-ownership-transfer" element={<IncidentOwnershipTransfer />} />
               {/* #1143 — Alert Escalation Policy Preview */}
               <Route path="/admin/alert-escalation-preview" element={<AlertEscalationPolicyPreview />} />
+              {/* #1162 — External Source Response Archive */}
+              <Route path="/admin/external-source-archive" element={<ExternalSourceResponseArchive />} />
             </Route>
           </Routes>
         </Suspense>
