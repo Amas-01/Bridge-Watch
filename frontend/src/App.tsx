@@ -51,6 +51,14 @@ const AssetExposureConcentration = lazy(() => import("./pages/AssetExposureConce
 const BridgeTransferSLATracking = lazy(() => import("./pages/BridgeTransferSLATracking"));
 const DataQualityScoring = lazy(() => import("./pages/DataQualityScoring"));
 const ProviderLatencyComparison = lazy(() => import("./pages/ProviderLatencyComparison"));
+// #1058 — Request Sampling Controls
+const SamplingRules = lazy(() => import("./pages/admin/SamplingRules"));
+// #1059 — Structured Error Catalog
+const ErrorCatalogAdmin = lazy(() => import("./pages/admin/ErrorCatalog"));
+// #1060 — Operational Change Approval Workflow
+const ChangeRequests = lazy(() => import("./pages/admin/ChangeRequests"));
+// #1061 — Config Rollback Preview
+const ConfigRollback = lazy(() => import("./pages/admin/ConfigRollback"));
 
 function NotificationInitializer() {
   useNotifications();
@@ -123,6 +131,14 @@ function App() {
               <Route path="/transfer-sla" element={<BridgeTransferSLATracking />} />
               <Route path="/data-quality" element={<DataQualityScoring />} />
               <Route path="/provider-latency" element={<ProviderLatencyComparison />} />
+              {/* #1058 — Request Sampling Controls */}
+              <Route path="/admin/sampling-rules" element={<SamplingRules />} />
+              {/* #1059 — Structured Error Catalog */}
+              <Route path="/admin/error-catalog" element={<ErrorCatalogAdmin />} />
+              {/* #1060 — Operational Change Approval Workflow */}
+              <Route path="/admin/change-requests" element={<ChangeRequests />} />
+              {/* #1061 — Config Rollback Preview */}
+              <Route path="/admin/config-rollback" element={<ConfigRollback />} />
             </Route>
           </Routes>
         </Suspense>
