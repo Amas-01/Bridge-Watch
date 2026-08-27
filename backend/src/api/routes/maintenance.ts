@@ -1,11 +1,39 @@
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
 import {
   maintenanceService,
   MaintenanceScope,
   MaintenanceStatus,
 } from "../../services/maintenance.service";
+import { maintenanceImpactPreviewService } from "../../services/maintenanceImpactPreview.service.js";
+import { sendApiError } from "../utils/response.js";
+
+const impactPreviewBodySchema = z
+  .object({
+    scope: z.enum(["global", "bridge", "asset", "service"]),
+    scopeIdentifier: z.string().optional().nullable(),
+    startTime: z.coerce.date(),
+    endTime: z.coerce.date(),
+  })
+  .refine((body) => body.endTime.getTime() > body.startTime.getTime(), {
+    message: "endTime must be after startTime",
+    path: ["endTime"],
+  });
 
 export async function maintenanceRoutes(server: FastifyInstance) {
+  // Preview the impact of a proposed (not-yet-created) maintenance window
+  server.post("/impact-preview", async (request, reply) => {
+    const parsed = impactPreviewBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return sendApiError(reply, 400, "Invalid impact preview payload", {
+        issues: parsed.error.errors,
+      });
+    }
+
+    const preview = await maintenanceImpactPreviewService.previewImpact(parsed.data);
+    return preview;
+  });
+
   // Create maintenance window
   server.post("/", async (request, reply) => {
     const window = await maintenanceService.createWindow(request.body as any);
