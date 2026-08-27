@@ -373,23 +373,6 @@ export function getAssetPriceSources(symbol: string) {
   );
 }
 
-export interface PriceSourceCoverageCell {
-  covered: boolean;
-  price: number | null;
-  timestamp: string | null;
-}
-
-export interface PriceSourceCoverageRow {
-  symbol: string;
-  sources: Record<string, PriceSourceCoverageCell>;
-  coveredCount: number;
-  totalSources: number;
-}
-
-export function getPriceSourceCoverage() {
-  return fetchApi<{ matrix: PriceSourceCoverageRow[] }>("/price-sources/coverage");
-}
-
 export function getAssetLiquiditySources(symbol: string) {
   return fetchApi<Array<{
     dex: string;
