@@ -956,8 +956,7 @@ export class WebhookService extends EventEmitter {
     errorMessage?: string;
   }): Promise<void> {
     const db = getDatabase();
-
-    await db("webhook_delivery_logs").insert({
+    const payload = {
       id: crypto.randomUUID(),
       webhook_endpoint_id: params.webhookEndpointId,
       webhook_delivery_id: params.webhookDeliveryId,
@@ -970,7 +969,46 @@ export class WebhookService extends EventEmitter {
       attempt_number: params.attemptNumber,
       error_message: params.errorMessage || null,
       created_at: new Date(),
-    });
+    };
+
+    try {
+      await db("webhook_delivery_logs")
+        .insert(payload)
+        .onConflict(["webhook_delivery_id", "attempt_number"])
+        .merge({
+          request_headers: payload.request_headers,
+          request_body: payload.request_body,
+          response_status: payload.response_status,
+          response_body: payload.response_body,
+          duration_ms: payload.duration_ms,
+          error_message: payload.error_message,
+          created_at: payload.created_at,
+        });
+    } catch (error: any) {
+      const isUniqueViolation =
+        error?.code === "23505" || /duplicate|unique/i.test(error?.message ?? "");
+      if (isUniqueViolation) {
+        logger.warn(
+          { webhookDeliveryId: params.webhookDeliveryId, attemptNumber: params.attemptNumber },
+          "Delivery log unique collision, resolving via upsert"
+        );
+        await db("webhook_delivery_logs")
+          .where({
+            webhook_delivery_id: params.webhookDeliveryId,
+            attempt_number: params.attemptNumber,
+          })
+          .update({
+            request_headers: payload.request_headers,
+            request_body: payload.request_body,
+            response_status: payload.response_status,
+            response_body: payload.response_body,
+            duration_ms: payload.duration_ms,
+            error_message: payload.error_message,
+          });
+        return;
+      }
+      throw error;
+    }
   }
 
   public async getDeliveryLogs(
