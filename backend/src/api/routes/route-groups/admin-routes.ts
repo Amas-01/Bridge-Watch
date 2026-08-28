@@ -27,6 +27,12 @@ import { allowlistChangeReviewRoutes } from "../allowlistChangeReview.routes.js"
 import { tokenDecimalAlertsRoutes } from "../tokenDecimalAlerts.routes.js";
 // #1055 — User-Scoped Export Quotas
 import { exportQuotaRoutes } from "../exportQuota.routes.js";
+// #1170 — Import Validation Preview
+import { importValidationPreviewRoutes } from "../importValidationPreview.routes.js";
+// #1172 — API Key Scope Templates
+import { apiKeyScopeTemplateRoutes } from "../apiKeyScopeTemplate.routes.js";
+// #1168 — Failed Parse Quarantine Queue
+import { parseQuarantineQueueRoutes } from "../parseQuarantineQueue.routes.js";
 
 export async function registerAdminRoutes(server: FastifyInstance): Promise<void> {
   server.register(apiKeysRoutes, { prefix: "/api/v1/admin/api-keys" });
@@ -99,6 +105,21 @@ export async function registerAdminRoutes(server: FastifyInstance): Promise<void
   // #1055 — User-Scoped Export Quotas
   server.register(exportQuotaRoutes, {
     prefix: "/api/v1/export-quotas",
+  });
+
+  // #1170 — Import Validation Preview
+  server.register(importValidationPreviewRoutes, {
+    prefix: "/api/v1/admin/imports",
+  });
+
+  // #1172 — API Key Scope Templates
+  server.register(apiKeyScopeTemplateRoutes, {
+    prefix: "/api/v1/admin/api-key-templates",
+  });
+
+  // #1168 — Failed Parse Quarantine Queue
+  server.register(parseQuarantineQueueRoutes, {
+    prefix: "/api/v1/admin/quarantine",
   });
 }
 

@@ -69,6 +69,14 @@ const IncidentOwnershipTransfer = lazy(() => import("./pages/admin/IncidentOwner
 const AlertEscalationPolicyPreview = lazy(() => import("./pages/admin/AlertEscalationPolicyPreview"));
 // #1162 — External Source Response Archive
 const ExternalSourceResponseArchive = lazy(() => import("./pages/admin/ExternalSourceResponseArchive"));
+// #1171 — Dataset Column Lineage
+const DatasetColumnLineage = lazy(() => import("./pages/admin/DatasetColumnLineage"));
+// #1170 — Import Validation Preview
+const ImportValidationPreview = lazy(() => import("./pages/admin/ImportValidationPreview"));
+// #1172 — API Key Scope Templates
+const ApiKeyScopeTemplates = lazy(() => import("./pages/admin/ApiKeyScopeTemplates"));
+// #1168 — Failed Parse Quarantine Queue
+const ParseQuarantineQueue = lazy(() => import("./pages/admin/ParseQuarantineQueue"));
 const DexPoolDiscovery = lazy(() => import("./pages/liquidity/DexPoolDiscovery"));
 const PoolQualityRanking = lazy(() => import("./pages/liquidity/PoolQualityRanking"));
 const MarketImpactPresets = lazy(() => import("./pages/liquidity/MarketImpactPresets"));
@@ -163,6 +171,14 @@ function App() {
               <Route path="/admin/alert-escalation-preview" element={<AlertEscalationPolicyPreview />} />
               {/* #1162 — External Source Response Archive */}
               <Route path="/admin/external-source-archive" element={<ExternalSourceResponseArchive />} />
+              {/* #1171 — Dataset Column Lineage */}
+              <Route path="/admin/dataset-lineage" element={<DatasetColumnLineage />} />
+              {/* #1170 — Import Validation Preview */}
+              <Route path="/admin/import-validation-preview" element={<ImportValidationPreview />} />
+              {/* #1172 — API Key Scope Templates */}
+              <Route path="/admin/api-key-templates" element={<ApiKeyScopeTemplates />} />
+              {/* #1168 — Failed Parse Quarantine Queue */}
+              <Route path="/admin/quarantine" element={<ParseQuarantineQueue />} />
               {/* #1157 — DEX Pool Discovery Refresh */}
               <Route path="/liquidity/pool-discovery" element={<DexPoolDiscovery />} />
               {/* #1158 — Liquidity Pool Quality Ranking */}
