@@ -50,6 +50,10 @@ export const navGroups: NavGroup[] = [
       { to: "/help", label: "Help Center", description: "Search docs, FAQ, and support workflows" },
       { to: "/api-docs", label: "API Docs", labelKey: "nav.docs", description: "Interactive API documentation and explorer" },
       { to: "/admin/api-keys", label: "API Keys", description: "Manage integrator credentials" },
+      { to: "/admin/api-key-templates", label: "API Key Templates", description: "Saved API key scope and rate-limit bundles" },
+      { to: "/admin/import-validation-preview", label: "Import Validation", description: "Preview import validation before committing" },
+      { to: "/admin/dataset-lineage", label: "Dataset Lineage", description: "Trace dataset column lineage and provenance" },
+      { to: "/admin/quarantine", label: "Parse Quarantine", description: "Review and resolve failed-parse quarantine queue" },
       {
         to: "/admin/alert-routing",
         label: "Alert Routing",

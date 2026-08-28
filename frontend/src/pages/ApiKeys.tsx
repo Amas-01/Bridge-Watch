@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   createApiKey,
   extendApiKey,
+  listApiKeyTemplates,
   listApiKeys,
   revokeApiKey,
   rotateApiKey,
 } from "../services/api";
 import { useLocalStorageState } from "../hooks/useLocalStorageState";
-import type { ApiKeyRecord } from "../types";
+import type { ApiKeyRecord, ApiKeyScopeTemplate } from "../types";
 
 const AVAILABLE_SCOPES = [
   "admin:api-keys",
@@ -21,6 +22,7 @@ const DEFAULT_FORM = {
   rateLimitPerMinute: 120,
   expiresInDays: 30,
   enableOAuth: false,
+  template: "",
 };
 
 export default function ApiKeys() {
@@ -35,6 +37,8 @@ export default function ApiKeys() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState(DEFAULT_FORM);
+  const [templates, setTemplates] = useState<ApiKeyScopeTemplate[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState("");
 
   const activeCount = useMemo(
     () => keys.filter((key) => !key.revokedAt).length,
@@ -63,7 +67,31 @@ export default function ApiKeys() {
 
   useEffect(() => {
     void loadKeys();
+    if (adminToken) {
+      listApiKeyTemplates(adminToken)
+        .then((response) => setTemplates(response.templates))
+        .catch(() => setTemplates([]));
+    } else {
+      setTemplates([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminToken]);
+
+  const handleTemplateSelect = (templateId: string) => {
+    setSelectedTemplate(templateId);
+    const template = templates.find((t) => t.id === templateId);
+    if (template) {
+      setForm((current) => ({
+        ...current,
+        template: template.name,
+        scopes: template.scopes,
+        rateLimitPerMinute: template.rateLimitPerMinute ?? current.rateLimitPerMinute,
+      }));
+    } else {
+      setForm((current) => ({ ...DEFAULT_FORM, name: current.name, template: "" }));
+      setSelectedTemplate("");
+    }
+  };
 
   const toggleScope = (scope: string) => {
     setForm((current) => ({
@@ -89,6 +117,7 @@ export default function ApiKeys() {
       setGeneratedClientId(response.clientId ?? null);
       setGeneratedClientSecret(response.clientSecret ?? null);
       setForm(DEFAULT_FORM);
+      setSelectedTemplate("");
       await loadKeys();
     } catch (createError) {
       setError(
@@ -234,6 +263,30 @@ export default function ApiKeys() {
                 className="w-full rounded-2xl border border-stellar-border bg-stellar-dark px-4 py-3 text-white outline-none transition focus:border-stellar-blue focus:ring-2 focus:ring-stellar-blue"
               />
             </label>
+
+            {templates.length > 0 && (
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-white">
+                  Apply scope template
+                </span>
+                <select
+                  value={selectedTemplate}
+                  onChange={(event) => handleTemplateSelect(event.target.value)}
+                  className="w-full rounded-2xl border border-stellar-border bg-stellar-dark px-4 py-3 text-white outline-none transition focus:border-stellar-blue focus:ring-2 focus:ring-stellar-blue"
+                >
+                  <option value="">No template</option>
+                  {templates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="mt-1 block text-xs text-stellar-text-secondary">
+                  Selecting a template pre-fills scopes and rate limit from a saved
+                  scope bundle.
+                </span>
+              </label>
+            )}
 
             <div>
               <p className="mb-3 text-sm font-medium text-white">Scopes</p>
