@@ -210,6 +210,20 @@ const envSchema = z.object({
   HEALTH_CHECK_DISK_THRESHOLD: z.coerce.number().default(80),
   HEALTH_CHECK_EXTERNAL_APIS: z.string().default("true"),
 
+  // External Source Response Archive (#1162)
+  // Captures raw upstream responses (price feeds, RPC providers, attestation
+  // APIs) so a disputed data point can be traced back to exactly what the
+  // source returned at collection time.
+  EXTERNAL_SOURCE_ARCHIVE_ENABLED: z.coerce.boolean().default(true),
+  // Default retention window before an archived response is eligible for
+  // pruning. Individual sources may override this (see the service).
+  EXTERNAL_SOURCE_ARCHIVE_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
+  // Hard cap on the stored body size, in bytes. Larger bodies are truncated and
+  // flagged so the archive cannot be used to exhaust disk.
+  EXTERNAL_SOURCE_ARCHIVE_MAX_BODY_BYTES: z.coerce.number().int().positive().default(256 * 1024),
+  // Rows deleted per pruning batch, to keep the retention job off long locks.
+  EXTERNAL_SOURCE_ARCHIVE_PRUNE_BATCH: z.coerce.number().int().positive().default(500),
+
   // CORS Configuration
   CORS_ALLOWED_ORIGINS: z
     .string()
