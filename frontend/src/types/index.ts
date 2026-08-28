@@ -381,6 +381,8 @@ export interface CreateApiKeyRequest {
   rateLimitPerMinute?: number;
   expiresInDays?: number;
   enableOAuth?: boolean;
+  /** #1172 — Apply a saved scope template by name to populate scopes/rateLimit. */
+  template?: string;
 }
 
 export interface CreateApiKeyResponse {
@@ -665,4 +667,115 @@ export interface ServiceAnnotationAuditEntry {
   actor: string;
   changes: string;
   created_at: string;
+}
+
+// #1171 — Dataset Column Lineage
+export type LineageNodeKind = "dataset" | "column" | "transform";
+
+export interface ColumnLineageNode {
+  id: string;
+  kind: LineageNodeKind;
+  name: string;
+  datasetId: string | null;
+  dataType: string | null;
+  transformKind: string | null;
+}
+
+export interface ColumnLineageEdge {
+  from: string;
+  to: string;
+  transformKind: string;
+  transformOrder: number;
+}
+
+export interface ColumnLineageView {
+  datasetId: string;
+  datasetName: string;
+  columnId: string;
+  columnName: string;
+  nodes: ColumnLineageNode[];
+  edges: ColumnLineageEdge[];
+  generatedAt: string;
+}
+
+export interface DatasetSummary {
+  id: string;
+  name: string;
+  displayName: string;
+  description: string | null;
+  category: string;
+  columnCount: number;
+  isActive: boolean;
+}
+
+export interface DatasetColumn {
+  id: string;
+  datasetId: string;
+  name: string;
+  dataType: string | null;
+  description: string | null;
+  isPrimaryKey: boolean;
+  position: number;
+}
+
+// #1170 — Import Validation Preview
+export interface ImportValidationPreview {
+  id: string;
+  dataType: string;
+  rowCount: number;
+  validCount: number;
+  invalidCount: number;
+  warningCount: number;
+  dataQualityScore: number;
+  errors: Array<Record<string, unknown>>;
+  warnings: Array<Record<string, unknown>>;
+  summary: Record<string, unknown>;
+  createdBy: string | null;
+  applied: boolean;
+  createdAt: string;
+}
+
+// #1172 — API Key Scope Templates
+export interface ApiKeyScopeTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  scopes: string[];
+  rateLimitPerMinute: number | null;
+  isActive: boolean;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// #1168 — Failed Parse Quarantine Queue
+export type QuarantineStatus =
+  | "quarantined"
+  | "in_review"
+  | "resolved"
+  | "disposed"
+  | "failed";
+
+export interface QuarantineRecord {
+  id: string;
+  source: string;
+  dataType: string;
+  rawPayload: Record<string, unknown>;
+  parseError: string;
+  errorCode: string | null;
+  status: QuarantineStatus;
+  retryCount: number;
+  retryHistory: Array<Record<string, unknown>>;
+  priority: number;
+  reviewedBy: string | null;
+  resolutionNote: string | null;
+  quarantinedAt: string;
+  reviewedAt: string | null;
+  resolvedAt: string | null;
+}
+
+export interface QuarantineStats {
+  total: number;
+  byStatus: Record<QuarantineStatus, number>;
+  bySource: Record<string, number>;
 }

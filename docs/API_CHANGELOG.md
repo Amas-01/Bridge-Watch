@@ -16,6 +16,25 @@ This API follows semantic versioning: `MAJOR.MINOR.PATCH`
 
 ---
 
+## Unreleased
+
+### New Features
+
+#### External Source Response Archive (#1162)
+- **Endpoints** (mounted at `/api/v1/sources/response-archive`):
+  - `GET /` — list archived upstream responses; filters `sourceKey`, `subject`, `outcome`, `collectionRunId`, `from`, `to`; cursor paging via `limit` / `cursor`
+  - `GET /stats` — aggregate counts by source and outcome
+  - `GET /:id` — one response, metadata only
+  - `GET /:id/body` — the raw archived body plus hash / size / truncation flag
+  - `PATCH /:id/retention` — place (`retentionDays: null`) or release a legal hold
+  - `POST /prune` — run a retention sweep now
+- **Purpose**: trace a disputed price / supply / attestation value back to the exact raw response the external source returned at collection time
+- **Authorization**: `archive:read` for reads, `admin:config` for `PATCH`/`prune` (no new scope)
+- **Compatibility**: additive migration `external_source_responses`; feature is inert until collectors call `record()`; `EXTERNAL_SOURCE_ARCHIVE_ENABLED=false` disables capture while leaving the read API available
+- See [external-source-response-archive.md](./external-source-response-archive.md)
+
+---
+
 ## Version 1.6.0
 
 **Release Date:** August 24, 2026

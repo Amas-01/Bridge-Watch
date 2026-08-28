@@ -18,6 +18,7 @@ import { registerUtilityRoutes } from "./route-groups/utility-routes.js";
 import { registerCompatibilityRoutes } from "./route-groups/compatibility-routes.js";
 import { registerOperationalRoutes } from "./route-groups/operational-routes.js";
 import { registerOperationalMonitoringRoutes } from "./route-groups/operational-monitoring-routes.js";
+import { registerLiquidityRoutes } from "./route-groups/liquidity-routes.js";
 
 export async function registerRoutes(server: FastifyInstance): Promise<void> {
   // Core routes: health, websocket, config, preferences, caching
@@ -58,6 +59,9 @@ export async function registerRoutes(server: FastifyInstance): Promise<void> {
 
   // Anomaly detection: detection and tuning
   await registerAnomalyRoutes(server);
+
+  // DEX liquidity: pool discovery, quality ranking, impact presets, route quotes
+  await registerLiquidityRoutes(server);
 
   // Automation: rules, evaluator, playbooks, cleanup
   await registerAutomationRoutes(server);

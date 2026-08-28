@@ -67,6 +67,20 @@ const OperatorAvailabilityCalendar = lazy(() => import("./pages/admin/OperatorAv
 const IncidentOwnershipTransfer = lazy(() => import("./pages/admin/IncidentOwnershipTransfer"));
 // #1143 — Alert Escalation Policy Preview
 const AlertEscalationPolicyPreview = lazy(() => import("./pages/admin/AlertEscalationPolicyPreview"));
+// #1162 — External Source Response Archive
+const ExternalSourceResponseArchive = lazy(() => import("./pages/admin/ExternalSourceResponseArchive"));
+// #1171 — Dataset Column Lineage
+const DatasetColumnLineage = lazy(() => import("./pages/admin/DatasetColumnLineage"));
+// #1170 — Import Validation Preview
+const ImportValidationPreview = lazy(() => import("./pages/admin/ImportValidationPreview"));
+// #1172 — API Key Scope Templates
+const ApiKeyScopeTemplates = lazy(() => import("./pages/admin/ApiKeyScopeTemplates"));
+// #1168 — Failed Parse Quarantine Queue
+const ParseQuarantineQueue = lazy(() => import("./pages/admin/ParseQuarantineQueue"));
+const DexPoolDiscovery = lazy(() => import("./pages/liquidity/DexPoolDiscovery"));
+const PoolQualityRanking = lazy(() => import("./pages/liquidity/PoolQualityRanking"));
+const MarketImpactPresets = lazy(() => import("./pages/liquidity/MarketImpactPresets"));
+const RouteQuotes = lazy(() => import("./pages/liquidity/RouteQuotes"));
 
 function NotificationInitializer() {
   useNotifications();
@@ -155,6 +169,24 @@ function App() {
               <Route path="/admin/incident-ownership-transfer" element={<IncidentOwnershipTransfer />} />
               {/* #1143 — Alert Escalation Policy Preview */}
               <Route path="/admin/alert-escalation-preview" element={<AlertEscalationPolicyPreview />} />
+              {/* #1162 — External Source Response Archive */}
+              <Route path="/admin/external-source-archive" element={<ExternalSourceResponseArchive />} />
+              {/* #1171 — Dataset Column Lineage */}
+              <Route path="/admin/dataset-lineage" element={<DatasetColumnLineage />} />
+              {/* #1170 — Import Validation Preview */}
+              <Route path="/admin/import-validation-preview" element={<ImportValidationPreview />} />
+              {/* #1172 — API Key Scope Templates */}
+              <Route path="/admin/api-key-templates" element={<ApiKeyScopeTemplates />} />
+              {/* #1168 — Failed Parse Quarantine Queue */}
+              <Route path="/admin/quarantine" element={<ParseQuarantineQueue />} />
+              {/* #1157 — DEX Pool Discovery Refresh */}
+              <Route path="/liquidity/pool-discovery" element={<DexPoolDiscovery />} />
+              {/* #1158 — Liquidity Pool Quality Ranking */}
+              <Route path="/liquidity/pool-quality" element={<PoolQualityRanking />} />
+              {/* #1159 — Market Impact Scenario Presets */}
+              <Route path="/liquidity/market-impact-presets" element={<MarketImpactPresets />} />
+              {/* #1160 — Route Quote Expiration Handling */}
+              <Route path="/liquidity/route-quotes" element={<RouteQuotes />} />
             </Route>
           </Routes>
         </Suspense>

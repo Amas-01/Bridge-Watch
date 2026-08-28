@@ -168,8 +168,8 @@ least 90 days after a new version is released.
       { name: "Jobs", description: "Background job queue monitoring and control" },
       { name: "Config", description: "Runtime configuration and feature flags" },
       {
-        name: "Platform Contracts",
-        description: "Saved query, dashboard widget, Redis namespace, and worker capacity contracts",
+        name: "Operational Intelligence",
+        description: "Reliability, usage forecast, cache attribution, and feature flag validation analytics",
       },
       { name: "Cache", description: "Redis cache inspection and invalidation" },
       { name: "Circuit Breaker", description: "Automated circuit-breaker pause controls" },

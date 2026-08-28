@@ -12,6 +12,7 @@ import { txFeeForecastHistoryRoutes } from "../txFeeForecastHistory.routes.js";
 import { liquidityHeatmapExportRoutes } from "../liquidityHeatmapExport.routes.js";
 // #1151 — Chart Data Sampling Controls
 import { chartSamplingControlsRoutes } from "../chartSamplingControls.routes.js";
+import { operationalIntelligenceRoutes } from "../operationalIntelligence.routes.js";
 
 export async function registerAnalyticsRoutes(server: FastifyInstance): Promise<void> {
   server.register(analyticsRoutes, { prefix: "/api/v1/analytics" });
@@ -26,14 +27,8 @@ export async function registerAnalyticsRoutes(server: FastifyInstance): Promise<
   server.register(performanceBaselineRoutes, {
     prefix: "/api/v1/performance-baselines",
   });
-  server.register(sorobanInvocationCostRoutes, {
-    prefix: "/api/v1/soroban/cost-tracking",
-  });
-  server.register(correlationAnalysisRoutes, {
-    prefix: "/api/v1/analytics/correlation",
-  });
-  server.register(txFeeForecastHistoryRoutes, {
-    prefix: "/api/v1/analytics/fee-forecast",
+  server.register(operationalIntelligenceRoutes, {
+    prefix: "/api/v1/operational-intelligence",
   });
 
   // #1150 — Historical Liquidity Heatmap Export

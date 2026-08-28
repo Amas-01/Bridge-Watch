@@ -12,6 +12,7 @@ import type {
   PaginatedExports,
 } from "../types/export.types.js";
 import { exportQueue } from "../jobs/export.job.js";
+import { exportQuotaService, QuotaExceededException } from "./exportQuota.service.js";
 
 /**
  * Export Service
@@ -41,12 +42,43 @@ export class ExportService {
       throw new Error("Email address required when email delivery is enabled");
     }
 
+    // Check export quota before proceeding
+    const quotaCheck = await exportQuotaService.checkQuota(userId, "daily");
+    if (!quotaCheck.allowed) {
+      const error = new QuotaExceededException(
+        "Daily export quota exceeded",
+        quotaCheck.remaining,
+        quotaCheck.resetsAt
+      );
+      logger.warn(
+        { userId, remaining: quotaCheck.remaining, resetsAt: quotaCheck.resetsAt },
+        "Export quota exceeded"
+      );
+      throw error;
+    }
+
     const db = getDatabase();
 
     // Create export history record
     const record = await this.insertExportRecord(db, userId, payload);
 
     logger.info({ exportId: record.id, userId }, "Export record created");
+
+    // Increment quota after successful record creation
+    try {
+      // Estimate record count (can be refined based on actual data)
+      const estimatedRecordCount = 1000;
+      await exportQuotaService.incrementExport(
+        userId,
+        payload.format,
+        estimatedRecordCount
+      );
+      logger.info({ userId, exportId: record.id }, "Export quota incremented");
+    } catch (quotaError) {
+      // If quota increment fails, delete the export record
+      await db("export_history").where({ id: record.id }).del();
+      throw quotaError;
+    }
 
     // Enqueue export job
     const jobPayload: ExportJobPayload = {
