@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { ExportService } from "../../services/export.service.js";
 import { exportIntegrityRoutes } from "./exportIntegrity.routes.js";
+import { QuotaExceededException } from "../../services/exportQuota.service.js";
 import { logger } from "../../utils/logger.js";
 
 export async function exportsRoutes(server: FastifyInstance) {
@@ -28,6 +29,22 @@ export async function exportsRoutes(server: FastifyInstance) {
       const exportRecord = await exportService.requestExport(userId, request.body);
       return reply.status(201).send({ export: exportRecord });
     } catch (error) {
+      // Handle quota exceeded error with 429 status
+      if (error instanceof QuotaExceededException) {
+        const resetTime = error.resetsAt;
+        const retryAfter = Math.ceil(
+          (resetTime.getTime() - Date.now()) / 1000
+        );
+        return reply
+          .status(429)
+          .header("Retry-After", retryAfter.toString())
+          .send({
+            error: error.message,
+            remaining: error.remaining,
+            resetsAt: error.resetsAt.toISOString(),
+          });
+      }
+
       logger.error({ error }, "Failed to create export");
       return reply.status(400).send({
         error: error instanceof Error ? error.message : "Failed to create export",

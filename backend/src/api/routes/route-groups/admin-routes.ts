@@ -19,6 +19,14 @@ import { errorCatalogAdminRoutes, errorCatalogPublicRoutes } from "../errorCatal
 import { changeRequestsRoutes } from "../changeRequests.js";
 // #1061 — Config Rollback Preview
 import { configVersionsRoutes } from "../configVersions.js";
+// #1082 — RPC Method Capability Discovery
+import { rpcCapabilitiesRoutes } from "../rpcCapabilities.routes.js";
+// #1083 — Contract Address Allowlist Change Review
+import { allowlistChangeReviewRoutes } from "../allowlistChangeReview.routes.js";
+// #1085 — Token Decimal Change Detection
+import { tokenDecimalAlertsRoutes } from "../tokenDecimalAlerts.routes.js";
+// #1055 — User-Scoped Export Quotas
+import { exportQuotaRoutes } from "../exportQuota.routes.js";
 
 export async function registerAdminRoutes(server: FastifyInstance): Promise<void> {
   server.register(apiKeysRoutes, { prefix: "/api/v1/admin/api-keys" });
@@ -71,6 +79,26 @@ export async function registerAdminRoutes(server: FastifyInstance): Promise<void
   // #1061 — Config Version History & Rollback Preview
   server.register(configVersionsRoutes, {
     prefix: "/api/v1/admin/config-versions",
+  });
+
+  // #1082 — RPC Method Capability Discovery
+  server.register(rpcCapabilitiesRoutes, {
+    prefix: "/api/v1/admin/rpc-capabilities",
+  });
+
+  // #1083 — Contract Address Allowlist Change Review
+  server.register(allowlistChangeReviewRoutes, {
+    prefix: "/api/v1/admin/allowlist",
+  });
+
+  // #1085 — Token Decimal Change Detection
+  server.register(tokenDecimalAlertsRoutes, {
+    prefix: "/api/v1/admin/token-decimal-alerts",
+  });
+
+  // #1055 — User-Scoped Export Quotas
+  server.register(exportQuotaRoutes, {
+    prefix: "/api/v1/export-quotas",
   });
 }
 
