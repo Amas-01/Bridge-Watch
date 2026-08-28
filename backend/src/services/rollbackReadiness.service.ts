@@ -55,7 +55,7 @@ export async function createCheck(
     })
     .returning("*");
 
-  logger.info("Created rollback readiness check", { deploymentId, checkType });
+  logger.info({ deploymentId, checkType }, "Created rollback readiness check");
   return check;
 }
 
@@ -79,7 +79,7 @@ export async function executeCheck(
     })
     .returning("*");
 
-  logger.info("Executed rollback readiness check", { checkId, passed });
+  logger.info({ checkId, passed }, "Executed rollback readiness check");
 
   await updateSummary(check.deployment_id);
 
@@ -167,7 +167,7 @@ export async function initiateRollback(
     })
     .returning("*");
 
-  logger.info("Initiated rollback", { deploymentId, initiatedBy });
+  logger.info({ deploymentId, initiatedBy }, "Initiated rollback");
   return execution;
 }
 
@@ -187,7 +187,7 @@ export async function completeRollback(
     })
     .returning("*");
 
-  logger.info("Completed rollback", { executionId, status });
+  logger.info({ executionId, status }, "Completed rollback");
   return execution;
 }
 

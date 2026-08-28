@@ -62,6 +62,18 @@ class MetricsService {
   public websocketConnections: Gauge;
   public websocketMessagesTotal: Counter;
 
+  // #1058 — Request Sampling Metrics
+  public samplingRuleEvaluationsTotal: Counter;
+
+  // #1059 — Error Catalog Metrics
+  public errorCatalogLookupsTotal: Counter;
+
+  // #1060 — Change Approval Metrics
+  public changeRequestsTotal: Counter;
+
+  // #1061 — Config Rollback Metrics
+  public configRollbacksTotal: Counter;
+
   constructor() {
     this.registry = new Registry();
     
@@ -104,7 +116,16 @@ class MetricsService {
     this.apiKeyRateLimitHits = undefined as any;
     this.websocketConnections = undefined as any;
     this.websocketMessagesTotal = undefined as any;
-    
+
+    // #1058 — Request Sampling
+    this.samplingRuleEvaluationsTotal = undefined as any;
+    // #1059 — Error Catalog
+    this.errorCatalogLookupsTotal = undefined as any;
+    // #1060 — Change Approval
+    this.changeRequestsTotal = undefined as any;
+    // #1061 — Config Rollback
+    this.configRollbacksTotal = undefined as any;
+
     this.initializeMetrics();
   }
 
@@ -388,6 +409,38 @@ class MetricsService {
       name: "websocket_messages_total",
       help: "Total number of WebSocket messages",
       labelNames: ["type", "direction"],
+      registers: [this.registry],
+    });
+
+    // #1058 — Request Sampling Evaluations
+    this.samplingRuleEvaluationsTotal = new Counter({
+      name: "sampling_rule_evaluations_total",
+      help: "Total number of sampling rule evaluations",
+      labelNames: ["matched"],
+      registers: [this.registry],
+    });
+
+    // #1059 — Error Catalog Lookups
+    this.errorCatalogLookupsTotal = new Counter({
+      name: "error_catalog_lookups_total",
+      help: "Total number of error catalog lookups",
+      labelNames: ["found"],
+      registers: [this.registry],
+    });
+
+    // #1060 — Change Requests by Status
+    this.changeRequestsTotal = new Counter({
+      name: "change_requests_total",
+      help: "Total number of change request status transitions",
+      labelNames: ["status"],
+      registers: [this.registry],
+    });
+
+    // #1061 — Config Rollbacks
+    this.configRollbacksTotal = new Counter({
+      name: "config_rollbacks_total",
+      help: "Total number of config rollback applications",
+      labelNames: ["success"],
       registers: [this.registry],
     });
 

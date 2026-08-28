@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { getDatabase } from "../database/connection.js";
 import { config } from "../config/index.js";
 import { logger } from "../utils/logger.js";
+import { ingestionWatermarkCoordinator } from "./ingestionWatermarkCoordinator.service.js";
 
 export type IngestionJobType = "alert" | "event" | "metric";
 
@@ -215,6 +216,16 @@ export class IngestionQueueManager {
         updated_at: new Date(),
       })
       .returning("*");
+
+    // Publish durable source progress with finality separated from observation.
+    // Downstream consumers can therefore wait for the confirmation boundary,
+    // rather than treating a fast provider's wall-clock update as complete.
+    await ingestionWatermarkCoordinator.publish({
+      source: params.sourceChain,
+      coveredThrough: params.currentLedger,
+      finalizedThrough: Math.max(0, params.currentLedger - required),
+      gaps: [],
+    });
 
     if (confirmations >= required) {
       logger.info(

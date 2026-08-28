@@ -56,7 +56,7 @@ export async function createBaseline(
     })
     .returning("*");
 
-  logger.info("Created slow query baseline", { queryHash, baselineMs });
+  logger.info({ queryHash, baselineMs }, "Created slow query baseline");
   return baseline;
 }
 

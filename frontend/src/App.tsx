@@ -51,6 +51,22 @@ const AssetExposureConcentration = lazy(() => import("./pages/AssetExposureConce
 const BridgeTransferSLATracking = lazy(() => import("./pages/BridgeTransferSLATracking"));
 const DataQualityScoring = lazy(() => import("./pages/DataQualityScoring"));
 const ProviderLatencyComparison = lazy(() => import("./pages/ProviderLatencyComparison"));
+// #1058 — Request Sampling Controls
+const SamplingRules = lazy(() => import("./pages/admin/SamplingRules"));
+// #1059 — Structured Error Catalog
+const ErrorCatalogAdmin = lazy(() => import("./pages/admin/ErrorCatalog"));
+// #1060 — Operational Change Approval Workflow
+const ChangeRequests = lazy(() => import("./pages/admin/ChangeRequests"));
+// #1061 — Config Rollback Preview
+const ConfigRollback = lazy(() => import("./pages/admin/ConfigRollback"));
+// #1148 — Bulk Asset Metadata Editing
+const BulkAssetMetadataEditor = lazy(() => import("./pages/admin/BulkAssetMetadataEditor"));
+// #1146 — Operator Availability Calendar
+const OperatorAvailabilityCalendar = lazy(() => import("./pages/admin/OperatorAvailabilityCalendar"));
+// #1145 — Incident Ownership Transfer
+const IncidentOwnershipTransfer = lazy(() => import("./pages/admin/IncidentOwnershipTransfer"));
+// #1143 — Alert Escalation Policy Preview
+const AlertEscalationPolicyPreview = lazy(() => import("./pages/admin/AlertEscalationPolicyPreview"));
 
 function NotificationInitializer() {
   useNotifications();
@@ -123,6 +139,22 @@ function App() {
               <Route path="/transfer-sla" element={<BridgeTransferSLATracking />} />
               <Route path="/data-quality" element={<DataQualityScoring />} />
               <Route path="/provider-latency" element={<ProviderLatencyComparison />} />
+              {/* #1058 — Request Sampling Controls */}
+              <Route path="/admin/sampling-rules" element={<SamplingRules />} />
+              {/* #1059 — Structured Error Catalog */}
+              <Route path="/admin/error-catalog" element={<ErrorCatalogAdmin />} />
+              {/* #1060 — Operational Change Approval Workflow */}
+              <Route path="/admin/change-requests" element={<ChangeRequests />} />
+              {/* #1061 — Config Rollback Preview */}
+              <Route path="/admin/config-rollback" element={<ConfigRollback />} />
+              {/* #1148 — Bulk Asset Metadata Editing */}
+              <Route path="/admin/bulk-asset-metadata" element={<BulkAssetMetadataEditor />} />
+              {/* #1146 — Operator Availability Calendar */}
+              <Route path="/admin/operator-availability" element={<OperatorAvailabilityCalendar />} />
+              {/* #1145 — Incident Ownership Transfer */}
+              <Route path="/admin/incident-ownership-transfer" element={<IncidentOwnershipTransfer />} />
+              {/* #1143 — Alert Escalation Policy Preview */}
+              <Route path="/admin/alert-escalation-preview" element={<AlertEscalationPolicyPreview />} />
             </Route>
           </Routes>
         </Suspense>

@@ -242,6 +242,35 @@ export function getAssetHealthHistory(
   >(`/assets/${symbol}/health/history?period=${period}`);
 }
 
+export interface HealthScoreHistoryRecord {
+  id: string;
+  symbol: string;
+  overallScore: number;
+  liquidityDepthScore: number;
+  priceStabilityScore: number;
+  bridgeUptimeScore: number;
+  reserveBackingScore: number;
+  volumeTrendScore: number;
+  trend: "improving" | "stable" | "deteriorating";
+  delta: number | null;
+  source: "scheduled" | "manual" | "backfill";
+  recordedAt: string;
+}
+
+export function getHealthScoreHistory(
+  symbol: string,
+  params?: { from?: string; to?: string; limit?: number }
+) {
+  const query = new URLSearchParams();
+  if (params?.from) query.set("from", params.from);
+  if (params?.to) query.set("to", params.to);
+  if (params?.limit) query.set("limit", String(params.limit));
+  const qs = query.toString();
+  return fetchApi<{ symbol: string; records: HealthScoreHistoryRecord[]; count: number }>(
+    `/health-score-history/${symbol}${qs ? `?${qs}` : ""}`
+  );
+}
+
 export async function getAssetsWithHealth(): Promise<AssetWithHealth[]> {
   const { assets } = await getAssets();
   const healthPromises = assets.map(async (asset) => {
@@ -448,6 +477,25 @@ export function getBridgeStats(bridge: string, startDate?: string, endDate?: str
   if (endDate) params.set("endDate", endDate);
   const query = params.toString();
   return fetchApi<BridgeStats | null>(`/bridges/${bridge}/stats${query ? `?${query}` : ""}`);
+}
+
+export interface CircuitStateResponse {
+  scope: string;
+  identifier: string | null;
+  level: string;
+  isPaused: boolean;
+  triggeredBy: string | null;
+  triggerReason: string | null;
+  timestamp: number | null;
+  recoveryDeadline: number | null;
+  guardianApprovals: number | null;
+  guardianThreshold: number | null;
+  status: string | null;
+}
+
+export function getCircuitState(scope: "bridge" | "asset", identifier: string) {
+  const params = new URLSearchParams({ scope, identifier });
+  return fetchApi<CircuitStateResponse | null>(`/circuit-health/health/state?${params.toString()}`);
 }
 
 export interface ReconciliationSummaryFilters {
@@ -816,18 +864,30 @@ export interface IndexedSearchResult {
   metadata: Record<string, unknown>;
 }
 
-export function searchIndexed(query: string, limit = 12) {
+export interface FacetValueCount {
+  value: string;
+  count: number;
+}
+
+export interface AssetSearchFacets {
+  bridgeProvider: FacetValueCount[];
+  sourceChain: FacetValueCount[];
+}
+
+export function searchIndexed(query: string, limit = 12, type?: "asset" | "bridge" | "incident" | "alert") {
   const params = new URLSearchParams({
     q: query,
     limit: String(limit),
     fuzzy: "true",
   });
+  if (type) params.set("type", type);
 
   return fetchApi<{
     success: boolean;
     data: {
       results: IndexedSearchResult[];
       total: number;
+      facets?: AssetSearchFacets;
     };
   }>(`/search?${params.toString()}`);
 }

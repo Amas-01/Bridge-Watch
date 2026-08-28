@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { searchIndexed, type IndexedSearchResult } from "../services/api";
+import { searchIndexed, type IndexedSearchResult, type AssetSearchFacets } from "../services/api";
 
 export type SearchCategory = "assets" | "bridges" | "incidents" | "alerts" | "pages";
 
@@ -162,6 +162,7 @@ export interface UseSearchReturn {
   query: string;
   setQuery: (q: string) => void;
   results: SearchResult[];
+  assetFacets: AssetSearchFacets | undefined;
   isLoading: boolean;
   recentSearches: SearchResult[];
   addRecentSearch: (result: SearchResult) => void;
@@ -194,6 +195,15 @@ export function useSearch(): UseSearchReturn {
     enabled: debouncedQuery.length >= 2,
     staleTime: 30_000,
   });
+
+  const { data: assetFacetsData } = useQuery({
+    queryKey: ["indexed-search-asset-facets", debouncedQuery],
+    queryFn: () => searchIndexed(debouncedQuery, 1, "asset"),
+    enabled: debouncedQuery.length >= 2,
+    staleTime: 30_000,
+  });
+
+  const assetFacets: AssetSearchFacets | undefined = assetFacetsData?.data.facets;
 
   const results = useMemo<SearchResult[]>(() => {
     const q = debouncedQuery;
@@ -305,6 +315,7 @@ export function useSearch(): UseSearchReturn {
     query,
     setQuery,
     results,
+    assetFacets,
     isLoading: isFetching,
     recentSearches,
     addRecentSearch,

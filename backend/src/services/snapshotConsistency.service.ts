@@ -261,9 +261,7 @@ export class SnapshotConsistencyService {
    */
   async publishWsWatermark(wsSequence: number): Promise<void> {
     try {
-      await redis.set(WS_SEQUENCE_WATERMARK_KEY, String(wsSequence), {
-        EX: 300, // 5 min — a missing key signals the WS server has not started
-      });
+      await redis.set(WS_SEQUENCE_WATERMARK_KEY, String(wsSequence), "EX", 300);
     } catch (err) {
       logger.warn({ err }, "snapshot-consistency: failed to publish WS watermark");
     }

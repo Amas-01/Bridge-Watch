@@ -52,6 +52,37 @@ k6 run --env PROFILE=load \
   load-tests/scenarios/batch-reconciliation.js
 ```
 
+### 3. Soroban Batch Planner (`scenarios/soroban-batch-planner.js`)
+Throughput of the resource-budget-aware batch submission planner under ledger budget pressure - **Closes #1016**
+
+#### Endpoints Tested
+- `POST /api/v1/soroban/batch-planner/plan` - Plan, dry-run submit, and reconcile an oversized backlog (150 items/request by default) so the planner must pack multiple budget-respecting batches
+- `GET /api/v1/soroban/batch-planner/status` - Durable lifecycle ledger snapshot
+
+Requires the backend's `SOROBAN_RPC_URL` to point at a reachable Soroban RPC (the local sandbox from `docker-compose.sandbox.yml` is intended for this) since each item is simulated for a real resource estimate.
+
+#### Metrics Collected
+- `soroban_batch_plan_latency` - p50, p95, p99 percentiles across plan + status calls
+- `soroban_batch_plan_failures` - Count of failed requests
+- `soroban_batch_items_planned` / `soroban_batch_batches_per_request` - Packing throughput per request
+- `soroban_batch_rejection_rate` - Share of requests where at least one item exceeded a ceiling alone
+
+#### Performance Thresholds
+- **p95 latency:** < 5000ms
+- **Failures:** < 20 total
+- **Item rejection rate:** < 5%
+
+#### Test Execution
+```bash
+# Smoke test
+k6 run --env PROFILE=smoke load-tests/scenarios/soroban-batch-planner.js
+
+# Apply more ledger budget pressure with a larger backlog per request
+k6 run --env PROFILE=load --env BACKLOG_SIZE=500 \
+  --env BASE_URL=http://localhost:3001 \
+  load-tests/scenarios/soroban-batch-planner.js
+```
+
 ## Quick Start
 
 1. Start the backend service:

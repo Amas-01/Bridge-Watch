@@ -265,6 +265,54 @@ export class QueryPresetService {
     }));
   }
 
+  async getPresetVersion(
+    presetId: string,
+    version: string,
+    userId: string,
+  ): Promise<QueryPresetVersion | null> {
+    const versions = await this.getPresetVersions(presetId, userId);
+    return versions.find((entry) => entry.version === version) ?? null;
+  }
+
+  async comparePresetVersions(
+    presetId: string,
+    fromVersion: string,
+    toVersion: string,
+    userId: string,
+  ): Promise<{
+    preset_id: string;
+    from: QueryPresetVersion;
+    to: QueryPresetVersion;
+    added_fields: string[];
+    removed_fields: string[];
+    changed_fields: string[];
+  } | null> {
+    const [from, to] = await Promise.all([
+      this.getPresetVersion(presetId, fromVersion, userId),
+      this.getPresetVersion(presetId, toVersion, userId),
+    ]);
+
+    if (!from || !to) {
+      return null;
+    }
+
+    const fromFields = new Set(Object.keys(from.query_definition));
+    const toFields = new Set(Object.keys(to.query_definition));
+    const changedFields = Array.from(fromFields).filter((field) => {
+      if (!toFields.has(field)) return false;
+      return JSON.stringify(from.query_definition[field]) !== JSON.stringify(to.query_definition[field]);
+    });
+
+    return {
+      preset_id: presetId,
+      from,
+      to,
+      added_fields: Array.from(toFields).filter((field) => !fromFields.has(field)),
+      removed_fields: Array.from(fromFields).filter((field) => !toFields.has(field)),
+      changed_fields: changedFields,
+    };
+  }
+
   async recordUsage(id: string): Promise<void> {
     await this.db("query_presets")
       .where({ id })

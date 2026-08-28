@@ -69,6 +69,7 @@ export function handleSubscribe(
 
     if (token && !state.isAuthenticated) {
       state.isAuthenticated = true;
+      state.tenantId = state.tenantId || "authenticated";
     }
   }
 

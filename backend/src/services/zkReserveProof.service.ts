@@ -321,7 +321,7 @@ export class ZkReserveProofService {
         .addOperation(
           contract.call(
             "verify_zk_reserve_proof",
-            operatorKeypair.xdrAddress(),
+            StellarSdk.Address.fromString(operatorKeypair.publicKey()).toScVal(),
             proofScVal,
             publicInputsScVal
           )

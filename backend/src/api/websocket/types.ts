@@ -348,6 +348,8 @@ export interface ClientState {
    * that silently disappeared (e.g. mobile network handoff without TCP close).
    */
   pendingPing: boolean;
+  /** Tenant identifier for cryptographic tenant isolation. */
+  tenantId?: string;
 }
 
 // ─── Metrics ──────────────────────────────────────────────────────────────────

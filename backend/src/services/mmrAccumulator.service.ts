@@ -264,7 +264,7 @@ export class MmrAccumulatorService {
     }
 
     // Step 1: re-derive the local subtree root from the leaf + siblings.
-    let current = Buffer.from(proof.leafHash, "hex");
+    let current: any = Buffer.from(proof.leafHash, "hex");
     let pos = proof.leafIndex;
 
     for (const sib of proof.siblings) {

@@ -139,6 +139,7 @@ export class WebSocketServer implements IBroadcaster {
     // Allow authentication at connection time via ?token= query param so
     // clients can subscribe to private channels immediately after connecting.
     const token = query.token;
+    const tenantId = query.tenant_id as string | undefined;
     const isAuthenticated = token ? this.validateToken(token) : false;
 
     const state: ClientState = {
@@ -152,6 +153,7 @@ export class WebSocketServer implements IBroadcaster {
       windowStart: Date.now(),
       ip,
       pendingPing: false,
+      tenantId: isAuthenticated ? tenantId : undefined,
     };
 
     this.clients.set(clientId, state);

@@ -63,7 +63,7 @@ export async function createDeployment(
     })
     .returning("*");
 
-  logger.info("Created canary deployment", { deploymentName, version, environment });
+  logger.info({ deploymentName, version, environment }, "Created canary deployment");
 
   await db("canary_metric_comparisons").insert({
     deployment_id: deployment.id,
@@ -177,7 +177,7 @@ export async function completeDeployment(
     })
     .returning("*");
 
-  logger.info("Completed canary deployment", { deploymentId, status });
+  logger.info({ deploymentId, status }, "Completed canary deployment");
   return deployment;
 }
 

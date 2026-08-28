@@ -49,6 +49,7 @@ export async function websocketRoutes(server: FastifyInstance) {
       topics?: string;
       limit?: string;
       sinceSequence?: string;
+      tenant_id?: string;
     };
 
     const topics = (query.topics ?? "")
@@ -58,6 +59,17 @@ export async function websocketRoutes(server: FastifyInstance) {
 
     const limit = query.limit ? Number.parseInt(query.limit, 10) : undefined;
     const sinceSequence = query.sinceSequence ? Number.parseInt(query.sinceSequence, 10) : undefined;
+
+    // Tenant isolation: if tenant_id is provided, validate it matches the requester
+    if (query.tenant_id && request.tenantContext) {
+      if (query.tenant_id !== request.tenantContext.tenantId) {
+        return {
+          error: "Cross-tenant replay access denied",
+          messages: [],
+          count: 0,
+        };
+      }
+    }
 
     const messages = replayService.getReplayMessages(topics, {
       limit: Number.isFinite(limit) ? limit : undefined,

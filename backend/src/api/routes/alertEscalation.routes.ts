@@ -221,6 +221,50 @@ export async function alertEscalationRoutes(server: FastifyInstance) {
   );
 
   /**
+   * Preview the escalation policy for an asset/alert type
+   * GET /alert-escalation/preview
+   */
+  server.get(
+    "/alert-escalation/preview",
+    {
+      schema: {
+        tags: ["Alert Escalation"],
+        summary: "Preview the escalation policy chain for an asset/alert type",
+        security: [{ ApiKeyAuth: [] }],
+        querystring: {
+          type: "object",
+          required: ["assetCode", "alertType"],
+          properties: {
+            assetCode: { type: "string", description: "Asset code (e.g., USDC)" },
+            alertType: { type: "string", description: "Type of alert" },
+          },
+        },
+        response: {
+          200: { type: "object", properties: { preview: { type: "object" } } },
+          400: { type: "object", properties: { error: { type: "string" } } },
+        },
+      },
+    },
+    async (
+      request: FastifyRequest<{ Querystring: { assetCode: string; alertType: string } }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const { assetCode, alertType } = request.query;
+        const preview = await alertEscalationService.previewEscalationPolicy(
+          assetCode,
+          alertType
+        );
+        return reply.send({ preview });
+      } catch (error) {
+        return reply.status(400).send({
+          error: error instanceof Error ? error.message : "Failed to preview escalation policy",
+        });
+      }
+    }
+  );
+
+  /**
    * Get escalation metrics
    * GET /alert-escalation/metrics
    */

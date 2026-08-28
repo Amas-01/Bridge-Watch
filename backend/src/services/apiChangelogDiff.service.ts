@@ -59,7 +59,7 @@ export const apiChangelogDiffService = {
     }
   },
 
-  private computeDiff(
+  computeDiff(
     fromVer: any,
     toVer: any,
     changes: any[]

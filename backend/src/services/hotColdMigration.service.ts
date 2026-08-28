@@ -596,7 +596,7 @@ export class HotColdMigrationService {
       // SCAN is safe for production Redis; KEYS is not
       let cursor = 0;
       do {
-        const [nextCursor, keys] = await redis.scan(cursor, { MATCH: pattern, COUNT: 100 });
+        const [nextCursor, keys] = await redis.scan(cursor, "MATCH", pattern, "COUNT", 100);
         cursor = Number(nextCursor);
         if (keys.length > 0) {
           await redis.del(keys);

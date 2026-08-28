@@ -77,6 +77,32 @@ export interface EscalationEvent {
 }
 
 /**
+ * A single step in a previewed escalation policy chain
+ */
+export interface EscalationPolicyPreviewStep {
+  ruleId: string;
+  fromSeverity: AlertSeverity;
+  toSeverity: AlertSeverity;
+  triggerType: EscalationTrigger;
+  thresholdDescription: string;
+  notificationChannels: string[];
+}
+
+/**
+ * Result of previewing an alert escalation policy for an asset/alert type,
+ * without recording any occurrences or mutating escalation state.
+ */
+export interface EscalationPolicyPreviewResult {
+  assetCode: string;
+  alertType: string;
+  startingSeverity: AlertSeverity;
+  activeConditionHistoryId: string | null;
+  steps: EscalationPolicyPreviewStep[];
+  projectedFinalSeverity: AlertSeverity;
+  warnings: string[];
+}
+
+/**
  * Escalation metrics for monitoring
  */
 export interface EscalationMetrics {
@@ -96,6 +122,68 @@ type SeverityCountRow = { to_severity: AlertSeverity; count?: string | number };
 
 const countValue = (value: string | number | null | undefined): number =>
   Number(value ?? 0);
+
+interface EscalationRuleLike {
+  id: string;
+  fromSeverity: AlertSeverity;
+  toSeverity: AlertSeverity;
+  triggerType: EscalationTrigger;
+  frequencyThreshold?: number | null;
+  durationMinutes?: number | null;
+  recurrenceCount?: number | null;
+  timeWindowMinutes: number;
+  notificationChannels: string[];
+}
+
+/** Pure: human-readable description of what triggers a given escalation rule. */
+export function describeEscalationThreshold(rule: EscalationRuleLike): string {
+  switch (rule.triggerType) {
+    case "frequency":
+      return `${rule.frequencyThreshold ?? "?"} occurrence(s) within ${rule.timeWindowMinutes}m`;
+    case "duration":
+      return `condition persists for ${rule.durationMinutes ?? "?"}m`;
+    case "recurrence":
+      return `${rule.recurrenceCount ?? "?"} recurrence(s) within ${rule.timeWindowMinutes}m`;
+    case "manual":
+      return "manual escalation only";
+    default:
+      return "unknown trigger";
+  }
+}
+
+/**
+ * Pure: walks the rule chain starting from `startSeverity`, following each
+ * rule's fromSeverity -> toSeverity link, stopping when no further rule
+ * applies or a severity is revisited (to guard against misconfigured cycles).
+ */
+export function buildEscalationChain(
+  rules: EscalationRuleLike[],
+  startSeverity: AlertSeverity
+): EscalationPolicyPreviewStep[] {
+  const steps: EscalationPolicyPreviewStep[] = [];
+  const visited = new Set<AlertSeverity>([startSeverity]);
+  let current = startSeverity;
+
+  while (true) {
+    const rule = rules.find((r) => r.fromSeverity === current);
+    if (!rule) break;
+
+    steps.push({
+      ruleId: rule.id,
+      fromSeverity: rule.fromSeverity,
+      toSeverity: rule.toSeverity,
+      triggerType: rule.triggerType,
+      thresholdDescription: describeEscalationThreshold(rule),
+      notificationChannels: rule.notificationChannels,
+    });
+
+    if (visited.has(rule.toSeverity)) break;
+    visited.add(rule.toSeverity);
+    current = rule.toSeverity;
+  }
+
+  return steps;
+}
 
 // ─── Alert Escalation Service ─────────────────────────────────────────────────
 
@@ -670,6 +758,74 @@ export class AlertEscalationService {
         { error, conditionHistoryId },
         "Failed to close condition history"
       );
+      throw error;
+    }
+  }
+
+  /**
+   * Preview the escalation policy that would apply to an asset/alert type.
+   * Walks the configured rule chain from the current (or "low") severity to
+   * show every step an alert would pass through, without recording any
+   * occurrences or mutating escalation state.
+   */
+  async previewEscalationPolicy(
+    assetCode: string,
+    alertType: string
+  ): Promise<EscalationPolicyPreviewResult> {
+    const db = getDatabase();
+
+    try {
+      const [ruleRows, activeHistory] = await Promise.all([
+        db("alert_escalation_rules").where({
+          asset_code: assetCode,
+          alert_type: alertType,
+          is_active: true,
+        }),
+        db("alert_condition_history")
+          .where({ asset_code: assetCode, alert_type: alertType, is_active: true })
+          .first(),
+      ]);
+
+      const rules: EscalationRuleLike[] = ruleRows.map((row: any) => ({
+        id: row.id,
+        fromSeverity: row.from_severity,
+        toSeverity: row.to_severity,
+        triggerType: row.trigger_type,
+        frequencyThreshold: row.frequency_threshold,
+        durationMinutes: row.duration_minutes,
+        recurrenceCount: row.recurrence_count,
+        timeWindowMinutes: row.time_window_minutes,
+        notificationChannels:
+          typeof row.notification_channels === "string"
+            ? JSON.parse(row.notification_channels || "[]")
+            : row.notification_channels ?? [],
+      }));
+
+      const startingSeverity: AlertSeverity = activeHistory?.current_severity ?? "low";
+      const steps = buildEscalationChain(rules, startingSeverity);
+
+      const projectedFinalSeverity: AlertSeverity =
+        steps.length > 0 ? steps[steps.length - 1].toSeverity : startingSeverity;
+
+      const warnings: string[] = [];
+      if (rules.length === 0) {
+        warnings.push("No active escalation rules configured for this asset/alert type.");
+      }
+      if (steps.length === 0 && rules.length > 0) {
+        warnings.push(`No rule starts from severity "${startingSeverity}".`);
+      }
+
+      return {
+        assetCode,
+        alertType,
+        startingSeverity,
+        activeConditionHistoryId: activeHistory?.id ?? null,
+        steps,
+        projectedFinalSeverity,
+        warnings,
+      };
+    } catch (error) {
+      logger.error({ error, assetCode, alertType }, "Failed to preview escalation policy");
       throw error;
     }
   }

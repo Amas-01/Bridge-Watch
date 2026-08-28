@@ -76,7 +76,7 @@ export async function createGate(
     })
     .returning("*");
 
-  logger.info("Created promotion gate", { sourceEnv, targetEnv, gateName });
+  logger.info({ sourceEnv, targetEnv, gateName }, "Created promotion gate");
   return gate;
 }
 
@@ -112,7 +112,7 @@ export async function requestPromotion(
     });
   }
 
-  logger.info("Requested promotion", { deploymentId, sourceEnv, targetEnv });
+  logger.info({ deploymentId, sourceEnv, targetEnv }, "Requested promotion");
   return promotion;
 }
 
@@ -210,7 +210,7 @@ export async function approvePromotion(
     await db("promotion_history").where({ id: promotionId }).update({ status: "approved" });
   }
 
-  logger.info("Approved promotion", { promotionId, approverId });
+  logger.info({ promotionId, approverId }, "Approved promotion");
   return approval;
 }
 
@@ -239,7 +239,7 @@ export async function denyPromotion(
     .where({ id: promotionId })
     .update({ status: "denied", reason_denied: reason });
 
-  logger.info("Denied promotion", { promotionId, approverId });
+  logger.info({ promotionId, approverId }, "Denied promotion");
   return approval;
 }
 
@@ -260,7 +260,7 @@ export async function promoteDeployment(promotionId: string): Promise<PromotionH
     .update({ status: "promoted", promoted_at: db.fn.now() })
     .returning("*");
 
-  logger.info("Promoted deployment", { promotionId });
+  logger.info({ promotionId }, "Promoted deployment");
   return updated;
 }
 

@@ -39,7 +39,7 @@ const mockQueryBuilder = {
 
 vi.mock("../../database/connection.js", () => ({
   getDatabase: vi.fn(() => {
-    const fn = vi.fn(() => mockQueryBuilder);
+    const fn: any = vi.fn(() => mockQueryBuilder);
     fn.raw = mockRaw;
     return fn;
   }),

@@ -1,6 +1,7 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { ApiKeyService } from "../../services/apiKey.service.js";
 import { OAuth2Service } from "../../services/oauth2.service.js";
+import type { TenantContext } from "../../multi-tenant/tenantContext.js";
 
 interface AuthOptions {
   requiredScopes?: string[];
@@ -82,6 +83,13 @@ export function authMiddleware(options: AuthOptions = {}) {
         rateLimitPerMinute: keyRecord?.rateLimitPerMinute || 120,
         source: "api-key",
       };
+
+      request.tenantContext = {
+        tenantId: request.apiKeyAuth.id,
+        actorId: request.apiKeyAuth.id,
+        actorType: "user",
+        bypass: false,
+      };
       return;
     }
 
@@ -107,6 +115,13 @@ export function authMiddleware(options: AuthOptions = {}) {
         }
 
         request.apiKeyAuth = outcome.result;
+
+        request.tenantContext = {
+          tenantId: outcome.result.id,
+          actorId: outcome.result.id,
+          actorType: "user",
+          bypass: false,
+        };
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Failed to validate API key";
