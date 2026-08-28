@@ -5,6 +5,8 @@ import { supplyChainRoutes } from "../supplyChain.js";
 import { archivedDataBrowserRoutes } from "../archivedDataBrowser.routes.js";
 import { freshnessRoutes } from "../freshness.js";
 import { provenanceRoutes } from "../provenance.routes.js";
+// #1152 — Transaction Address Labeling Service
+import { addressLabelsRoutes } from "../addressLabels.routes.js";
 import { datasetColumnLineageRoutes } from "../datasetColumnLineage.routes.js";
 
 export async function registerDataRoutes(server: FastifyInstance): Promise<void> {
