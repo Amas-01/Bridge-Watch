@@ -69,6 +69,10 @@ const IncidentOwnershipTransfer = lazy(() => import("./pages/admin/IncidentOwner
 const AlertEscalationPolicyPreview = lazy(() => import("./pages/admin/AlertEscalationPolicyPreview"));
 // #1162 — External Source Response Archive
 const ExternalSourceResponseArchive = lazy(() => import("./pages/admin/ExternalSourceResponseArchive"));
+const DexPoolDiscovery = lazy(() => import("./pages/liquidity/DexPoolDiscovery"));
+const PoolQualityRanking = lazy(() => import("./pages/liquidity/PoolQualityRanking"));
+const MarketImpactPresets = lazy(() => import("./pages/liquidity/MarketImpactPresets"));
+const RouteQuotes = lazy(() => import("./pages/liquidity/RouteQuotes"));
 
 function NotificationInitializer() {
   useNotifications();
@@ -159,6 +163,14 @@ function App() {
               <Route path="/admin/alert-escalation-preview" element={<AlertEscalationPolicyPreview />} />
               {/* #1162 — External Source Response Archive */}
               <Route path="/admin/external-source-archive" element={<ExternalSourceResponseArchive />} />
+              {/* #1157 — DEX Pool Discovery Refresh */}
+              <Route path="/liquidity/pool-discovery" element={<DexPoolDiscovery />} />
+              {/* #1158 — Liquidity Pool Quality Ranking */}
+              <Route path="/liquidity/pool-quality" element={<PoolQualityRanking />} />
+              {/* #1159 — Market Impact Scenario Presets */}
+              <Route path="/liquidity/market-impact-presets" element={<MarketImpactPresets />} />
+              {/* #1160 — Route Quote Expiration Handling */}
+              <Route path="/liquidity/route-quotes" element={<RouteQuotes />} />
             </Route>
           </Routes>
         </Suspense>
