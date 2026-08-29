@@ -197,12 +197,12 @@ export async function horizonCursorAuditRoutes(server: FastifyInstance) {
     },
     async (request: FastifyRequest<{ Params: { cursorKey: string }; Querystring: { limit?: string; offset?: string } }>, reply: FastifyReply) => {
       const { cursorKey } = request.params;
-      const { limit, offset, page } = getPaginationParams(request.query as Record<string, string>);
+      const { limit: limitNum, offset, page } = getPaginationParams(request.query as any);
 
-      const result = await horizonCursorAuditService.getAuditLog(cursorKey, limit, offset);
+      const result = await horizonCursorAuditService.getAuditLog(cursorKey, limitNum, offset);
 
       return reply.send(
-        formatPaginatedResponse(result.logs, result.pagination.total, page, Number(limit)),
+        formatPaginatedResponse(result.logs, result.pagination.total, page, limitNum),
       );
     },
   );

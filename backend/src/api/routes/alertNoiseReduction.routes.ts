@@ -95,12 +95,12 @@ export async function alertNoiseReductionRoutes(server: FastifyInstance) {
     },
     async (request: FastifyRequest<{ Params: { accountId: string }; Querystring: { limit?: string; offset?: string } }>, reply) => {
       const { accountId } = request.params;
-      const { limit, offset, page } = getPaginationParams(request.query as Record<string, string>);
+      const { limit: limitNum, offset, page } = getPaginationParams(request.query as any);
 
-      const result = await alertNoiseReductionService.listAnalyses(accountId, limit, offset);
+      const result = await alertNoiseReductionService.listAnalyses(accountId, limitNum, offset);
 
       return reply.send(
-        formatPaginatedResponse(result.analyses, result.pagination.total, page, Number(limit)),
+        formatPaginatedResponse(result.analyses, result.pagination.total, page, limitNum),
       );
     },
   );
