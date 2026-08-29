@@ -77,6 +77,14 @@ const ImportValidationPreview = lazy(() => import("./pages/admin/ImportValidatio
 const ApiKeyScopeTemplates = lazy(() => import("./pages/admin/ApiKeyScopeTemplates"));
 // #1168 — Failed Parse Quarantine Queue
 const ParseQuarantineQueue = lazy(() => import("./pages/admin/ParseQuarantineQueue"));
+// #1177 — Security Event Correlation View
+const SecurityEventCorrelation = lazy(() => import("./pages/admin/SecurityEventCorrelation"));
+// #1178 — Webhook IP Allowlist Management
+const WebhookIpAllowlist = lazy(() => import("./pages/admin/WebhookIpAllowlist"));
+// #1179 — Signed Request Verification Middleware
+const SignedRequestVerification = lazy(() => import("./pages/admin/SignedRequestVerification"));
+// #1180 — Sensitive Field Access Reports
+const SensitiveFieldAccessReport = lazy(() => import("./pages/admin/SensitiveFieldAccessReport"));
 const DexPoolDiscovery = lazy(() => import("./pages/liquidity/DexPoolDiscovery"));
 const PoolQualityRanking = lazy(() => import("./pages/liquidity/PoolQualityRanking"));
 const MarketImpactPresets = lazy(() => import("./pages/liquidity/MarketImpactPresets"));
@@ -185,6 +193,14 @@ function App() {
               <Route path="/admin/api-key-templates" element={<ApiKeyScopeTemplates />} />
               {/* #1168 — Failed Parse Quarantine Queue */}
               <Route path="/admin/quarantine" element={<ParseQuarantineQueue />} />
+              {/* #1177 — Security Event Correlation View */}
+              <Route path="/admin/security-correlations" element={<SecurityEventCorrelation />} />
+              {/* #1178 — Webhook IP Allowlist Management */}
+              <Route path="/admin/webhook-ip-allowlist" element={<WebhookIpAllowlist />} />
+              {/* #1179 — Signed Request Verification Middleware */}
+              <Route path="/admin/signed-requests" element={<SignedRequestVerification />} />
+              {/* #1180 — Sensitive Field Access Reports */}
+              <Route path="/admin/sensitive-field-reports" element={<SensitiveFieldAccessReport />} />
               {/* #1157 — DEX Pool Discovery Refresh */}
               <Route path="/liquidity/pool-discovery" element={<DexPoolDiscovery />} />
               {/* #1158 — Liquidity Pool Quality Ranking */}

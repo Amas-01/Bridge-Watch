@@ -54,6 +54,10 @@ export const navGroups: NavGroup[] = [
       { to: "/admin/import-validation-preview", label: "Import Validation", description: "Preview import validation before committing" },
       { to: "/admin/dataset-lineage", label: "Dataset Lineage", description: "Trace dataset column lineage and provenance" },
       { to: "/admin/quarantine", label: "Parse Quarantine", description: "Review and resolve failed-parse quarantine queue" },
+      { to: "/admin/security-correlations", label: "Security Event Correlation", description: "Correlate security anomalies and event logs" },
+      { to: "/admin/webhook-ip-allowlist", label: "Webhook IP Allowlist", description: "Manage inbound and outbound webhook IP allowlists" },
+      { to: "/admin/signed-requests", label: "Signed Requests", description: "Manage HMAC request signing keys and verification" },
+      { to: "/admin/sensitive-field-reports", label: "Sensitive Field Access", description: "Audit sensitive field accesses and compliance reports" },
       {
         to: "/admin/alert-routing",
         label: "Alert Routing",
