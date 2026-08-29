@@ -103,13 +103,13 @@ export function WatchlistSidebar({ isOpen, onClose }: WatchlistSidebarProps) {
 
     if (oldIndex !== -1 && newIndex !== -1) {
       const newAssets = arrayMove(activeWatchlist.assets, oldIndex, newIndex);
-      updateAssetOrder.mutate({ watchlistId: activeWatchlist.id, assets: newAssets });
+      updateAssetOrder(activeWatchlist.id, newAssets);
     }
   };
 
   const handleRemove = (symbol: string) => {
     if (activeWatchlist) {
-      removeAsset.mutate({ watchlistId: activeWatchlist.id, symbol });
+      removeAsset(symbol, activeWatchlist.id);
     }
   };
 

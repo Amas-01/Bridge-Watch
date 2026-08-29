@@ -74,6 +74,45 @@ export class AggregationService {
 
       const db = getDatabase();
       const intervalSeconds = this.getIntervalSeconds(interval);
+      const rangeMs = endTime.getTime() - startTime.getTime();
+      const isLongRange = rangeMs >= 7 * 24 * 60 * 60 * 1000 || ["1d", "1w", "1M"].includes(interval);
+      const isDailyView = rangeMs >= 30 * 24 * 60 * 60 * 1000 || ["1d", "1w", "1M"].includes(interval);
+
+      if (isLongRange) {
+        const viewTable = isDailyView ? "prices_daily" : "prices_hourly";
+        try {
+          const results = await db.raw(
+            `
+            SELECT 
+              symbol,
+              '${interval}' as interval,
+              time_bucket('${intervalSeconds} seconds', bucket) as period_start,
+              time_bucket('${intervalSeconds} seconds', bucket) + interval '${intervalSeconds} seconds' as period_end,
+              ${isDailyView ? "open_price" : "AVG(avg_price)"} as open,
+              MAX(max_price) as high,
+              MIN(min_price) as low,
+              ${isDailyView ? "close_price" : "AVG(avg_price)"} as close,
+              AVG(avg_price) as avg,
+              SUM(total_volume) as volume,
+              SUM(sample_count) as count
+            FROM ${viewTable}
+            WHERE symbol = ? AND bucket >= ? AND bucket <= ?
+            GROUP BY symbol, period_start${isDailyView ? ", open_price, close_price" : ""}
+            ORDER BY period_start DESC
+          `,
+            [symbol, startTime, endTime],
+          );
+
+          if (results && results.rows && results.rows.length > 0) {
+            const aggregations = results.rows;
+            await redis.setex(cacheKey, 300, JSON.stringify(aggregations));
+            logger.debug({ symbol, interval, count: aggregations.length }, "Prices aggregated from continuous aggregate");
+            return aggregations;
+          }
+        } catch {
+          // Fallback to raw prices hypertable query
+        }
+      }
 
       const results = await db.raw(
         `
@@ -97,7 +136,7 @@ export class AggregationService {
         [symbol, startTime, endTime],
       );
 
-      const aggregations = results.rows;
+      const aggregations = results.rows || [];
 
       // Cache for 5 minutes
       await redis.setex(cacheKey, 300, JSON.stringify(aggregations));
@@ -132,6 +171,47 @@ export class AggregationService {
 
       const db = getDatabase();
       const intervalSeconds = this.getIntervalSeconds(interval);
+      const rangeMs = endTime.getTime() - startTime.getTime();
+      const isLongRange = rangeMs >= 7 * 24 * 60 * 60 * 1000 || ["1d", "1w", "1M"].includes(interval);
+      const isDailyView = rangeMs >= 30 * 24 * 60 * 60 * 1000 || ["1d", "1w", "1M"].includes(interval);
+
+      if (isLongRange) {
+        const viewTable = isDailyView ? "health_scores_daily" : "health_scores_hourly";
+        try {
+          const results = await db.raw(
+            `
+            SELECT 
+              symbol,
+              '${interval}' as interval,
+              time_bucket('${intervalSeconds} seconds', bucket) as period_start,
+              time_bucket('${intervalSeconds} seconds', bucket) + interval '${intervalSeconds} seconds' as period_end,
+              AVG(avg_overall_score) as avg_overall_score,
+              AVG(avg_liquidity_score) as avg_liquidity_score,
+              AVG(avg_price_stability_score) as avg_price_stability_score,
+              AVG(avg_bridge_uptime_score) as avg_bridge_uptime_score,
+              AVG(avg_reserve_backing_score) as avg_reserve_backing_score,
+              AVG(avg_volume_trend_score) as avg_volume_trend_score,
+              MIN(min_overall_score) as min_overall_score,
+              MAX(max_overall_score) as max_overall_score,
+              SUM(sample_count) as count
+            FROM ${viewTable}
+            WHERE symbol = ? AND bucket >= ? AND bucket <= ?
+            GROUP BY symbol, period_start
+            ORDER BY period_start DESC
+          `,
+            [symbol, startTime, endTime],
+          );
+
+          if (results && results.rows && results.rows.length > 0) {
+            const aggregations = results.rows;
+            await redis.setex(cacheKey, 300, JSON.stringify(aggregations));
+            logger.debug({ symbol, interval, count: aggregations.length }, "Health scores aggregated from continuous aggregate");
+            return aggregations;
+          }
+        } catch {
+          // Fallback to raw health_scores hypertable query
+        }
+      }
 
       const results = await db.raw(
         `
@@ -157,7 +237,7 @@ export class AggregationService {
         [symbol, startTime, endTime],
       );
 
-      const aggregations = results.rows;
+      const aggregations = results.rows || [];
 
       await redis.setex(cacheKey, 300, JSON.stringify(aggregations));
 
@@ -194,6 +274,41 @@ export class AggregationService {
 
       const db = getDatabase();
       const intervalSeconds = this.getIntervalSeconds(interval);
+      const rangeMs = endTime.getTime() - startTime.getTime();
+      const isLongRange = rangeMs >= 7 * 24 * 60 * 60 * 1000 || ["1d", "1w", "1M"].includes(interval);
+      const isDailyView = rangeMs >= 30 * 24 * 60 * 60 * 1000 || ["1d", "1w", "1M"].includes(interval);
+
+      if (isLongRange) {
+        const viewTable = isDailyView ? "liquidity_daily" : "liquidity_hourly";
+        try {
+          const results = await db.raw(
+            `
+            SELECT 
+              symbol,
+              '${interval}' as interval,
+              time_bucket('${intervalSeconds} seconds', bucket) as period_start,
+              time_bucket('${intervalSeconds} seconds', bucket) + interval '${intervalSeconds} seconds' as period_end,
+              SUM(total_volume) as total_volume,
+              AVG(total_volume) as avg_volume,
+              SUM(sample_count) as tx_count
+            FROM ${viewTable}
+            WHERE symbol = ? AND bucket >= ? AND bucket <= ?
+            GROUP BY symbol, period_start
+            ORDER BY period_start DESC
+          `,
+            [symbol, startTime, endTime],
+          );
+
+          if (results && results.rows && results.rows.length > 0) {
+            const aggregations = results.rows;
+            await redis.setex(cacheKey, 300, JSON.stringify(aggregations));
+            logger.debug({ symbol, interval, count: aggregations.length }, "Volume aggregated from continuous aggregate");
+            return aggregations;
+          }
+        } catch {
+          // Fallback to raw liquidity_snapshots hypertable query
+        }
+      }
 
       const results = await db.raw(
         `
@@ -213,7 +328,7 @@ export class AggregationService {
         [symbol, startTime, endTime],
       );
 
-      const aggregations = results.rows;
+      const aggregations = results.rows || [];
 
       await redis.setex(cacheKey, 300, JSON.stringify(aggregations));
 

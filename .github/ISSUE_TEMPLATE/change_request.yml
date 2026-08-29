@@ -1,0 +1,129 @@
+name: Change Request
+description: Propose a structured change — refactors, process updates, architecture decisions, or improvements that don't fit as a simple bug fix or feature request
+title: "change: "
+labels: ["change-request", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to propose a change! This form is for changes that go beyond a straightforward bug fix or feature request — architecture decisions, refactoring proposals, dependency upgrades, process changes, and other non-trivial modifications.
+
+        **Use a Bug Report** if something is broken. **Use a Feature Request** if you want new functionality. Use this form for everything else.
+
+        **Who should fill this out?** Anyone — contributors, maintainers, or community members — who wants to propose a change that needs review and approval before implementation.
+
+        **What happens after submission?** A maintainer will triage the request and assign it for review. Once approved (status updated here), work can proceed following the standard PR process.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      options:
+        - label: I searched existing issues and discussions — this is not a duplicate
+          required: true
+        - label: I have read the project roadmap in README.md
+          required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the project does this change affect?
+      options:
+        - Backend API
+        - Frontend dashboard
+        - Soroban contracts
+        - Database / migrations
+        - CI/CD pipeline
+        - Documentation
+        - Architecture / design
+        - Dependencies
+        - Developer experience
+        - Process / governance
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: Describe the problem or motivation for this change. Keep it to 2–3 sentences — enough context for reviewers to understand the "why."
+      placeholder: "The current health score calculation runs on every request, which causes unnecessary load on the database. Moving it to a background worker would reduce API latency and database contention."
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What is in scope for this change? What is explicitly out of scope? Defining boundaries prevents scope creep and keeps reviews focused.
+      placeholder: |
+        In scope:
+        - Move health score calculation to a BullMQ worker
+        - Cache results in Redis with a 30-second TTL
+
+        Out of scope:
+        - Changing the health score algorithm itself
+        - Adding new health metrics
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Describe the impact of this change — affected components, users, or systems. Is it a breaking change? Are there migration considerations?
+      placeholder: |
+        - **Affected components:** `/api/v1/assets/:symbol/health` endpoint, health worker
+        - **Users:** API consumers will see slightly stale scores (up to 30s old)
+        - **Breaking change:** No — response shape remains the same
+        - **Migration:** No migration required
+    validations:
+      required: true
+
+  - type: dropdown
+    id: complexity
+    attributes:
+      label: Estimated complexity
+      options:
+        - Small (< 1 day — single file change, no new dependencies)
+        - Medium (1–3 days — touches multiple files, possible new dependency)
+        - Large (> 3 days — new subsystem, breaking change, or significant design work)
+        - Unknown
+    validations:
+      required: true
+
+  - type: dropdown
+    id: approval_status
+    attributes:
+      label: Approval Status
+      options:
+        - Pending
+        - Approved
+        - Rejected
+    validations:
+      required: true
+
+  - type: input
+    id: approved_by
+    attributes:
+      label: Approved by
+      description: GitHub username(s) of the approving reviewer(s). Leave blank until approved.
+      placeholder: "@username"
+
+  - type: input
+    id: approval_date
+    attributes:
+      label: Approval date
+      description: Date the change was approved (YYYY-MM-DD). Leave blank until approved.
+      placeholder: "2026-06-21"
+
+  - type: textarea
+    id: links
+    attributes:
+      label: Related links
+      description: Link related issues, PRs, or prior change requests using GitHub syntax — e.g. `Closes #123`, `Relates to #456`, `Blocked by #789`.
+      placeholder: |
+        Closes #
+        Relates to #

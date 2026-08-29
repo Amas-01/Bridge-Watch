@@ -15,6 +15,9 @@ export function FormGroup({
     helperText,
     required,
     disabled,
+    helpContent,
+    helpTitle,
+    helpLink,
     className = "",
 }: FormGroupProps) {
     const helpTextId = `${id}-help`;
@@ -22,7 +25,14 @@ export function FormGroup({
 
     return (
         <div className={`flex flex-col mb-4 ${className}`}>
-            <FormLabel htmlFor={id} required={required} disabled={disabled}>
+            <FormLabel
+                htmlFor={id}
+                required={required}
+                disabled={disabled}
+                helpContent={helpContent}
+                helpTitle={helpTitle}
+                helpLink={helpLink}
+            >
                 {label}
             </FormLabel>
 

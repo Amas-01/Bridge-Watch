@@ -13,7 +13,7 @@ const DEFAULT_FILTERS: TransactionFilters = {
   dateTo: "",
 };
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 25;
 
 type TransactionRefreshOptions = {
   refetchInterval?: number | false;
@@ -23,11 +23,12 @@ type TransactionRefreshOptions = {
 export function useTransactions(options?: TransactionRefreshOptions) {
   const [filters, setFilters] = useState<TransactionFilters>(DEFAULT_FILTERS);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const queryClient = useQueryClient();
 
   const query = useQuery({
-    queryKey: ["transactions", filters, page],
-    queryFn: () => getTransactions(filters, page, PAGE_SIZE),
+    queryKey: ["transactions", filters, page, pageSize],
+    queryFn: () => getTransactions(filters, page, pageSize),
     refetchInterval: options?.refetchInterval ?? 30_000,
     refetchOnWindowFocus: options?.refetchOnWindowFocus,
   });
@@ -39,6 +40,11 @@ export function useTransactions(options?: TransactionRefreshOptions) {
     },
     []
   );
+
+  const updatePageSize = useCallback((size: number) => {
+    setPageSize(size);
+    setPage(1);
+  }, []);
 
   const resetFilters = useCallback(() => {
     setFilters(DEFAULT_FILTERS);
@@ -66,9 +72,10 @@ export function useTransactions(options?: TransactionRefreshOptions) {
     ...query,
     filters,
     page,
-    pageSize: PAGE_SIZE,
+    pageSize,
     totalPages: query.data?.totalPages ?? 1,
     setPage,
+    updatePageSize,
     updateFilters,
     resetFilters,
   };

@@ -5,6 +5,16 @@ import { getEthereumTokenBalance } from "../../src/utils/ethereum.js";
 import { getDatabase } from "../../src/database/connection.js";
 import { config } from "../../src/config/index.js";
 
+const mockGetTotalLocked = vi.fn();
+const mockFetchLockBalances = vi.fn();
+
+vi.mock("../../src/services/ethereum/wormholeWatcher.service.js", () => ({
+    getWormholeBridgeWatcher: () => ({
+        getTotalLocked: mockGetTotalLocked,
+        fetchLockBalances: mockFetchLockBalances,
+    }),
+}));
+
 // Mock utilities
 vi.mock("../../src/utils/logger.js", () => ({
     logger: {
@@ -81,6 +91,32 @@ describe("BridgeService", () => {
         it("throws error if addresses are missing", async () => {
             // In this mock USDC and EURC are present. Let's assume another one isn't.
             await expect(bridgeService.fetchEthereumReserves("PYUSD")).rejects.toThrow("not configured");
+        });
+
+        describe("Wormhole multi-chain lock contracts", () => {
+            afterEach(() => {
+                delete (config as any).WORMHOLE_WATCHED_ASSET_SYMBOL;
+                delete (config as any).WORMHOLE_WATCHED_ASSET_STELLAR_ISSUER;
+            });
+
+            it("delegates to the Wormhole watcher when the asset is configured", async () => {
+                (config as any).WORMHOLE_WATCHED_ASSET_SYMBOL = "wETH";
+                (config as any).WORMHOLE_WATCHED_ASSET_STELLAR_ISSUER = "G_WETH";
+                mockGetTotalLocked.mockResolvedValue(1234.5);
+
+                const reserves = await bridgeService.fetchEthereumReserves("wETH");
+
+                expect(reserves).toBe(1234.5);
+                expect(mockGetTotalLocked).toHaveBeenCalledWith("wETH");
+            });
+
+            it("still throws for an unconfigured asset when Wormhole watching is enabled for a different symbol", async () => {
+                (config as any).WORMHOLE_WATCHED_ASSET_SYMBOL = "wETH";
+                (config as any).WORMHOLE_WATCHED_ASSET_STELLAR_ISSUER = "G_WETH";
+
+                await expect(bridgeService.fetchEthereumReserves("PYUSD")).rejects.toThrow("not configured");
+                expect(mockGetTotalLocked).not.toHaveBeenCalled();
+            });
         });
     });
 

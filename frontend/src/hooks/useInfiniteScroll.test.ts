@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
+import { renderHook, waitFor, act } from "@testing-library/react";
 import { useInfiniteScroll } from "./useInfiniteScroll";
 
 describe("useInfiniteScroll", () => {
@@ -55,7 +55,9 @@ describe("useInfiniteScroll", () => {
       expect(result.current.data.length).toBeGreaterThan(0);
     });
 
-    result.current.reset();
+    act(() => {
+      result.current.reset();
+    });
 
     await waitFor(() => {
       expect(fetchData).toHaveBeenCalledTimes(2);

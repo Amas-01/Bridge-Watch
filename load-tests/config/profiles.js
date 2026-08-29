@@ -80,5 +80,10 @@ export function buildThresholds(profile) {
     "http_req_duration{endpoint:health_root}": [`p(95)<${baseline.httpReqDurationP95Ms}`],
     "http_req_duration{endpoint:health_live}": [`p(95)<${baseline.httpReqDurationP95Ms}`],
     "http_req_duration{endpoint:health_ready}": [`p(95)<${baseline.httpReqDurationP95Ms}`],
+    "http_req_duration{endpoint:assets}": [`p(95)<${baseline.httpReqDurationP95Ms}`],
+    "http_req_duration{endpoint:bridges}": [`p(95)<${baseline.httpReqDurationP95Ms}`],
+    "http_req_duration{endpoint:alerts}": [`p(95)<${baseline.httpReqDurationP95Ms}`],
+    "http_req_duration{endpoint:analytics}": [`p(95)<${baseline.httpReqDurationP95Ms}`],
+    "http_req_duration{endpoint:price_feeds}": [`p(95)<${baseline.httpReqDurationP95Ms}`],
   };
 }

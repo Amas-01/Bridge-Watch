@@ -23,6 +23,15 @@ export interface AssetMetadata {
   category: string | null;
   tags: string[];
   version: number;
+  sync_enabled?: boolean;
+  manual_override?: boolean;
+  override_reason?: string | null;
+  override_updated_by?: string | null;
+  last_synced_at?: Date | null;
+  last_sync_status?: string;
+  last_sync_error?: string | null;
+  source_priority?: string[];
+  image_last_validated_at?: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -53,6 +62,32 @@ export interface MetadataVersion {
   timestamp: Date;
 }
 
+export interface BulkMetadataEditItem {
+  assetId: string;
+  symbol: string;
+  metadata: Partial<
+    Omit<
+      AssetMetadata,
+      "id" | "asset_id" | "symbol" | "version" | "created_at" | "updated_at"
+    >
+  >;
+}
+
+export interface BulkMetadataEditItemResult {
+  assetId: string;
+  success: boolean;
+  error?: string;
+  metadata?: AssetMetadata;
+}
+
+export interface BulkMetadataEditResult {
+  batchId: string;
+  total: number;
+  succeeded: number;
+  failed: number;
+  results: BulkMetadataEditItemResult[];
+}
+
 // ─── Asset Metadata Service ──────────────────────────────────────────────────
 
 export class AssetMetadataService {
@@ -76,6 +111,9 @@ export class AssetMetadataService {
         social_links: JSON.parse(metadata.social_links || "{}"),
         token_specifications: JSON.parse(metadata.token_specifications || "{}"),
         tags: JSON.parse(metadata.tags || "[]"),
+        source_priority: Array.isArray(metadata.source_priority)
+          ? metadata.source_priority
+          : JSON.parse((metadata.source_priority as unknown as string) || "[]"),
       };
     } catch (error) {
       logger.error({ error, assetId }, "Failed to get asset metadata");
@@ -101,6 +139,9 @@ export class AssetMetadataService {
         social_links: JSON.parse(metadata.social_links || "{}"),
         token_specifications: JSON.parse(metadata.token_specifications || "{}"),
         tags: JSON.parse(metadata.tags || "[]"),
+        source_priority: Array.isArray(metadata.source_priority)
+          ? metadata.source_priority
+          : JSON.parse((metadata.source_priority as unknown as string) || "[]"),
       };
     } catch (error) {
       logger.error({ error, symbol }, "Failed to get asset metadata by symbol");
@@ -244,6 +285,9 @@ export class AssetMetadataService {
           (metadata.token_specifications as unknown as string) || "{}",
         ),
         tags: JSON.parse((metadata.tags as unknown as string) || "[]"),
+        source_priority: Array.isArray(metadata.source_priority)
+          ? metadata.source_priority
+          : JSON.parse((metadata.source_priority as unknown as string) || "[]"),
       }));
     } catch (error) {
       logger.error({ error }, "Failed to get all asset metadata");
@@ -271,6 +315,9 @@ export class AssetMetadataService {
           (metadata.token_specifications as unknown as string) || "{}",
         ),
         tags: JSON.parse((metadata.tags as unknown as string) || "[]"),
+        source_priority: Array.isArray(metadata.source_priority)
+          ? metadata.source_priority
+          : JSON.parse((metadata.source_priority as unknown as string) || "[]"),
       }));
     } catch (error) {
       logger.error({ error, category }, "Failed to get metadata by category");
@@ -300,6 +347,9 @@ export class AssetMetadataService {
           (metadata.token_specifications as unknown as string) || "{}",
         ),
         tags: JSON.parse((metadata.tags as unknown as string) || "[]"),
+        source_priority: Array.isArray(metadata.source_priority)
+          ? metadata.source_priority
+          : JSON.parse((metadata.source_priority as unknown as string) || "[]"),
       }));
     } catch (error) {
       logger.error({ error, query }, "Failed to search metadata");
@@ -387,6 +437,146 @@ export class AssetMetadataService {
     } catch (error) {
       logger.error({ error, assetId }, "Failed to delete asset metadata");
       throw error;
+    }
+  }
+
+  async setManualOverride(
+    assetId: string,
+    override: boolean,
+    reason: string | null,
+    changedBy: string,
+  ): Promise<void> {
+    const db = getDatabase();
+
+    const existing = await db("asset_metadata").where({ asset_id: assetId }).first();
+    if (!existing) {
+      throw new Error("Metadata not found");
+    }
+
+    const nextVersion = Number(existing.version) + 1;
+
+    await db("asset_metadata")
+      .where({ asset_id: assetId })
+      .update({
+        manual_override: override,
+        override_reason: override ? reason : null,
+        override_updated_by: changedBy,
+        version: nextVersion,
+        updated_at: new Date(),
+      });
+
+    await this.logVersion(
+      existing.id,
+      nextVersion,
+      {
+        manual_override: override,
+        override_reason: override ? reason : null,
+      },
+      changedBy,
+    );
+  }
+
+  /**
+   * Apply metadata edits to multiple assets in a single batch.
+   * Each item is validated and applied independently so that one invalid
+   * or failing item does not block the rest of the batch. The batch outcome
+   * is persisted for auditing.
+   */
+  async bulkUpsertMetadata(
+    items: BulkMetadataEditItem[],
+    updatedBy: string,
+  ): Promise<BulkMetadataEditResult> {
+    const db = getDatabase();
+    const results: BulkMetadataEditItemResult[] = [];
+
+    for (const item of items) {
+      try {
+        const validation = this.validateMetadata(item.metadata);
+        if (!validation.valid) {
+          results.push({
+            assetId: item.assetId,
+            success: false,
+            error: validation.errors.join("; "),
+          });
+          continue;
+        }
+
+        const metadata = await this.upsertMetadata(
+          item.assetId,
+          item.symbol,
+          item.metadata,
+          updatedBy,
+        );
+
+        results.push({ assetId: item.assetId, success: true, metadata });
+      } catch (error) {
+        results.push({
+          assetId: item.assetId,
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    }
+
+    const succeeded = results.filter((r) => r.success).length;
+    const failed = results.length - succeeded;
+    const batchId = randomBytes(16).toString("hex");
+
+    try {
+      await db("bulk_metadata_edit_batches").insert({
+        id: batchId,
+        updated_by: updatedBy,
+        total_items: items.length,
+        succeeded_count: succeeded,
+        failed_count: failed,
+        results: JSON.stringify(results),
+      });
+    } catch (error) {
+      logger.error({ error, batchId }, "Failed to record bulk metadata edit batch");
+    }
+
+    logger.info(
+      { batchId, total: items.length, succeeded, failed, updatedBy },
+      "Bulk asset metadata edit batch completed",
+    );
+
+    return {
+      batchId,
+      total: items.length,
+      succeeded,
+      failed,
+      results,
+    };
+  }
+
+  /**
+   * Get a previously recorded bulk edit batch
+   */
+  async getBulkEditBatch(batchId: string): Promise<BulkMetadataEditResult | null> {
+    const db = getDatabase();
+
+    try {
+      const batch = await db("bulk_metadata_edit_batches")
+        .where({ id: batchId })
+        .first();
+
+      if (!batch) {
+        return null;
+      }
+
+      return {
+        batchId: batch.id,
+        total: batch.total_items,
+        succeeded: batch.succeeded_count,
+        failed: batch.failed_count,
+        results:
+          typeof batch.results === "string"
+            ? JSON.parse(batch.results)
+            : batch.results,
+      };
+    } catch (error) {
+      logger.error({ error, batchId }, "Failed to get bulk metadata edit batch");
+      return null;
     }
   }
 

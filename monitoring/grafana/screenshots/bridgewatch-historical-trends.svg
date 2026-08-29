@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <style>
+      .bg { fill: #0b1220; }
+      .card { fill: #111a2e; stroke: #22304d; stroke-width: 2; }
+      .title { fill: #e5e7eb; font: 700 34px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto; }
+      .sub { fill: #9ca3af; font: 500 18px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto; }
+      .label { fill: #cbd5e1; font: 600 16px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto; }
+      .muted { fill: #94a3b8; font: 500 14px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto; }
+      .line { stroke: #60a5fa; stroke-width: 3; fill: none; opacity: .9; }
+      .grid { stroke: #1f2a44; stroke-width: 1; opacity: .8; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1200" height="630"/>
+
+  <text class="title" x="40" y="72">Bridge Watch - Historical Trends (Template)</text>
+  <text class="sub" x="40" y="102">Example layout (SVG preview). Designed for 7d-30d+ ranges.</text>
+
+  <rect class="card" x="40" y="140" width="560" height="160" rx="14"/>
+  <text class="label" x="65" y="175">Bridge Health Score</text>
+  <text class="muted" x="65" y="200">avg by(bridge_name) (bridge_health_score)</text>
+  <path class="grid" d="M65 270 H575"/>
+  <path class="line" d="M70 265 C160 250, 230 285, 320 260 C410 235, 500 295, 565 248"/>
+
+  <rect class="card" x="625" y="140" width="535" height="160" rx="14"/>
+  <text class="label" x="650" y="175">Verification Success Rate (%)</text>
+  <text class="muted" x="650" y="200">rate(success) / rate(total)</text>
+  <path class="grid" d="M650 270 H1135"/>
+  <path class="line" d="M655 265 C760 240, 860 285, 980 255 C1080 225, 1110 295, 1130 238"/>
+
+  <rect class="card" x="40" y="320" width="560" height="160" rx="14"/>
+  <text class="label" x="65" y="355">Asset Price (USD)</text>
+  <text class="muted" x="65" y="380">asset_price_usd{symbol,source}</text>
+  <path class="grid" d="M65 450 H575"/>
+  <path class="line" d="M70 445 C150 420, 260 468, 360 438 C450 408, 520 476, 565 418"/>
+
+  <rect class="card" x="625" y="320" width="535" height="160" rx="14"/>
+  <text class="label" x="650" y="355">Liquidity TVL (USD)</text>
+  <text class="muted" x="650" y="380">sum by(symbol,dex,chain) (liquidity_tvl_usd)</text>
+  <path class="grid" d="M650 450 H1135"/>
+  <path class="line" d="M655 445 C760 430, 880 470, 980 440 C1080 408, 1110 475, 1130 418"/>
+</svg>

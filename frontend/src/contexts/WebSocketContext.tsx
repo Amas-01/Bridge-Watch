@@ -1,36 +1,15 @@
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useRef,
   useState,
   type ReactNode,
 } from "react";
 import { wsService } from "../services/websocket";
+import { WebSocketContext } from "./WebSocketContextValue";
 import type { ConnectionState } from "../types";
 
 const WS_URL = `ws://${window.location.hostname}:3002/api/v1/ws`;
-
-interface WebSocketContextValue {
-  /** Current connection state */
-  connectionState: ConnectionState;
-  /** True when WebSocket is unavailable and callers should poll instead */
-  isPollingFallback: boolean;
-  /**
-   * Send a message. Queued automatically when the connection is not open
-   * and flushed once reconnected.
-   */
-  send: (data: unknown) => void;
-  /**
-   * Subscribe to a channel. Returns an unsubscribe function.
-   * Safe to call before the connection is open — the subscription is
-   * replayed to the server on every (re)connect.
-   */
-  subscribe: (channel: string, handler: (data: unknown) => void) => () => void;
-}
-
-const WebSocketContext = createContext<WebSocketContextValue | null>(null);
 
 export function WebSocketProvider({ children }: { children: ReactNode }) {
   const [connectionState, setConnectionState] =
@@ -45,7 +24,17 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     }
 
     const unsub = wsService.onStateChange(setConnectionState);
-    return unsub;
+
+    // Listen for network connectivity changes
+    const handleOnline = () => {
+      wsService.connect(WS_URL);
+    };
+
+    window.addEventListener("online", handleOnline);
+    return () => {
+      unsub();
+      window.removeEventListener("online", handleOnline);
+    };
   }, []);
 
   const send = useCallback((data: unknown) => {
@@ -72,13 +61,4 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/** Must be used inside <WebSocketProvider>. */
-export function useWebSocketContext(): WebSocketContextValue {
-  const ctx = useContext(WebSocketContext);
-  if (!ctx) {
-    throw new Error(
-      "useWebSocketContext must be called inside <WebSocketProvider>"
-    );
-  }
-  return ctx;
-}
+

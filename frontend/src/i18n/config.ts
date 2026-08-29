@@ -6,11 +6,17 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
+import { applyDocumentDirection } from "./documentDirection";
 
-// Import translations
 import enTranslations from "./locales/en.json";
+import esTranslations from "./locales/es.json";
+import frTranslations from "./locales/fr.json";
+import deTranslations from "./locales/de.json";
+import zhTranslations from "./locales/zh.json";
+import jaTranslations from "./locales/ja.json";
+import koTranslations from "./locales/ko.json";
+import arTranslations from "./locales/ar.json";
 
-// Available languages
 export const SUPPORTED_LANGUAGES = [
   { code: "en", name: "English", nativeName: "English" },
   { code: "es", name: "Spanish", nativeName: "Español" },
@@ -24,38 +30,42 @@ export const SUPPORTED_LANGUAGES = [
 
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]["code"];
 
-// i18n configuration
+export const LOCALE_RESOURCES = {
+  en: { translation: enTranslations },
+  es: { translation: esTranslations },
+  fr: { translation: frTranslations },
+  de: { translation: deTranslations },
+  zh: { translation: zhTranslations },
+  ja: { translation: jaTranslations },
+  ko: { translation: koTranslations },
+  ar: { translation: arTranslations },
+} as const;
+
 i18n
-  .use(LanguageDetector) // Detect user language
-  .use(initReactI18next) // Pass i18n to react-i18next
+  .use(LanguageDetector)
+  .use(initReactI18next)
   .init({
-    resources: {
-      en: { translation: enTranslations },
-    },
+    resources: LOCALE_RESOURCES,
     fallbackLng: "en",
     defaultNS: "translation",
+    supportedLngs: SUPPORTED_LANGUAGES.map((lang) => lang.code),
 
-    // Language detection options
     detection: {
       order: ["localStorage", "navigator", "htmlTag"],
       caches: ["localStorage"],
       lookupLocalStorage: "i18nextLng",
     },
 
-    // Interpolation options
     interpolation: {
-      escapeValue: false, // React already escapes
+      escapeValue: false,
     },
 
-    // React options
     react: {
       useSuspense: true,
     },
 
-    // Performance
-    load: "languageOnly", // Load only language code (en, not en-US)
+    load: "languageOnly",
 
-    // Missing key handling
     saveMissing: process.env.NODE_ENV === "development",
     missingKeyHandler: (lng: readonly string[], ns: string, key: string) => {
       if (process.env.NODE_ENV === "development") {
@@ -63,5 +73,13 @@ i18n
       }
     },
   });
+
+i18n.on("initialized", () => {
+  applyDocumentDirection(i18n.language);
+});
+
+i18n.on("languageChanged", (languageCode) => {
+  applyDocumentDirection(languageCode);
+});
 
 export default i18n;

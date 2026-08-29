@@ -316,10 +316,7 @@ impl AnalyticsAggregatorContract {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{
-        testutils::{Address as _, Ledger as _},
-        Env,
-    };
+    use soroban_sdk::{testutils::Address as _, testutils::Ledger, Env};
 
     #[test]
     fn test_analytics_register_metric_and_history() {
@@ -344,6 +341,8 @@ mod tests {
 
         assert_eq!(history.len(), 3);
         assert_eq!(history.get(0).unwrap().value, 1500);
+        assert_eq!(history.get(1).unwrap().value, 0);
+        assert_eq!(history.get(2).unwrap().value, 0);
     }
 
     #[test]

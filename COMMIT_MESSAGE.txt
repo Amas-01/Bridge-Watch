@@ -1,0 +1,46 @@
+feat: implement trusted source registry
+
+Add trusted source registry for contract submissions and score updates.
+
+This implementation provides an additional security layer for controlling
+which external addresses are authorized to submit contract data (health
+scores, price updates, etc.) to the Bridge Watch contract.
+
+Features:
+- Register/revoke trusted sources (admin-only operations)
+- Query source status and detailed information
+- Gate submissions by source trust when sources are registered
+- Event emission for all registration and revocation actions
+- Complete audit trail with timestamps and actor tracking
+- Opt-in enforcement ensuring backward compatibility
+
+The registry provides defense-in-depth security:
+1. Authentication (require_auth)
+2. Authorization (role-based access control)
+3. Trust (trusted source registry)
+
+Trust enforcement is opt-in: it only activates when sources are
+registered, maintaining backward compatibility with existing deployments.
+
+Implementation:
+- Core module: contracts/soroban/src/source_trust.rs (370 lines)
+- Contract integration: contracts/soroban/src/lib.rs (modified)
+- Test suite: contracts/soroban/tests/source_trust.test.rs (450+ lines)
+- User docs: contracts/soroban/docs/TRUSTED_SOURCE_REGISTRY.md (500+ lines)
+- Dev docs: contracts/soroban/TRUSTED_SOURCE_IMPLEMENTATION.md (400+ lines)
+- Quick ref: contracts/soroban/TRUSTED_SOURCE_QUICK_REFERENCE.md (200+ lines)
+
+Testing:
+- 20+ comprehensive test cases
+- Unit tests for all operations
+- Integration tests with submission gating
+- Edge case coverage
+- All tests passing
+
+Security:
+- Admin-only writes with ACL integration
+- Complete audit trail for compliance
+- Event emission for monitoring
+- Opt-in design for safety
+
+Closes #[issue-number]

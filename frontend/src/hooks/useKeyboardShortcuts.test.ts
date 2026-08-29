@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { SHORTCUTS, type ShortcutDefinition } from "./useKeyboardShortcuts";
+import { describe, it, expect, vi } from "vitest";
+import { SHORTCUTS } from "./useKeyboardShortcuts";
 
 // ---------------------------------------------------------------------------
 // SHORTCUTS registry tests (pure data — no DOM/React needed)

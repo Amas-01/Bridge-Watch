@@ -214,6 +214,42 @@ docker compose logs --tail=50
 - **Password:** Optional, configured via `REDIS_PASSWORD`
 - **Health check:** `redis-cli ping` every 10s
 
+## Docker Layer Tuning
+
+Both the backend and frontend Dockerfiles are ordered so dependency
+installation happens before source code is copied in:
+
+```dockerfile
+WORKDIR /app
+COPY package.json ./
+RUN --mount=type=cache,target=/root/.npm npm install
+# source is copied / mounted afterwards
+```
+
+This matters for two reasons:
+
+- **Small rebuilds during development** — editing application source under
+  `src/` only invalidates the layers *after* `npm install`. The dependency
+  layer is reused from cache as long as `package.json` hasn't changed, so a
+  typical code change rebuild only re-runs the TypeScript build (or, in the
+  `dev` stage, nothing — source is bind-mounted, not copied).
+- **Cache efficiency across environments** — the `RUN --mount=type=cache,target=/root/.npm`
+  cache mount persists npm's package cache across builds, independent of the
+  layer cache. Even when `package.json` *does* change and the install layer is
+  invalidated, npm reuses already-downloaded packages instead of re-fetching
+  them from the registry. This works the same way locally (`docker build`,
+  `docker compose build`) and in CI.
+
+In CI, [`.github/workflows/docker.yml`](../../.github/workflows/docker.yml)
+builds with `cache-from: type=gha` / `cache-to: type=gha,mode=max`, which
+persists both the layer cache and the BuildKit cache-mount contents between
+workflow runs — so a CI rebuild after a small source change is just as cheap
+as a local incremental rebuild.
+
+`.dockerignore` (present in both `backend/` and `frontend/`) keeps
+`node_modules`, `dist`, test files, and docs out of the build context so they
+never trigger spurious cache invalidation or get sent to the Docker daemon.
+
 ## Volume Management
 
 ### Persistent Volumes

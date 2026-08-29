@@ -1,0 +1,159 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "bridgewatch-alert-volume",
+    "title": "Bridge Watch - Alert Volume (Template)",
+    "tags": ["bridge-watch", "template", "alerts"],
+    "timezone": "browser",
+    "schemaVersion": 39,
+    "version": 1,
+    "refresh": "30s",
+    "time": { "from": "now-24h", "to": "now" },
+    "templating": {
+      "list": [
+        {
+          "name": "datasource",
+          "type": "datasource",
+          "label": "Datasource",
+          "query": "prometheus",
+          "current": { "selected": false, "text": "Prometheus", "value": "Prometheus" }
+        },
+        {
+          "name": "severity",
+          "type": "custom",
+          "label": "Severity",
+          "multi": true,
+          "includeAll": true,
+          "allValue": ".*",
+          "query": "critical,warning,info"
+        },
+        {
+          "name": "service",
+          "type": "query",
+          "label": "Service",
+          "datasource": { "type": "prometheus", "uid": "$datasource" },
+          "query": { "query": "label_values(ALERTS, service)", "refId": "PromService" },
+          "refresh": 2,
+          "multi": true,
+          "includeAll": true,
+          "allValue": ".*"
+        },
+        {
+          "name": "team",
+          "type": "query",
+          "label": "Team",
+          "datasource": { "type": "prometheus", "uid": "$datasource" },
+          "query": { "query": "label_values(ALERTS, team)", "refId": "PromTeam" },
+          "refresh": 2,
+          "multi": true,
+          "includeAll": true,
+          "allValue": ".*"
+        }
+      ]
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Firing Alerts (now)",
+        "type": "stat",
+        "gridPos": { "x": 0, "y": 0, "w": 6, "h": 5 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "sum(ALERTS{alertstate=\"firing\", severity=~\"$severity\", service=~\"$service\", team=~\"$team\"})"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "decimals": 0,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 1 },
+                { "color": "red", "value": 5 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Firing Alerts by Severity",
+        "type": "timeseries",
+        "gridPos": { "x": 6, "y": 0, "w": 18, "h": 5 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "sum by (severity) (ALERTS{alertstate=\"firing\", severity=~\"$severity\", service=~\"$service\", team=~\"$team\"})",
+            "legendFormat": "{{severity}}"
+          }
+        ],
+        "options": { "legend": { "displayMode": "list", "placement": "right" } }
+      },
+      {
+        "id": 3,
+        "title": "Alert Volume (ALERTS firing - time series)",
+        "type": "timeseries",
+        "gridPos": { "x": 0, "y": 5, "w": 12, "h": 7 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "sum(ALERTS{alertstate=\"firing\", severity=~\"$severity\", service=~\"$service\", team=~\"$team\"})"
+          }
+        ],
+        "fieldConfig": { "defaults": { "decimals": 0 } }
+      },
+      {
+        "id": 4,
+        "title": "Top Firing Alerts (by name)",
+        "type": "barchart",
+        "gridPos": { "x": 12, "y": 5, "w": 12, "h": 7 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "sum by (alertname) (ALERTS{alertstate=\"firing\", severity=~\"$severity\", service=~\"$service\", team=~\"$team\"})",
+            "legendFormat": "{{alertname}}"
+          }
+        ],
+        "fieldConfig": { "defaults": { "decimals": 0 } },
+        "options": { "orientation": "horizontal", "xTickLabelRotation": 0 }
+      },
+      {
+        "id": 5,
+        "title": "App Alert Triggers (custom counter)",
+        "type": "timeseries",
+        "gridPos": { "x": 0, "y": 12, "w": 12, "h": 7 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "sum by (alert_type, priority) (rate(alerts_triggered_total[5m]))",
+            "legendFormat": "{{alert_type}}/{{priority}}"
+          }
+        ],
+        "fieldConfig": { "defaults": { "decimals": 2 } },
+        "options": { "legend": { "displayMode": "list", "placement": "right" } }
+      },
+      {
+        "id": 6,
+        "title": "Alertmanager Notifications (if enabled)",
+        "type": "timeseries",
+        "gridPos": { "x": 12, "y": 12, "w": 12, "h": 7 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "sum(rate(alertmanager_notifications_total[5m]))",
+            "legendFormat": "notifications/s"
+          },
+          {
+            "refId": "B",
+            "expr": "sum(rate(alertmanager_notifications_failed_total[5m]))",
+            "legendFormat": "failed/s"
+          }
+        ],
+        "fieldConfig": { "defaults": { "decimals": 2 } }
+      }
+    ]
+  },
+  "overwrite": true
+}

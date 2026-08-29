@@ -1,7 +1,7 @@
 import { logger } from "../utils/logger.js";
 import { getDatabase } from "../database/connection.js";
-import Redis from "ioredis";
 import { config } from "../config/index.js";
+import { factory } from "../utils/redis.js";
 import os from "os";
 import fs from "fs";
 
@@ -30,6 +30,12 @@ export interface SystemHealthResponse {
     unhealthy: number;
     degraded: number;
   };
+  maintenance?: {
+    active: boolean;
+    message: string;
+    severity: "info" | "warning" | "critical";
+    statusPageUrl?: string;
+  };
 }
 
 export interface LivenessResponse {
@@ -48,17 +54,8 @@ export interface ReadinessResponse {
 
 export class HealthCheckService {
   private startTime = Date.now();
-  private redisClient: Redis;
 
   constructor() {
-    this.redisClient = new Redis({
-      host: config.REDIS_HOST,
-      port: config.REDIS_PORT,
-      password: config.REDIS_PASSWORD || undefined,
-      maxRetriesPerRequest: 3,
-      lazyConnect: true,
-      retryStrategy: (times: number) => Math.min(times * 100, 2_000),
-    });
   }
 
   /**
@@ -91,6 +88,12 @@ export class HealthCheckService {
       version: process.env.npm_package_version || "0.1.0",
       checks: results,
       summary,
+      maintenance: {
+        active: config.MAINTENANCE_MODE,
+        message: config.MAINTENANCE_MESSAGE,
+        severity: config.MAINTENANCE_SEVERITY,
+        statusPageUrl: config.STATUS_PAGE_URL,
+      },
     };
   }
 
@@ -193,12 +196,12 @@ export class HealthCheckService {
    */
   private async checkRedis(): Promise<HealthCheckResult> {
     const startTime = Date.now();
+    const redisClient = factory.getClient();
 
     try {
-      await this.redisClient.ping();
+      await redisClient.ping();
       
-      // Get Redis info
-      const info = await this.redisClient.info("memory");
+      const info = await redisClient.info("memory");
       const memoryMatch = info.match(/used_memory:(\d+)/);
       const usedMemory = memoryMatch ? parseInt(memoryMatch[1]) : 0;
 
@@ -382,8 +385,6 @@ export class HealthCheckService {
    * Cleanup Redis connection
    */
   async disconnect(): Promise<void> {
-    if (this.redisClient) {
-      await this.redisClient.quit();
-    }
+    await factory.shutdown();
   }
 }

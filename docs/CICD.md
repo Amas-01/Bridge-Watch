@@ -52,6 +52,8 @@ To enable the full pipeline, the following configuration is needed in the GitHub
 2. Create `staging` and `production` environments.
 3. For `production`, enable **Required reviewers** to enforce approval gates.
 
+Audit CI and deploy secrets quarterly using the [Secrets Audit Checklist](./secrets-audit-checklist.md). Workflow secret reference: [`.github/workflows/README.md`](../.github/workflows/README.md).
+
 ## Rollback Capability
 In the event of a failure, you can roll back by:
 1. Reverting the commit in Git.

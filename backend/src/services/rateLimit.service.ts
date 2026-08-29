@@ -1,6 +1,8 @@
 import { redis } from "../utils/redis.js";
 import { logger } from "../utils/logger.js";
 import type { RateLimitTier, EndpointCategory } from "../api/middleware/rateLimit.middleware.js";
+import { getRateLimitMetrics } from "../api/middleware/rateLimit.middleware.js";
+import { externalRateLimitMetricsService } from "./externalRateLimitMetrics.service.js";
 
 export interface RateLimitStats {
   totalRequests: number;
@@ -274,6 +276,64 @@ export class RateLimitService {
     }
   }
 
+  /**
+   * Helper method to compute external rate-limit metrics against real rate-limit data structure.
+   * Calculates total requests, blocked requests, usage percentages, and throttling status.
+   */
+  async computeExternalRateLimitMetrics(options?: {
+    providerKey?: string;
+    timeRange?: "1h" | "24h" | "7d";
+  }): Promise<{
+    providerKey?: string;
+    totalRequests: number;
+    blockedRequests: number;
+    throttledCount: number;
+    burstCount: number;
+    usagePercent: number | null;
+    isThrottled: boolean;
+    tierDistribution: Record<RateLimitTier, number>;
+  }> {
+    const timeRange = options?.timeRange ?? "24h";
+    const stats = await this.getRateLimitStats(timeRange);
+
+    let providerKey = options?.providerKey;
+    let throttledCount = 0;
+    let burstCount = 0;
+    let usagePercent: number | null = null;
+    let isThrottled = false;
+
+    if (providerKey) {
+      try {
+        const snapshots = await externalRateLimitMetricsService.getProviderSnapshots();
+        const providerSnap = snapshots.find((s) => s.providerKey === providerKey);
+        if (providerSnap) {
+          throttledCount = providerSnap.throttledCount;
+          burstCount = providerSnap.burstCount;
+          usagePercent = providerSnap.usagePercent;
+          isThrottled = providerSnap.isThrottled;
+        }
+      } catch (err) {
+        logger.warn({ err, providerKey }, "Failed to fetch provider snapshot for external rate limit metrics");
+      }
+    }
+
+    if (usagePercent === null && stats.totalRequests > 0) {
+      const limit = this.config.globalLimits.requestsPerSecond * (this.getTimeRangeMs(timeRange) / 1000);
+      usagePercent = Math.min(100, Math.round((stats.totalRequests / limit) * 100));
+    }
+
+    return {
+      ...(providerKey ? { providerKey } : {}),
+      totalRequests: stats.totalRequests,
+      blockedRequests: stats.blockedRequests,
+      throttledCount,
+      burstCount,
+      usagePercent,
+      isThrottled,
+      tierDistribution: stats.tierDistribution,
+    };
+  }
+
   // Private helper methods
 
   private loadConfiguration(): RateLimitConfig {
@@ -322,8 +382,19 @@ export class RateLimitService {
   }
 
   private async updateAggregatedStats(): Promise<void> {
-    // This would aggregate stats from individual keys into summary keys
-    // Implementation depends on specific requirements
+    try {
+      const middlewareMetrics = getRateLimitMetrics();
+      for (const range of ["1h", "24h", "7d"]) {
+        const key = `bw:rl:stats:${range}`;
+        await redis.hset(key, {
+          totalRequests: middlewareMetrics.totalRequests,
+          blockedRequests: middlewareMetrics.blockedRequests,
+          whitelistedRequests: middlewareMetrics.whitelistedRequests,
+        });
+      }
+    } catch (error) {
+      logger.error({ error }, "Failed to update aggregated stats");
+    }
   }
 
   private async checkAlertConditions(): Promise<void> {
@@ -384,25 +455,129 @@ export class RateLimitService {
     }
   }
 
-  private async getTopIPs(_startTime: number, _endTime: number, _limit: number): Promise<Array<{ ip: string; requests: number; blocked: number }>> {
-    // Implementation would scan Redis keys for IP patterns and aggregate
-    // This is a placeholder - actual implementation would depend on data structure
-    return [];
+  private async getTopIPs(startTime: number, endTime: number, limit: number): Promise<Array<{ ip: string; requests: number; blocked: number }>> {
+    try {
+      const keys = await redis.keys("bw:rl:ip:*");
+      const ipMap = new Map<string, number>();
+
+      for (const key of keys) {
+        const parts = key.split(":");
+        if (parts.length < 5) continue;
+        const ip = parts[3];
+
+        const members = await redis.zrangebyscore(key, startTime, endTime);
+        const count = members.length;
+        if (count > 0) {
+          ipMap.set(ip, (ipMap.get(ip) || 0) + count);
+        }
+      }
+
+      return Array.from(ipMap.entries())
+        .map(([ip, requests]) => ({ ip, requests, blocked: 0 }))
+        .sort((a, b) => b.requests - a.requests)
+        .slice(0, limit);
+    } catch (error) {
+      logger.error({ error, startTime, endTime, limit }, "Failed to get top IPs");
+      return [];
+    }
   }
 
-  private async getTopApiKeys(_startTime: number, _endTime: number, _limit: number): Promise<Array<{ apiKey: string; tier: RateLimitTier; requests: number; blocked: number }>> {
-    // Implementation would scan Redis keys for API key patterns and aggregate
-    return [];
+  private async getTopApiKeys(startTime: number, endTime: number, limit: number): Promise<Array<{ apiKey: string; tier: RateLimitTier; requests: number; blocked: number }>> {
+    try {
+      const keys = await redis.keys("bw:rl:key:*");
+      const keyMap = new Map<string, { requests: number; tier: RateLimitTier }>();
+
+      for (const key of keys) {
+        const parts = key.split(":");
+        if (parts.length < 5) continue;
+        const apiKey = parts[3];
+        const tier = this.getTierFromApiKey(apiKey);
+
+        const members = await redis.zrangebyscore(key, startTime, endTime);
+        const count = members.length;
+        if (count > 0) {
+          const existing = keyMap.get(apiKey) || { requests: 0, tier };
+          existing.requests += count;
+          keyMap.set(apiKey, existing);
+        }
+      }
+
+      return Array.from(keyMap.entries())
+        .map(([apiKey, { requests, tier }]) => ({ apiKey, tier, requests, blocked: 0 }))
+        .sort((a, b) => b.requests - a.requests)
+        .slice(0, limit);
+    } catch (error) {
+      logger.error({ error, startTime, endTime, limit }, "Failed to get top API keys");
+      return [];
+    }
   }
 
-  private async getEndpointStats(_startTime: number, _endTime: number): Promise<Array<{ endpoint: string; category: EndpointCategory; requests: number; blocked: number }>> {
-    // Implementation would aggregate endpoint statistics
-    return [];
+  private async getEndpointStats(startTime: number, endTime: number): Promise<Array<{ endpoint: string; category: EndpointCategory; requests: number; blocked: number }>> {
+    try {
+      const ipKeys = await redis.keys("bw:rl:ip:*");
+      const keyKeys = await redis.keys("bw:rl:key:*");
+      const allKeys = [...ipKeys, ...keyKeys];
+      const endpointMap = new Map<string, { requests: number; category: EndpointCategory }>();
+
+      for (const key of allKeys) {
+        const parts = key.split(":");
+        if (parts.length < 5) continue;
+        const endpoint = parts[4];
+
+        let category: EndpointCategory = "read";
+        if (endpoint === "ws" || endpoint === "websocket") {
+          category = "websocket";
+        } else if (endpoint === "admin" || endpoint === "circuit-breaker") {
+          category = "admin";
+        } else if (key.includes(":write:")) {
+          category = "write";
+        }
+
+        const members = await redis.zrangebyscore(key, startTime, endTime);
+        const count = members.length;
+        if (count > 0) {
+          const existing = endpointMap.get(endpoint) || { requests: 0, category };
+          existing.requests += count;
+          endpointMap.set(endpoint, existing);
+        }
+      }
+
+      return Array.from(endpointMap.entries()).map(([endpoint, { requests, category }]) => ({
+        endpoint,
+        category,
+        requests,
+        blocked: 0,
+      }));
+    } catch (error) {
+      logger.error({ error, startTime, endTime }, "Failed to get endpoint stats");
+      return [];
+    }
   }
 
-  private async getTierDistribution(_startTime: number, _endTime: number): Promise<Record<RateLimitTier, number>> {
-    // Implementation would aggregate tier distribution
-    return { free: 0, basic: 0, premium: 0, trusted: 0 };
+  private async getTierDistribution(startTime: number, endTime: number): Promise<Record<RateLimitTier, number>> {
+    const distribution: Record<RateLimitTier, number> = { free: 0, basic: 0, premium: 0, trusted: 0 };
+    try {
+      const ipKeys = await redis.keys("bw:rl:ip:*");
+      const keyKeys = await redis.keys("bw:rl:key:*");
+
+      for (const key of ipKeys) {
+        const members = await redis.zrangebyscore(key, startTime, endTime);
+        distribution.free += members.length;
+      }
+
+      for (const key of keyKeys) {
+        const parts = key.split(":");
+        if (parts.length < 5) continue;
+        const apiKey = parts[3];
+        const tier = this.getTierFromApiKey(apiKey);
+
+        const members = await redis.zrangebyscore(key, startTime, endTime);
+        distribution[tier] += members.length;
+      }
+    } catch (error) {
+      logger.error({ error, startTime, endTime }, "Failed to get tier distribution");
+    }
+    return distribution;
   }
 
   private async getCurrentWindowStats(): Promise<{
@@ -411,13 +586,57 @@ export class RateLimitService {
     averageRequestsPerIP: number;
     peakRequestsPerMinute: number;
   }> {
-    // Implementation would calculate current window statistics
-    return {
-      activeIPs: 0,
-      activeApiKeys: 0,
-      averageRequestsPerIP: 0,
-      peakRequestsPerMinute: 0,
-    };
+    try {
+      const ipKeys = await redis.keys("bw:rl:ip:*");
+      const keyKeys = await redis.keys("bw:rl:key:*");
+
+      const activeIPsSet = new Set<string>();
+      let totalIPRequests = 0;
+      for (const key of ipKeys) {
+        const parts = key.split(":");
+        if (parts.length < 5) continue;
+        const ip = parts[3];
+        const card = await redis.zcard(key);
+        if (card > 0) {
+          activeIPsSet.add(ip);
+          totalIPRequests += card;
+        }
+      }
+
+      const activeApiKeysSet = new Set<string>();
+      for (const key of keyKeys) {
+        const parts = key.split(":");
+        if (parts.length < 5) continue;
+        const apiKey = parts[3];
+        const card = await redis.zcard(key);
+        if (card > 0) {
+          activeApiKeysSet.add(apiKey);
+        }
+      }
+
+      const activeIPs = activeIPsSet.size;
+      const activeApiKeys = activeApiKeysSet.size;
+      const averageRequestsPerIP = activeIPs > 0 ? Number((totalIPRequests / activeIPs).toFixed(2)) : 0;
+
+      const now = Date.now();
+      const oneMinuteAgo = now - 60000;
+      const peakRequestsPerMinute = this.requestBuffer.filter(r => r.timestamp >= oneMinuteAgo).length;
+
+      return {
+        activeIPs,
+        activeApiKeys,
+        averageRequestsPerIP,
+        peakRequestsPerMinute,
+      };
+    } catch (error) {
+      logger.error({ error }, "Failed to get current window stats");
+      return {
+        activeIPs: 0,
+        activeApiKeys: 0,
+        averageRequestsPerIP: 0,
+        peakRequestsPerMinute: 0,
+      };
+    }
   }
 
   private getTierFromApiKey(apiKey: string): RateLimitTier {

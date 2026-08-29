@@ -2,6 +2,13 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { getMetricsService } from "../../services/metrics.service.js";
 import { logger } from "../../utils/logger.js";
 
+/** Prevent query strings and concrete IDs from exploding Prometheus labels. */
+export function metricRoute(request: FastifyRequest): string {
+  const registeredRoute = request.routeOptions?.url;
+  if (registeredRoute) return registeredRoute;
+  return request.url.split("?", 1)[0] || "/unknown";
+}
+
 /**
  * Metrics Middleware
  * Automatically collects HTTP request/response metrics
@@ -23,7 +30,7 @@ export async function registerMetrics(server: FastifyInstance): Promise<void> {
     try {
       const duration = reply.elapsedTime / 1000; // Convert ms to seconds
       const method = request.method;
-      const route = request.routeOptions?.url || request.url;
+      const route = metricRoute(request);
       const statusCode = reply.statusCode;
 
       // Get request and response sizes

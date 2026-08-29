@@ -66,6 +66,11 @@ export interface ExportRecord {
   error_message: string | null;
   email_delivery: boolean;
   email_address: string | null;
+  checksum_sha256?: string | null;
+  signature?: string | null;
+  public_key?: string | null;
+  verification_status?: "verified" | "unverified" | "tampered" | "failed";
+  verified_at?: Date | null;
   created_at: Date;
   updated_at: Date;
 }

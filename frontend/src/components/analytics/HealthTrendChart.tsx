@@ -9,6 +9,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import type { HealthTimeSeriesPoint } from "../../hooks/useAnalytics";
+import HelpIcon from "../help/HelpIcon";
 
 interface HealthTrendChartProps {
   data: HealthTimeSeriesPoint[];
@@ -69,7 +70,15 @@ export default function HealthTrendChart({
 
   return (
     <div className="bg-stellar-card border border-stellar-border rounded-lg p-6">
-      <h2 className="text-lg font-semibold text-white mb-0.5">Health Score Trends</h2>
+      <h2 className="flex items-center gap-2 text-lg font-semibold text-white mb-0.5">
+        Health Score Trends
+        <HelpIcon
+          title="Health Score"
+          content="A composite 0–100 score derived from price deviation, supply accuracy, bridge uptime, and liquidity depth. Higher is healthier."
+          link={{ href: "/docs/metrics#health-score", label: "How it's calculated" }}
+          placement="right"
+        />
+      </h2>
       <p className="text-xs text-stellar-text-secondary mb-4">
         Per-asset composite health score over {period}
       </p>

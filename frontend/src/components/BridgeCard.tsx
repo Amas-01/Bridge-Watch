@@ -16,7 +16,7 @@ function getStatusBadge(status: string) {
 
   return (
     <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${styles[status] || styles.unknown}`}
+      className={`flex-shrink-0 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${styles[status] || styles.unknown}`}
     >
       {status.charAt(0).toUpperCase() + status.slice(1)}
     </span>

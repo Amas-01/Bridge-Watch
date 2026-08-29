@@ -52,6 +52,13 @@ export interface BridgeTransactionSummary {
   confirmedTransactions: number;
   failedTransactions: number;
 }
+export type ReconciliationStatus = "running" | "success" | "mismatch" | "failed";
+export type ReconciliationTriageStatus =
+  | "open"
+  | "investigating"
+  | "acknowledged"
+  | "resolved"
+  | "false_positive";
 
 // ─── assets ──────────────────────────────────────────────────────────────────
 
@@ -201,6 +208,33 @@ export interface VerificationResult {
   job_id: string | null;
 }
 
+// ─── reconciliation_runs (hypertable) ────────────────────────────────────────
+
+export interface ReconciliationRun {
+  started_at: Date;
+  id: string;
+  asset_code: string;
+  job_id: string | null;
+  bridge_name: string | null;
+  source_chain: string | null;
+  status: ReconciliationStatus;
+  stellar_supply: string | null;
+  reported_supply: string | null;
+  mismatch_percentage: string | null;
+  on_chain_source: unknown | null;
+  reserve_attestation: unknown | null;
+  reported_backing: unknown | null;
+  triage_status: ReconciliationTriageStatus | null;
+  triage_owner: string | null;
+  triage_note: string | null;
+  triaged_at: Date | null;
+  attempt: number;
+  error: string | null;
+  finished_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
 // ─── alert_rules ─────────────────────────────────────────────────────────────
 
 export interface AlertRule {
@@ -235,6 +269,50 @@ export interface AlertEvent {
   webhook_delivered_at: Date | null;
   webhook_attempts: number;
   on_chain_event_id: string | null; // bigint
+}
+
+// ─── alert_routing_rules / alert_routing_audit ─────────────────────────────
+
+export type AlertRoutingChannel = "in_app" | "webhook" | "email";
+export type AlertRoutingAuditStatus =
+  | "queued"
+  | "delivered"
+  | "suppressed"
+  | "failed"
+  | "fallback";
+
+export interface AlertRoutingRuleRecord {
+  id: string;
+  name: string;
+  owner_address: string | null;
+  severity_levels: AlertPriority[];
+  asset_codes: string[];
+  source_types: string[];
+  channels: AlertRoutingChannel[];
+  fallback_channels: AlertRoutingChannel[];
+  suppression_window_seconds: number;
+  priority_order: number;
+  is_active: boolean;
+  created_by: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface AlertRoutingAuditRecord {
+  id: string;
+  event_time: Date;
+  alert_rule_id: string;
+  routing_rule_id: string | null;
+  owner_address: string;
+  asset_code: string;
+  source_type: string;
+  severity: AlertPriority;
+  channel: string;
+  status: AlertRoutingAuditStatus;
+  reason: string | null;
+  attempt_count: number;
+  latency_ms: number | null;
+  created_at: Date;
 }
 
 // ─── circuit_breaker_triggers ────────────────────────────────────────────────
@@ -377,6 +455,7 @@ export interface TrackedBalance {
   updated_at: Date;
 }
 
+
 export interface BalanceHistoryRecord {
   id: string;
   tracked_balance_id: string;
@@ -390,3 +469,201 @@ export interface BalanceHistoryRecord {
   recorded_at: Date;
   metadata: unknown | null;
 }
+
+// ─── event_source_keys ─────────────────────────────────────────────────────
+
+export type SourceKeyAlgorithm = "ed25519" | "secp256k1" | "p256";
+
+export interface EventSourceKey {
+  id: string;
+  source_name: string;
+  public_key: string;
+  algorithm: SourceKeyAlgorithm;
+  is_active: boolean;
+  rotated_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export type NewEventSourceKey = Omit<EventSourceKey, "id" | "created_at" | "updated_at">;
+
+// ─── event_federation_audit ───────────────────────────────────────────────
+
+export type FederationAuditStatus = "accepted" | "rejected_signature" | "rejected_timestamp" | "rejected_unknown_source";
+
+export interface EventFederationAuditRecord {
+  id: string;
+  source_name: string;
+  event_id: string;
+  status: FederationAuditStatus;
+  error_message: string | null;
+  timestamp_age_ms: number | null;
+  created_at: Date;
+}
+
+// ─── circuit_breaker_action_configs & logs ──────────────────────────────────
+
+export type CircuitBreakerActionType = "script" | "webhook" | "contract_pause";
+export type CircuitBreakerActionStatus = "pending" | "success" | "failed";
+
+export interface CircuitBreakerActionConfig {
+  id: string;
+  name: string;
+  alert_type: string;
+  action_type: CircuitBreakerActionType;
+  config: string; // JSON string
+  enabled: boolean;
+  timeout_ms: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface CircuitBreakerActionLog {
+  id: string;
+  action_config_id: string;
+  trigger_id: string | null;
+  alert_id: string | null;
+  alert_type: string;
+  action_type: CircuitBreakerActionType;
+  status: CircuitBreakerActionStatus;
+  output: string | null;
+  error_message: string | null;
+  execution_time_ms: number;
+  executed_at: Date;
+}
+
+// ─── bft_oracle_providers / bft_consensus_rounds / bft_slashing_events ───────
+
+export interface BftOracleProvider {
+  provider_key: string;
+  display_name: string;
+  public_key: string;
+  stake_weight: number;
+  status: "active" | "slashed" | "degraded" | "suspended";
+  slashed: boolean;
+  slashed_at: Date | null;
+  slash_reason: string | null;
+  total_submissions: number;
+  total_slashes: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface BftConsensusRound {
+  id: string;
+  asset_code: string;
+  consensus_price: number;
+  median_of_medians: number;
+  mean: number;
+  std_dev: number;
+  total_providers: number;
+  valid_providers: number;
+  quorum_reached: boolean;
+  aggregate_signature: string | null;
+  created_at: Date;
+}
+
+export interface BftSlashingEvent {
+  id: string;
+  provider_key: string;
+  round_id: string | null;
+  asset_code: string;
+  reported_value: number;
+  consensus_value: number;
+  deviation_sigma: number;
+  slashed_stake: number;
+  reason: string;
+  created_at: Date;
+}
+
+export interface ZkProofVerificationRecord {
+  id: string;
+  bridge_id: string;
+  asset_code: string;
+  scheme: "groth16" | "plonk";
+  curve: "bn254" | "bls12_381";
+  total_reserves: string;
+  on_chain_supply: string;
+  reserve_ratio_bps: number;
+  commitment_hash: string;
+  proof_pi_a: string;
+  proof_pi_b: string;
+  proof_pi_c: string;
+  is_valid: boolean;
+  verification_status: "verified" | "rejected" | "submitted";
+  tx_hash: string | null;
+  attestation_id: string | null;
+  error_reason: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export type RetentionExceptionTargetType = "all" | "mismatch" | "alert" | "report" | "export" | "asset";
+export type RetentionExceptionStatus = "active" | "expired" | "released";
+
+export interface ComplianceRetentionExceptionRecord {
+  id: string;
+  exception_code: string;
+  title: string;
+  reason: string;
+  requested_by: string;
+  target_type: RetentionExceptionTargetType;
+  target_id: string | null;
+  start_date: Date;
+  end_date: Date | null;
+  status: RetentionExceptionStatus;
+  released_by: string | null;
+  released_at: Date | null;
+  release_reason: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface ReportTemplateVersionRecord {
+  id: string;
+  template_id: string;
+  version: number;
+  name: string;
+  type: string;
+  description: string;
+  sections: unknown;
+  includes: unknown;
+  filters: unknown;
+  change_summary: string | null;
+  created_by: string;
+  created_at: Date;
+}
+
+export type HandoffStatus = "draft" | "submitted" | "acknowledged" | "archived";
+
+export interface HandoffChecklistItem {
+  id: string;
+  label: string;
+  category: "incidents" | "circuit_breakers" | "maintenance" | "health_checks" | "general";
+  completed: boolean;
+  notes?: string;
+  verified_by?: string;
+}
+
+export interface OperatorHandoffRecord {
+  id: string;
+  shift_name: string;
+  outgoing_operator: string;
+  incoming_operator: string;
+  status: HandoffStatus;
+  checklist_items: HandoffChecklistItem[] | string;
+  summary_notes: string | null;
+  incidents_reviewed: string[] | string;
+  signoff_outgoing_signature: string | null;
+  signoff_incoming_signature: string | null;
+  submitted_at: Date | null;
+  acknowledged_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+
+
+
+
+

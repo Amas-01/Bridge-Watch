@@ -1,0 +1,183 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "bridgewatch-service-health",
+    "title": "Bridge Watch - Service Health (Template)",
+    "tags": ["bridge-watch", "template", "service-health"],
+    "timezone": "browser",
+    "schemaVersion": 39,
+    "version": 1,
+    "refresh": "30s",
+    "time": { "from": "now-6h", "to": "now" },
+    "templating": {
+      "list": [
+        {
+          "name": "datasource",
+          "type": "datasource",
+          "label": "Datasource",
+          "query": "prometheus",
+          "current": { "selected": false, "text": "Prometheus", "value": "Prometheus" }
+        },
+        {
+          "name": "job",
+          "type": "query",
+          "label": "Job",
+          "datasource": { "type": "prometheus", "uid": "$datasource" },
+          "query": { "query": "label_values(up, job)", "refId": "PromJob" },
+          "refresh": 2,
+          "sort": 1,
+          "multi": false,
+          "includeAll": false,
+          "current": { "selected": true, "text": "bridge-watch-backend", "value": "bridge-watch-backend" }
+        },
+        {
+          "name": "instance",
+          "type": "query",
+          "label": "Instance",
+          "datasource": { "type": "prometheus", "uid": "$datasource" },
+          "query": { "query": "label_values(up{job=\"$job\"}, instance)", "refId": "PromInstance" },
+          "refresh": 2,
+          "sort": 1,
+          "multi": true,
+          "includeAll": true,
+          "allValue": ".*"
+        },
+        {
+          "name": "route",
+          "type": "query",
+          "label": "Route",
+          "datasource": { "type": "prometheus", "uid": "$datasource" },
+          "query": { "query": "label_values(http_requests_total{job=\"$job\"}, route)", "refId": "PromRoute" },
+          "refresh": 2,
+          "sort": 1,
+          "multi": true,
+          "includeAll": true,
+          "allValue": ".*"
+        }
+      ]
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Up (per instance)",
+        "type": "stat",
+        "gridPos": { "x": 0, "y": 0, "w": 8, "h": 5 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "up{job=\"$job\", instance=~\"$instance\"}",
+            "legendFormat": "{{instance}}"
+          }
+        ],
+        "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "horizontal" },
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              {
+                "type": "value",
+                "options": {
+                  "0": { "text": "DOWN" },
+                  "1": { "text": "UP" }
+                }
+              }
+            ],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "red", "value": null },
+                { "color": "green", "value": 1 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Traffic by Route (RPS)",
+        "type": "timeseries",
+        "gridPos": { "x": 8, "y": 0, "w": 16, "h": 5 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "sum by (route) (rate(http_requests_total{job=\"$job\", instance=~\"$instance\", route=~\"$route\"}[5m]))",
+            "legendFormat": "{{route}}"
+          }
+        ],
+        "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 2 } },
+        "options": { "legend": { "displayMode": "list", "placement": "right" } }
+      },
+      {
+        "id": 3,
+        "title": "Errors by Route (5xx %)",
+        "type": "timeseries",
+        "gridPos": { "x": 0, "y": 5, "w": 12, "h": 7 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "(sum by (route) (rate(http_requests_total{job=\"$job\", instance=~\"$instance\", route=~\"$route\", status_code=~\"5..\"}[5m])) / sum by (route) (rate(http_requests_total{job=\"$job\", instance=~\"$instance\", route=~\"$route\"}[5m]))) * 100",
+            "legendFormat": "{{route}}"
+          }
+        ],
+        "fieldConfig": { "defaults": { "unit": "percent", "decimals": 2 } },
+        "options": { "legend": { "displayMode": "list", "placement": "right" } }
+      },
+      {
+        "id": 4,
+        "title": "Latency by Route (p95, s)",
+        "type": "timeseries",
+        "gridPos": { "x": 12, "y": 5, "w": 12, "h": 7 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "histogram_quantile(0.95, sum by (le, route) (rate(http_request_duration_seconds_bucket{job=\"$job\", instance=~\"$instance\", route=~\"$route\"}[5m])))",
+            "legendFormat": "{{route}}"
+          }
+        ],
+        "fieldConfig": { "defaults": { "unit": "s", "decimals": 3 } },
+        "options": { "legend": { "displayMode": "list", "placement": "right" } }
+      },
+      {
+        "id": 5,
+        "title": "Active Connections",
+        "type": "timeseries",
+        "gridPos": { "x": 0, "y": 12, "w": 8, "h": 6 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "sum(http_active_connections{job=\"$job\", instance=~\"$instance\"})"
+          }
+        ],
+        "fieldConfig": { "defaults": { "decimals": 0 } }
+      },
+      {
+        "id": 6,
+        "title": "DB Query Duration (p95, s)",
+        "type": "timeseries",
+        "gridPos": { "x": 8, "y": 12, "w": 8, "h": 6 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "histogram_quantile(0.95, sum by (le) (rate(db_query_duration_seconds_bucket{job=\"$job\", instance=~\"$instance\"}[5m])))",
+            "legendFormat": "p95"
+          }
+        ],
+        "fieldConfig": { "defaults": { "unit": "s", "decimals": 3 } }
+      },
+      {
+        "id": 7,
+        "title": "Queue Duration (p95, s)",
+        "type": "timeseries",
+        "gridPos": { "x": 16, "y": 12, "w": 8, "h": 6 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "histogram_quantile(0.95, sum by (le) (rate(queue_job_duration_seconds_bucket{job=\"$job\", instance=~\"$instance\"}[5m])))",
+            "legendFormat": "p95"
+          }
+        ],
+        "fieldConfig": { "defaults": { "unit": "s", "decimals": 3 } }
+      }
+    ]
+  },
+  "overwrite": true
+}

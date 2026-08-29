@@ -2,6 +2,12 @@ import { getDatabase } from "../database/connection.js";
 import { logger } from "../utils/logger.js";
 import { circuitBreakerQueue } from "../workers/circuitBreaker.worker.js";
 import { getMetricsService } from "./metrics.service.js";
+import { alertRoutingService } from "./alertRouting.service.js";
+import {
+  alertSuppressionService,
+  type AlertSuppressionService,
+} from "./alertSuppression.service.js";
+import { duplicateAlertCheckService } from "./duplicateAlertCheck.service.js";
 
 export type AlertType =
   | "price_deviation"
@@ -9,11 +15,13 @@ export type AlertType =
   | "bridge_downtime"
   | "health_score_drop"
   | "volume_anomaly"
-  | "reserve_ratio_breach";
+  | "reserve_ratio_breach"
+  | "schema_drift";
 
 export type AlertPriority = "critical" | "high" | "medium" | "low";
 export type ConditionOp = "AND" | "OR";
 export type CompareOp = "gt" | "lt" | "eq";
+export type AlertLifecycleState = "open" | "acknowledged" | "closed";
 
 export interface AlertCondition {
   metric: string;
@@ -40,6 +48,7 @@ export interface AlertRule {
 }
 
 export interface AlertEvent {
+  eventId: string;
   ruleId: string;
   assetCode: string;
   alertType: AlertType;
@@ -49,6 +58,15 @@ export interface AlertEvent {
   metric: string;
   webhookDelivered: boolean;
   onChainEventId: number | null;
+  lifecycleState: AlertLifecycleState;
+  acknowledgedAt: Date | null;
+  acknowledgedBy: string | null;
+  assignedAt: Date | null;
+  assignedTo: string | null;
+  closedAt: Date | null;
+  closedBy: string | null;
+  closureNote: string | null;
+  updatedAt: Date | null;
   time: Date;
 }
 
@@ -58,6 +76,11 @@ export interface MetricSnapshot {
 }
 
 export class AlertService {
+  constructor(
+    private readonly suppressionService: Pick<AlertSuppressionService, "shouldSuppress"> =
+      alertSuppressionService
+  ) {}
+
   async createRule(
     ownerAddress: string,
     name: string,
@@ -278,7 +301,30 @@ export class AlertService {
         this.evaluateConditions(rule, snapshot.metrics);
 
       if (fires) {
-        const event: AlertEvent = {
+        const suppressionDecision = await this.suppressionService.shouldSuppress({
+          assetCode: snapshot.assetCode,
+          alertType,
+          priority: rule.priority,
+          source: metric,
+          at: now,
+        });
+
+        if (suppressionDecision.suppressed) {
+          logger.info(
+            {
+              ruleId: rule.id,
+              suppressionRuleId: suppressionDecision.matchedRule?.id,
+              assetCode: snapshot.assetCode,
+              alertType,
+              priority: rule.priority,
+            },
+            "Alert was suppressed before dispatch"
+          );
+          continue;
+        }
+
+        const candidateEvent = {
+          eventId: "",
           ruleId: rule.id,
           assetCode: snapshot.assetCode,
           alertType,
@@ -288,10 +334,41 @@ export class AlertService {
           metric,
           webhookDelivered: false,
           onChainEventId: null,
+          lifecycleState: "open" as const,
+          acknowledgedAt: null,
+          acknowledgedBy: null,
+          assignedAt: null,
+          assignedTo: null,
+          closedAt: null,
+          closedBy: null,
+          closureNote: null,
+          updatedAt: now,
           time: now,
         };
 
+        const dedupResult = duplicateAlertCheckService.check(candidateEvent);
+        if (dedupResult.action === "block") {
+          logger.info(
+            { ruleId: rule.id, matchedEventId: dedupResult.matchedEventId, reason: dedupResult.reason },
+            "Alert blocked as duplicate"
+          );
+          continue;
+        }
+        if (dedupResult.action === "review") {
+          logger.info(
+            { ruleId: rule.id, matchedEventId: dedupResult.matchedEventId, reason: dedupResult.reason },
+            "Alert queued for duplicate review"
+          );
+          continue;
+        }
+
+        const event: AlertEvent = {
+          ...candidateEvent,
+          priority: dedupResult.escalatedPriority ?? candidateEvent.priority,
+        };
+
         await this.persistEvent(event);
+        duplicateAlertCheckService.record(event);
         await this.markRuleTriggered(rule.id, now);
         triggered.push(event);
 
@@ -300,12 +377,23 @@ export class AlertService {
           logger.error({ ruleId: rule.id, err }, "Circuit breaker trigger failed")
         );
 
-        if (rule.webhookUrl) {
-          await this.dispatchWebhook(rule.webhookUrl, event, rule).catch(
-            (err) =>
-              logger.warn({ ruleId: rule.id, err }, "Webhook dispatch failed")
+        await alertRoutingService
+          .routeAlert({
+            eventTime: event.time,
+            alertRuleId: rule.id,
+            ownerAddress: rule.ownerAddress,
+            ruleName: rule.name,
+            assetCode: event.assetCode,
+            sourceType: event.alertType,
+            severity: event.priority,
+            triggeredValue: event.triggeredValue,
+            threshold: event.threshold,
+            metric: event.metric,
+            webhookUrl: rule.webhookUrl,
+          })
+          .catch((err) =>
+            logger.warn({ ruleId: rule.id, err }, "Alert routing dispatch failed")
           );
-        }
       }
     }
 
@@ -325,6 +413,27 @@ export class AlertService {
       const events = await this.evaluateAsset(snapshot);
       results.push(...events);
     }
+    return results;
+  }
+
+  async batchEvaluateParallel(
+    snapshots: MetricSnapshot[],
+    batchSize: number = 10
+  ): Promise<AlertEvent[]> {
+    const results: AlertEvent[] = [];
+
+    for (let i = 0; i < snapshots.length; i += batchSize) {
+      const batch = snapshots.slice(i, i + batchSize);
+
+      const batchResults = await Promise.all(
+        batch.map((snapshot) => this.evaluateAsset(snapshot))
+      );
+
+      for (const batchResult of batchResults) {
+        results.push(...batchResult);
+      }
+    }
+
     return results;
   }
 
@@ -355,6 +464,86 @@ export class AlertService {
       .orderBy("time", "desc")
       .limit(limit);
     return rows.map(this.mapEvent);
+  }
+
+  async getAlertEventById(
+    eventId: string,
+    ownerAddress: string
+  ): Promise<AlertEvent | null> {
+    const db = getDatabase();
+    const row = await db("alert_events")
+      .join("alert_rules", "alert_events.rule_id", "alert_rules.id")
+      .where("alert_events.event_id", eventId)
+      .where("alert_rules.owner_address", ownerAddress)
+      .select("alert_events.*")
+      .first();
+
+    return row ? this.mapEvent(row) : null;
+  }
+
+  async acknowledgeAlert(
+    eventId: string,
+    ownerAddress: string,
+    actor: string
+  ): Promise<AlertEvent | null> {
+    return this.applyLifecycleAction(eventId, ownerAddress, {
+      action: "acknowledge",
+      actor,
+    });
+  }
+
+  async assignAlert(
+    eventId: string,
+    ownerAddress: string,
+    assignee: string,
+    actor: string
+  ): Promise<AlertEvent | null> {
+    return this.applyLifecycleAction(eventId, ownerAddress, {
+      action: "assign",
+      actor,
+      assignee,
+    });
+  }
+
+  async closeAlert(
+    eventId: string,
+    ownerAddress: string,
+    actor: string,
+    note?: string
+  ): Promise<AlertEvent | null> {
+    return this.applyLifecycleAction(eventId, ownerAddress, {
+      action: "close",
+      actor,
+      note,
+    });
+  }
+
+  async bulkLifecycleUpdate(
+    ownerAddress: string,
+    actor: string,
+    eventIds: string[],
+    action: "acknowledge" | "close",
+    options?: {
+      note?: string;
+    }
+  ): Promise<{ updated: AlertEvent[]; notFound: string[] }> {
+    const updated: AlertEvent[] = [];
+    const notFound: string[] = [];
+
+    for (const eventId of eventIds) {
+      const result =
+        action === "acknowledge"
+          ? await this.acknowledgeAlert(eventId, ownerAddress, actor)
+          : await this.closeAlert(eventId, ownerAddress, actor, options?.note);
+
+      if (result) {
+        updated.push(result);
+      } else {
+        notFound.push(eventId);
+      }
+    }
+
+    return { updated, notFound };
   }
 
   async getAlertStats(ownerAddress: string): Promise<{
@@ -416,7 +605,19 @@ export class AlertService {
   async dryRunAlert(
     rule: Omit<AlertRule, "id" | "isActive" | "createdAt" | "updatedAt" | "lastTriggeredAt" | "onChainRuleId">,
     metrics: Record<string, number>
-  ): Promise<{ fires: boolean; event?: Omit<AlertEvent, "webhookDelivered" | "onChainEventId" | "time"> }> {
+  ): Promise<{
+    fires: boolean;
+    event?: Pick<
+      AlertEvent,
+      | "ruleId"
+      | "assetCode"
+      | "alertType"
+      | "priority"
+      | "triggeredValue"
+      | "threshold"
+      | "metric"
+    >;
+  }> {
     const { fires, triggeredValue, threshold, metric, alertType } =
       this.evaluateConditions(rule as AlertRule, metrics);
 
@@ -644,6 +845,7 @@ export class AlertService {
 
   private mapEvent(row: Record<string, unknown>): AlertEvent {
     return {
+      eventId: (row.event_id as string) ?? "",
       ruleId: row.rule_id as string,
       assetCode: row.asset_code as string,
       alertType: row.alert_type as AlertType,
@@ -653,7 +855,86 @@ export class AlertService {
       metric: row.metric as string,
       webhookDelivered: row.webhook_delivered as boolean,
       onChainEventId: row.on_chain_event_id as number | null,
+      lifecycleState:
+        ((row.lifecycle_state as AlertLifecycleState | undefined) ?? "open"),
+      acknowledgedAt: row.acknowledged_at
+        ? new Date(row.acknowledged_at as string)
+        : null,
+      acknowledgedBy: (row.acknowledged_by as string | null) ?? null,
+      assignedAt: row.assigned_at
+        ? new Date(row.assigned_at as string)
+        : null,
+      assignedTo: (row.assigned_to as string | null) ?? null,
+      closedAt: row.closed_at ? new Date(row.closed_at as string) : null,
+      closedBy: (row.closed_by as string | null) ?? null,
+      closureNote: (row.closure_note as string | null) ?? null,
+      updatedAt: row.updated_at ? new Date(row.updated_at as string) : null,
       time: new Date(row.time as string),
     };
+  }
+
+  private async applyLifecycleAction(
+    eventId: string,
+    ownerAddress: string,
+    input:
+      | { action: "acknowledge"; actor: string }
+      | { action: "assign"; actor: string; assignee: string }
+      | { action: "close"; actor: string; note?: string }
+  ): Promise<AlertEvent | null> {
+    const db = getDatabase();
+    return db.transaction(async (trx) => {
+      const event = await trx("alert_events")
+        .join("alert_rules", "alert_events.rule_id", "alert_rules.id")
+        .where("alert_events.event_id", eventId)
+        .where("alert_rules.owner_address", ownerAddress)
+        .select("alert_events.*")
+        .first();
+
+      if (!event) {
+        return null;
+      }
+
+      const now = new Date();
+      const updatePayload: Record<string, unknown> = {
+        updated_at: now,
+      };
+      const auditDetails: Record<string, unknown> = {};
+
+      if (input.action === "acknowledge") {
+        updatePayload.lifecycle_state = "acknowledged";
+        updatePayload.acknowledged_at = now;
+        updatePayload.acknowledged_by = input.actor;
+        auditDetails.lifecycle_state = "acknowledged";
+      } else if (input.action === "assign") {
+        updatePayload.assigned_at = now;
+        updatePayload.assigned_to = input.assignee;
+        auditDetails.assigned_to = input.assignee;
+      } else {
+        updatePayload.lifecycle_state = "closed";
+        updatePayload.closed_at = now;
+        updatePayload.closed_by = input.actor;
+        updatePayload.closure_note = input.note ?? null;
+        auditDetails.lifecycle_state = "closed";
+        auditDetails.closure_note = input.note ?? null;
+      }
+
+      await trx("alert_events")
+        .where({ event_id: eventId })
+        .update(updatePayload);
+
+      await trx("alert_event_audit").insert({
+        event_id: eventId,
+        rule_id: event.rule_id,
+        action: input.action,
+        actor: input.actor,
+        details: JSON.stringify(auditDetails),
+      });
+
+      const updated = await trx("alert_events")
+        .where({ event_id: eventId })
+        .first();
+
+      return updated ? this.mapEvent(updated) : null;
+    });
   }
 }

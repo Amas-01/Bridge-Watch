@@ -1,4 +1,7 @@
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { AssetStatusBadge } from "./AssetStatusBadge";
+import { bridgeStatusToAssetStatus } from "../utils/status";
 
 interface BridgeStatusCardProps {
   name: string;
@@ -7,24 +10,11 @@ interface BridgeStatusCardProps {
   supplyOnStellar: number;
   supplyOnSource: number;
   mismatchPercentage: number;
+  /** Renders above the card link (e.g. favorite chip); keep actions out of the navigation target */
+  topRight?: ReactNode;
 }
 
-function getStatusBadge(status: string) {
-  const styles: Record<string, string> = {
-    healthy: "bg-green-500/20 text-green-400",
-    degraded: "bg-yellow-500/20 text-yellow-400",
-    down: "bg-red-500/20 text-red-400",
-    unknown: "bg-gray-500/20 text-gray-400",
-  };
 
-  return (
-    <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${styles[status] || styles.unknown}`}
-    >
-      {status.charAt(0).toUpperCase() + status.slice(1)}
-    </span>
-  );
-}
 
 function formatNumber(num: number): string {
   if (num >= 1_000_000_000) return `$${(num / 1_000_000_000).toFixed(2)}B`;
@@ -40,16 +30,25 @@ export default function BridgeStatusCard({
   supplyOnStellar,
   supplyOnSource,
   mismatchPercentage,
+  topRight,
 }: BridgeStatusCardProps) {
   return (
-    <Link
-      to={`/bridges?selected=${encodeURIComponent(name)}`}
-      className="block bg-stellar-card border border-stellar-border rounded-lg p-6 hover:border-stellar-blue transition-colors focus:outline-none focus:ring-2 focus:ring-stellar-blue focus:ring-offset-2 focus:ring-offset-stellar-dark"
-      aria-label={`View details for bridge ${name}`}
-    >
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-stellar-text-primary">{name}</h3>
-        {getStatusBadge(status)}
+    <div className="relative">
+      {topRight ? (
+        <div className="absolute right-3 top-3 z-10 flex items-center gap-2">{topRight}</div>
+      ) : null}
+      <Link
+        to={`/bridges?selected=${encodeURIComponent(name)}`}
+        className={`block bg-stellar-card border border-stellar-border rounded-lg hover:border-stellar-blue transition-colors focus:outline-none focus:ring-2 focus:ring-stellar-blue focus:ring-offset-2 focus:ring-offset-stellar-dark ${
+          topRight ? "p-6 pt-12" : "p-6"
+        }`}
+        aria-label={`View details for bridge ${name}`}
+      >
+      <div
+        className={`mb-4 flex items-center justify-between gap-2 ${topRight ? "pr-14" : ""}`}
+      >
+        <h3 className="text-lg font-semibold text-stellar-text-primary truncate">{name}</h3>
+        <AssetStatusBadge status={bridgeStatusToAssetStatus(status)} size="sm" />
       </div>
 
       <div className="space-y-3">
@@ -93,6 +92,7 @@ export default function BridgeStatusCard({
           </span>
         </div>
       </div>
-    </Link>
+      </Link>
+    </div>
   );
 }

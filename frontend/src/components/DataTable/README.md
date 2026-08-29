@@ -40,6 +40,7 @@ export function Example({ data, isLoading }: { data: Row[]; isLoading: boolean }
       description="Sortable, filterable, selectable assets"
       pageSizeOptions={[10, 20, 50]}
       filenameBase="assets"
+      storageKey="assets-table"
       rowActions={{
         items: [
           {
@@ -53,3 +54,12 @@ export function Example({ data, isLoading }: { data: Row[]; isLoading: boolean }
   );
 }
 ```
+
+## Advanced Sorting
+
+- Click a header to toggle ascending, descending, and cleared states.
+- Hold `Shift` while clicking to add another column to the sort order.
+- Pass a stable `storageKey` when you want the current sort preference to survive reloads.
+- Use the toolbar `Clear sort` action to reset a complex sort back to the table's natural row order.
+
+The active sort order stays visible in the toolbar, which gives mobile users a simple fallback when the headers are harder to scan.

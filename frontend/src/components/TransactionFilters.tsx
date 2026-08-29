@@ -129,6 +129,7 @@ export default function TransactionFilters({
           {hasActiveFilters && (
             <button
               type="button"
+              data-testid="clear-all-filters-btn"
               onClick={onReset}
               className="text-sm text-stellar-blue hover:underline"
             >

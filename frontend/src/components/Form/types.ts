@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import type { PopoverProps } from "../help/Popover";
 
 export interface BaseFieldProps {
     /** Unique identifier for the field, used to link label and input */
@@ -19,6 +20,15 @@ export interface BaseFieldProps {
     loading?: boolean;
     /** Optional additional CSS classes */
     className?: string;
+    /**
+     * When provided, renders a HelpIcon next to the label that opens an inline
+     * help popover with contextual copy.
+     */
+    helpContent?: ReactNode;
+    /** Optional title for the help popover */
+    helpTitle?: string;
+    /** Optional "learn more" link for the help popover */
+    helpLink?: PopoverProps["link"];
 }
 
 export interface SelectOption {

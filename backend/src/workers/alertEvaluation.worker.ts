@@ -17,6 +17,8 @@ export interface AlertEvaluationJobData {
   snapshots: MetricSnapshot[];
 }
 
+const BATCH_SIZE = parseInt(process.env.ALERT_EVALUATION_BATCH_SIZE ?? "10", 10);
+
 export const alertEvaluationWorker = new Worker<AlertEvaluationJobData>(
   QUEUE_NAME,
   async (job) => {
@@ -24,11 +26,11 @@ export const alertEvaluationWorker = new Worker<AlertEvaluationJobData>(
     const { snapshots } = job.data;
 
     logger.info(
-      { jobId: job.id, assetCount: snapshots.length },
+      { jobId: job.id, assetCount: snapshots.length, batchSize: BATCH_SIZE },
       "Processing alert evaluation job"
     );
 
-    const events = await alertService.batchEvaluate(snapshots);
+    const events = await alertService.batchEvaluateParallel(snapshots, BATCH_SIZE);
 
     logger.info(
       { jobId: job.id, alertCount: events.length },
@@ -37,7 +39,7 @@ export const alertEvaluationWorker = new Worker<AlertEvaluationJobData>(
 
     return { success: true, alertCount: events.length, events };
   },
-  { connection, concurrency: 1 }
+  { connection, concurrency: 4 }
 );
 
 alertEvaluationWorker.on("completed", (job) => {

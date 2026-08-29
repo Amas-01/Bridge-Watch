@@ -29,6 +29,15 @@ export async function metricsRoutes(server: FastifyInstance) {
       },
     },
     async (_request, reply) => {
+      try {
+        const { JobQueue } = await import("../../workers/queue.js");
+        const jobQueue = JobQueue.getInstance();
+        const counts = await jobQueue.getJobCounts();
+        metricsService.updateBullQueueMetrics(counts);
+      } catch (err) {
+        // queue might not be fully initialized or reachable, ignore during metrics fetch
+      }
+
       const metrics = await metricsService.getMetrics();
       reply.type("text/plain; version=0.0.4; charset=utf-8");
       return metrics;

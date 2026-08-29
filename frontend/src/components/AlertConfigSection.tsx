@@ -1,10 +1,6 @@
-interface Alert {
-  id: string;
-  type: string;
-  severity: "info" | "warning" | "critical";
-  message: string;
-  createdAt: string;
-}
+import AlertSnoozeControls from "./alerts/AlertSnoozeControls";
+import { useAlertSnoozes } from "../hooks/useAlertSnoozes";
+import type { Alert } from "../types";
 
 interface AlertConfigSectionProps {
   alerts: Alert[] | null | undefined;
@@ -18,6 +14,9 @@ const SEVERITY_STYLES: Record<Alert["severity"], string> = {
 };
 
 export default function AlertConfigSection({ alerts, isLoading }: AlertConfigSectionProps) {
+  const { snoozeMany, snooze, unsnooze, getStatus } = useAlertSnoozes();
+  const activeAlerts = (alerts ?? []).filter((alert) => !getStatus(alert.id));
+
   if (isLoading) {
     return (
       <div className="bg-stellar-card border border-stellar-border rounded-xl p-6">
@@ -33,27 +32,60 @@ export default function AlertConfigSection({ alerts, isLoading }: AlertConfigSec
 
   return (
     <div className="bg-stellar-card border border-stellar-border rounded-xl p-6">
-      <h3 className="text-lg font-semibold text-white mb-4">Alerts</h3>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h3 className="text-lg font-semibold text-white">Alerts</h3>
+        {activeAlerts.length > 0 ? (
+          <AlertSnoozeControls
+            label="all active alerts"
+            compact
+            snoozedUntil={null}
+            onSnooze={(durationMinutes) =>
+              snoozeMany(
+                activeAlerts.map((alert) => ({ key: alert.id, label: alert.message })),
+                durationMinutes
+              )
+            }
+          />
+        ) : null}
+      </div>
       {alerts && alerts.length > 0 ? (
         <div className="space-y-3">
-          {alerts.map((alert) => (
-            <div
-              key={alert.id}
-              className="flex items-start gap-3 p-3 rounded-lg bg-stellar-dark border border-stellar-border"
-            >
-              <span
-                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${SEVERITY_STYLES[alert.severity]}`}
+          {alerts.map((alert) => {
+            const status = getStatus(alert.id);
+
+            return (
+              <div
+                key={alert.id}
+                className="flex flex-col gap-3 rounded-lg border border-stellar-border bg-stellar-dark p-3"
               >
-                {alert.severity}
-              </span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-white">{alert.message}</p>
-                <p className="text-xs text-stellar-text-secondary mt-1">
-                  {new Date(alert.createdAt).toLocaleString()}
-                </p>
+                <div className="flex items-start gap-3">
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium shrink-0 ${SEVERITY_STYLES[alert.severity]}`}
+                  >
+                    {alert.severity}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-white">{alert.message}</p>
+                    <p className="mt-1 text-xs text-stellar-text-secondary">
+                      {new Date(alert.createdAt).toLocaleString()}
+                    </p>
+                    {status ? (
+                      <p className="mt-1 text-xs text-stellar-blue">
+                        Snoozed until {new Date(status.snoozedUntil).toLocaleString()}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+                <AlertSnoozeControls
+                  label={alert.message}
+                  snoozedUntil={status?.snoozedUntil ?? null}
+                  onSnooze={(durationMinutes) => snooze(alert.id, alert.message, durationMinutes)}
+                  onUnsnooze={status ? () => unsnooze(alert.id) : undefined}
+                  compact
+                />
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <p className="text-stellar-text-secondary text-sm">No active alerts.</p>

@@ -34,7 +34,7 @@ export default function EndpointCard({ endpoint }: Props) {
       {/* Header — always visible */}
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center gap-3 px-4 py-3 bg-stellar-card hover:bg-[#1a1f35] transition-colors text-left"
+        className="w-full flex items-center gap-3 px-4 py-3 bg-stellar-card hover:bg-neutral-850 transition-colors text-left"
         aria-expanded={open}
       >
         <span className={`text-xs font-bold px-2 py-0.5 rounded font-mono shrink-0 ${METHOD_COLORS[endpoint.method]}`}>

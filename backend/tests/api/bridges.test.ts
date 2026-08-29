@@ -83,7 +83,20 @@ describe("Bridges API", () => {
       });
 
       expect(response.statusCode).toBe(200);
-      expect(bridgeServiceMocks.getBridgeStats).toHaveBeenCalledWith("circle");
+      expect(bridgeServiceMocks.getBridgeStats).toHaveBeenCalledWith("circle", { startDate: undefined, endDate: undefined });
+    });
+
+    it("should pass custom startDate and endDate query parameters to bridgeService", async () => {
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/v1/bridges/circle/stats?startDate=2026-07-01&endDate=2026-07-15",
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(bridgeServiceMocks.getBridgeStats).toHaveBeenCalledWith("circle", {
+        startDate: "2026-07-01",
+        endDate: "2026-07-15",
+      });
     });
   });
 });

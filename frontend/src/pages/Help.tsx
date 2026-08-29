@@ -5,6 +5,7 @@ import {
   helpCategories,
   type HelpCategory,
 } from "../content/helpContent";
+import { Tabs, TabList, Tab, TabPanel } from "../components/Tabs";
 
 type RatingMap = Record<string, number>;
 
@@ -88,35 +89,43 @@ export default function Help() {
       <section className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <aside className="lg:col-span-1 space-y-4">
           <div className="rounded-lg border border-stellar-border bg-stellar-card p-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-stellar-text-secondary">Categories</h2>
-            <div className="mt-3 flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() => setSelectedCategory("all")}
-                className={`rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                  selectedCategory === "all"
-                    ? "bg-stellar-blue text-white"
-                    : "text-stellar-text-secondary hover:bg-stellar-dark hover:text-stellar-text-primary"
-                }`}
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-stellar-text-secondary" id="help-categories-label">Categories</h2>
+            <Tabs
+              activeTab={selectedCategory}
+              onTabChange={(id) => setSelectedCategory(id as HelpCategory | "all")}
+              orientation="vertical"
+            >
+              <TabList
+                aria-labelledby="help-categories-label"
+                className="mt-3 flex flex-col gap-2"
               >
-                All topics
-              </button>
-              {helpCategories.map((category) => (
-                <button
-                  key={category.id}
-                  type="button"
-                  onClick={() => setSelectedCategory(category.id)}
-                  className={`rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                    selectedCategory === category.id
-                      ? "bg-stellar-blue text-white"
-                      : "text-stellar-text-secondary hover:bg-stellar-dark hover:text-stellar-text-primary"
-                  }`}
+                <Tab
+                  id="all"
+                  activeClassName="bg-stellar-blue text-white border-transparent"
+                  inactiveClassName="text-stellar-text-secondary hover:bg-stellar-dark hover:text-stellar-text-primary border-transparent"
+                  className="rounded-md px-3 py-2 text-left text-sm"
                 >
-                  <div className="font-medium">{category.label}</div>
-                  <div className="text-xs opacity-80 mt-1">{category.description}</div>
-                </button>
+                  All topics
+                </Tab>
+                {helpCategories.map((category) => (
+                  <Tab
+                    key={category.id}
+                    id={category.id}
+                    activeClassName="bg-stellar-blue text-white border-transparent"
+                    inactiveClassName="text-stellar-text-secondary hover:bg-stellar-dark hover:text-stellar-text-primary border-transparent"
+                    className="rounded-md px-3 py-2 text-left text-sm"
+                  >
+                    <div className="font-medium">{category.label}</div>
+                    <div className="text-xs opacity-80 mt-1">{category.description}</div>
+                  </Tab>
+                ))}
+              </TabList>
+              {/* Panels are rendered outside the sidebar — keepMounted so state is preserved */}
+              <TabPanel id="all" keepMounted />
+              {helpCategories.map((category) => (
+                <TabPanel key={category.id} id={category.id} keepMounted />
               ))}
-            </div>
+            </Tabs>
           </div>
 
           <div className="rounded-lg border border-stellar-border bg-stellar-card p-4">

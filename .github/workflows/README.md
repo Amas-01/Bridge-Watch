@@ -66,6 +66,18 @@ This directory contains the CI/CD pipeline configuration for Stellar Bridge Watc
 - `GITHUB_TOKEN` (automatically provided)
 - `NPM_TOKEN` (if NPM publishing is enabled)
 
+**Release Shield:**
+
+- Runs before a GitHub release or release artifact can be published.
+- Requires successful `CI`, `Code Quality`, and `Security Scanning` workflow runs for the exact release commit.
+- Probes every comma-separated readiness endpoint in the `RELEASE_HEALTH_URLS` repository variable.
+- Rebuilds the backend, frontend, and Soroban WASM artifacts from locked dependencies.
+- Blocks promotion if any gate fails. Frontend image publication failures are not ignored.
+- A manual dispatch can request an emergency override, but the actor must have `maintain` or `admin` permission and provide an audit reason of at least 10 characters. Overrides are unavailable to tag-triggered releases.
+- Set `RELEASE_REQUIRED_WORKFLOWS` to a comma-separated list to customize the required workflow names.
+
+The release dry-run calls the same shield with external health and prior-workflow evidence disabled, and runs the shield in report-only mode so PR checks still continue to the concrete dry-run jobs. Metadata and artifact gates still run and are written to the GitHub Actions job summary, but only the real release workflow enforces the shield decision.
+
 ### 4. Code Quality Workflow (`code-quality.yml`)
 
 **Trigger:** Pull Requests, Push to `main`/`develop` branches

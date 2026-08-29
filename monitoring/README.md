@@ -44,6 +44,16 @@ Alertmanager routes:
 
 Replace placeholder integration keys/webhooks in `alertmanager.yml` before production use.
 
+## Dashboard templates
+
+Reusable Grafana dashboard templates are available in:
+
+- `monitoring/grafana/dashboards/`
+
+See:
+
+- `monitoring/DASHBOARD_TEMPLATES.md` for import and provisioning instructions.
+
 ## Runbooks
 
 Alert annotations include `runbook_url` values pointing to:

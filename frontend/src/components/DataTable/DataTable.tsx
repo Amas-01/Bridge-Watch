@@ -7,7 +7,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import type { FilterFn, Row, RowData } from "@tanstack/react-table";
-import { ColumnToggle } from "./ColumnToggle";
+import { ColumnChooser } from "./ColumnToggle";
 import { TableBody } from "./TableBody";
 import { TableExport } from "./TableExport";
 import { TableHeader } from "./TableHeader";
@@ -90,6 +90,7 @@ type DataTableProps<TData extends RowData> = {
   rowActions?: DataTableRowAction<TData>;
   enableVirtualization?: boolean;
   filenameBase?: string;
+  storageKey?: string;
   getRowId?: (row: TData, index: number, parent?: Row<TData>) => string;
 };
 
@@ -106,18 +107,26 @@ export function DataTable<TData extends RowData>({
   rowActions,
   enableVirtualization = true,
   filenameBase = "data",
+  storageKey,
   getRowId,
 }: DataTableProps<TData>) {
   const {
     state,
     setSorting,
+    clearSorting,
+    hasSorting,
     setColumnFilters,
     setGlobalFilter,
     setPagination,
     setColumnVisibility,
     setRowSelection,
     setColumnOrder,
-  } = useDataTable<TData>({ columns, defaultPageSize: pageSizeOptions?.[0] ?? 10 });
+    resetColumnPreferences,
+  } = useDataTable<TData>({
+    columns,
+    defaultPageSize: pageSizeOptions?.[0] ?? 10,
+    storageKey,
+  });
 
   const columnsWithSelection = useMemo(() => {
     const mappedColumns = withFilterFns(columns);
@@ -177,6 +186,24 @@ export function DataTable<TData extends RowData>({
   });
 
   const selectedCount = table.getSelectedRowModel().rows.length;
+  const activeSortLabels = useMemo(
+    () =>
+      state.sorting.map((sort, index) => {
+        const column = table.getColumn(sort.id);
+        const label =
+          typeof column?.columnDef.header === "string"
+            ? column.columnDef.header
+            : sort.id;
+
+        return {
+          id: sort.id,
+          label,
+          direction: sort.desc ? "desc" : "asc",
+          position: index + 1,
+        };
+      }),
+    [state.sorting, table]
+  );
 
   return (
     <div className="bg-stellar-card border border-stellar-border rounded-lg p-6">
@@ -221,6 +248,44 @@ export function DataTable<TData extends RowData>({
           </div>
         </div>
 
+        <div className="flex flex-col gap-2 rounded-lg border border-stellar-border bg-stellar-dark/30 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs uppercase tracking-[0.2em] text-stellar-text-secondary">
+              Sort
+            </span>
+            {hasSorting ? (
+              activeSortLabels.map((sort) => (
+                <span
+                  key={sort.id}
+                  className="inline-flex items-center gap-2 rounded-full border border-stellar-border bg-stellar-card px-3 py-1 text-xs text-stellar-text-primary"
+                >
+                  <span>
+                    {sort.position}. {sort.label}
+                  </span>
+                  <span className="text-stellar-text-secondary">
+                    {sort.direction === "asc" ? "Asc" : "Desc"}
+                  </span>
+                </span>
+              ))
+            ) : (
+              <span className="text-xs text-stellar-text-secondary">
+                Click a header to sort. Hold Shift to add a secondary sort.
+              </span>
+            )}
+          </div>
+          {hasSorting ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={clearSorting}
+                className="rounded-md border border-stellar-border px-3 py-1.5 text-xs font-medium text-stellar-text-primary transition-colors hover:border-stellar-blue hover:text-stellar-blue"
+              >
+                Clear sort
+              </button>
+            </div>
+          ) : null}
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <TableHeader
@@ -242,7 +307,7 @@ export function DataTable<TData extends RowData>({
         </div>
 
         <div className="flex flex-col gap-3">
-          <ColumnToggle table={table} />
+          <ColumnChooser table={table} onReset={resetColumnPreferences} />
           <TablePagination table={table} pageSizeOptions={pageSizeOptions} />
         </div>
       </div>

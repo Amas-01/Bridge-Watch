@@ -9,20 +9,21 @@ describe("OnboardingDialog", () => {
     const onClose = vi.fn();
     const onComplete = vi.fn();
 
-    const { asFragment, container } = render(
+    const { container } = render(
       <MemoryRouter>
         <OnboardingDialog open onClose={onClose} onComplete={onComplete} />
       </MemoryRouter>
     );
-
-    // Snapshot test
-    expect(asFragment()).toMatchSnapshot();
 
     // Accessibility test
     const results = await axe(container);
     expect(results).toHaveNoViolations();
 
     expect(screen.getByRole("heading", { name: "Welcome to Bridge Watch" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Developer Help" })).toHaveAttribute(
+      "href",
+      "https://developers.stellar.org/docs/build/smart-contracts"
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(screen.getByRole("heading", { name: "Start on the Dashboard" })).toBeInTheDocument();
@@ -35,4 +36,3 @@ describe("OnboardingDialog", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 });
-

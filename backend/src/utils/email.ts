@@ -6,6 +6,27 @@ import type { ExportRecord } from "../types/export.types.js";
 
 let transporter: Transporter | null = null;
 
+export function formatEmailDate(value: Date | string | number | null | undefined): string {
+  if (value == null || value === "") {
+    return "N/A";
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "N/A";
+  }
+
+  return `${new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "UTC",
+  }).format(date)} UTC`;
+}
+
 /**
  * Get or create email transporter
  * Returns null if SMTP is not configured
@@ -81,9 +102,7 @@ export async function sendExportEmail(
  * Generate HTML email content
  */
 function generateEmailHTML(exportRecord: ExportRecord): string {
-  const expiryDate = exportRecord.download_url_expires_at
-    ? new Date(exportRecord.download_url_expires_at).toLocaleString()
-    : "N/A";
+  const expiryDate = formatEmailDate(exportRecord.download_url_expires_at);
 
   const fileSizeMB = exportRecord.file_size_bytes
     ? (exportRecord.file_size_bytes / (1024 * 1024)).toFixed(2)
@@ -207,9 +226,7 @@ function generateEmailHTML(exportRecord: ExportRecord): string {
  * Generate plain text email content
  */
 function generateEmailText(exportRecord: ExportRecord): string {
-  const expiryDate = exportRecord.download_url_expires_at
-    ? new Date(exportRecord.download_url_expires_at).toLocaleString()
-    : "N/A";
+  const expiryDate = formatEmailDate(exportRecord.download_url_expires_at);
 
   const fileSizeMB = exportRecord.file_size_bytes
     ? (exportRecord.file_size_bytes / (1024 * 1024)).toFixed(2)

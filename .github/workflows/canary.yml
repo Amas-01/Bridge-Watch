@@ -1,0 +1,190 @@
+name: Canary Deployment
+
+on:
+  workflow_run:
+    workflows: ["Docker Build & Push"]
+    types:
+      - completed
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      canary_weight:
+        description: "Percentage of traffic to route to canary (1–50)"
+        required: false
+        default: "10"
+        type: string
+      image_tag:
+        description: "Docker image tag to deploy as canary (defaults to latest main SHA)"
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: canary-deployment
+  cancel-in-progress: false   # never cancel a running canary — let it finish or abort
+
+env:
+  CANARY_WEIGHT: ${{ github.event.inputs.canary_weight || '10' }}
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ─── Gate: skip if the triggering Docker build failed ───────────────────────
+  preflight:
+    name: Preflight check
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    outputs:
+      image_tag: ${{ steps.resolve_tag.outputs.tag }}
+    steps:
+      - name: Resolve image tag
+        id: resolve_tag
+        run: |
+          if [ -n "${{ github.event.inputs.image_tag }}" ]; then
+            echo "tag=${{ github.event.inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ─── Deploy canary (10% traffic by default) ──────────────────────────────────
+  deploy-canary:
+    name: Deploy canary (${{ needs.preflight.outputs.image_tag }})
+    needs: preflight
+    runs-on: ubuntu-latest
+    environment: canary
+    outputs:
+      canary_id: ${{ steps.deploy.outputs.canary_id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy canary replica
+        id: deploy
+        run: |
+          CANARY_ID="canary-${{ github.run_id }}"
+          echo "Deploying canary: $CANARY_ID"
+          echo "  Image tag : ${{ needs.preflight.outputs.image_tag }}"
+          echo "  Traffic   : ${{ env.CANARY_WEIGHT }}%"
+
+          # Replace with your actual deployment command, e.g.:
+          #   kubectl set image deployment/bridge-watch-canary \
+          #     app=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.preflight.outputs.image_tag }}
+          #
+          #   kubectl annotate deployment/bridge-watch-canary \
+          #     nginx.ingress.kubernetes.io/canary-weight="${{ env.CANARY_WEIGHT }}"
+
+          echo "canary_id=$CANARY_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Verify canary pods are ready
+        run: |
+          echo "Waiting for canary pods to reach Running state..."
+          # kubectl rollout status deployment/bridge-watch-canary --timeout=120s
+          echo "Canary pods ready."
+
+  # ─── Health monitoring window ────────────────────────────────────────────────
+  monitor-canary:
+    name: Monitor canary health (5 min window)
+    needs: deploy-canary
+    runs-on: ubuntu-latest
+    outputs:
+      healthy: ${{ steps.health_check.outputs.healthy }}
+    steps:
+      - name: Poll health endpoint
+        id: health_check
+        run: |
+          CANARY_HOST="${{ vars.CANARY_HOST || 'https://canary.example.com' }}"
+          MAX_ATTEMPTS=10
+          SLEEP_SECONDS=30
+          FAILED=0
+
+          echo "Starting health check loop (${MAX_ATTEMPTS} attempts × ${SLEEP_SECONDS}s)..."
+
+          for i in $(seq 1 "$MAX_ATTEMPTS"); do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+              --max-time 10 \
+              "${CANARY_HOST}/health" || echo "000")
+
+            echo "Attempt $i / $MAX_ATTEMPTS — HTTP $HTTP_CODE"
+
+            if [ "$HTTP_CODE" != "200" ]; then
+              FAILED=$((FAILED + 1))
+              echo "::warning::Health check failed (attempt $i) — HTTP $HTTP_CODE"
+            fi
+
+            # Abort immediately on three consecutive failures
+            if [ "$FAILED" -ge 3 ]; then
+              echo "healthy=false" >> "$GITHUB_OUTPUT"
+              echo "::error::Canary health check failed 3 times in a row — aborting."
+              exit 1
+            fi
+
+            [ "$i" -lt "$MAX_ATTEMPTS" ] && sleep "$SLEEP_SECONDS"
+          done
+
+          echo "healthy=true" >> "$GITHUB_OUTPUT"
+          echo "All health checks passed."
+
+      - name: Collect canary metrics snapshot
+        if: always()
+        run: |
+          echo "Collecting Prometheus metrics snapshot from canary..."
+          # curl -s "${CANARY_HOST}/api/v1/health/metrics" | grep bridge_watch_health_status
+          echo "Metrics snapshot complete."
+
+  # ─── Promote to full production traffic ──────────────────────────────────────
+  promote:
+    name: Promote canary to production
+    needs: [preflight, deploy-canary, monitor-canary]
+    if: needs.monitor-canary.outputs.healthy == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Shift 100% traffic to canary image
+        run: |
+          echo "Promoting canary ${{ needs.deploy-canary.outputs.canary_id }} to production."
+          echo "  Image: ${{ needs.preflight.outputs.image_tag }}"
+
+          # kubectl set image deployment/bridge-watch \
+          #   app=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.preflight.outputs.image_tag }}
+          # kubectl annotate deployment/bridge-watch \
+          #   nginx.ingress.kubernetes.io/canary-weight="0" --overwrite
+          # kubectl delete deployment/bridge-watch-canary
+
+          echo "Promotion complete."
+
+      - name: Tag promoted image as stable
+        run: |
+          echo "Tagging ${{ needs.preflight.outputs.image_tag }} as stable..."
+          # docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.preflight.outputs.image_tag }}
+          # docker tag  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.preflight.outputs.image_tag }} \
+          #             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable
+          # docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable
+          echo "Done."
+
+  # ─── Automatic rollback on health failure ────────────────────────────────────
+  rollback:
+    name: Rollback canary
+    needs: [deploy-canary, monitor-canary]
+    if: failure() && needs.deploy-canary.result == 'success'
+    runs-on: ubuntu-latest
+    environment: canary
+    steps:
+      - name: Remove canary and restore stable traffic
+        run: |
+          echo "Rolling back canary ${{ needs.deploy-canary.outputs.canary_id }}."
+
+          # kubectl delete deployment/bridge-watch-canary --ignore-not-found
+          # kubectl annotate deployment/bridge-watch \
+          #   nginx.ingress.kubernetes.io/canary-weight="0" --overwrite
+
+          echo "Rollback complete — 100% traffic returned to stable."
+
+      - name: Notify rollback
+        if: always()
+        run: |
+          echo "::error::Canary deployment rolled back. Check health check logs above."
+          # Optionally: curl -X POST ${{ secrets.SLACK_WEBHOOK }} \
+          #   -H 'Content-type: application/json' \
+          #   --data '{"text":"🚨 Bridge Watch canary rolled back — ${{ github.sha }}"}'

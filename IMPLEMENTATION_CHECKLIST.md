@@ -283,7 +283,50 @@
 ✅ Code quality standards met
 ✅ Ready for PR submission
 
-## Files Created (10)
+## Schema Drift Checks - Implementation Checklist (Issue #380)
+
+### ✅ Schema Drift Detection
+- [x] Schema extraction logic (recursive path/type mapping)
+- [x] Addition/Removal/Type change detection
+- [x] Breaking vs non-breaking drift classification
+- [x] Baseline persistence in PostgreSQL
+- [x] Drift incident logging with payload samples
+
+### ✅ Integration
+- [x] Integrated into CircleSource (Stablecoins, ExchangeRates)
+- [x] Integrated into CoinGeckoSource (SimplePrice)
+- [x] Automatic baseline creation on first run
+
+### ✅ Monitoring & Alerting
+- [x] Added `schema_drift` to `AlertType` in AlertService
+- [x] Critical alerts for breaking changes
+- [x] Warnings for non-breaking additions
+- [x] Daily `schemaDriftJob` for summary and cleanup
+
+### ✅ API & Documentation
+- [x] GET `/api/v1/schema-drift/report` endpoint
+- [x] POST `/api/v1/schema-drift/resolve/:id` endpoint
+- [x] POST `/api/v1/schema-drift/baseline/:sourceName` endpoint
+- [x] Documentation in `backend/docs/SCHEMA_DRIFT_HANDLING.md`
+
+### ✅ Database
+- [x] Migration `022_schema_drift_checks.ts` created
+- [x] `schema_baselines` table created
+- [x] `schema_drift_incidents` table created
+- [x] Proper indexing for performance
+
+## Files Created (5)
+1. backend/src/database/migrations/022_schema_drift_checks.ts
+2. backend/src/services/schemaDrift.service.ts
+3. backend/src/jobs/schemaDrift.job.ts
+4. backend/src/api/routes/schemaDrift.ts
+5. backend/docs/SCHEMA_DRIFT_HANDLING.md
+
+## Files Modified (4)
+1. backend/src/services/alert.service.ts
+2. backend/src/services/sources/circle.source.ts
+3. backend/src/services/sources/coingecko.source.ts
+4. backend/src/api/routes/index.ts
 
 1. backend/src/services/analytics.service.ts
 2. backend/src/workers/analyticsAggregation.worker.ts

@@ -139,6 +139,12 @@ npm run migrate --workspace=backend
 # Load seed data
 npm run seed --workspace=backend
 ```
+### Database backups
+
+Weekly automated backups of the TimescaleDB schema and data run via
+`.github/workflows/db-backup.yml` and upload to S3. To run or test the
+backup/restore pipeline locally, see
+[docs/database-backup-restore.md](database-backup-restore.md).
 
 ### 6. Build Contracts (Optional)
 

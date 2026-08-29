@@ -1,197 +1,223 @@
-/**
- * useLiquidity — custom hook for real-time liquidity aggregation.
- *
- * Manages WebSocket subscriptions for a given trading pair and normalises
- * data from three sources: SDEX, StellarX AMM, and Phoenix.
- *
- * @example
- * const { depth, venues, history, isLoading, error } = useLiquidity("USDC/XLM");
- */
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { wsService } from "../services/websocket";
 import { getAssetLiquidity } from "../services/api";
+import { useWebSocket } from "./useWebSocket";
 import type {
-  TradingPair,
   LiquidityState,
-  LiquidityWsMessage,
-  VenueLiquidity,
   DepthData,
+  VenueLiquidity,
   LiquiditySnapshot,
+  TradingPair,
   OrderBookLevel,
-  LiquidityVenue,
 } from "../types/liquidity";
 
-/** Stellar uses 7 decimal places — round to avoid floating-point drift */
-const STELLAR_PRECISION = 7;
-function round7(n: number): number {
-  return parseFloat(n.toFixed(STELLAR_PRECISION));
+interface RawPriceLevel {
+  priceImpact: number;
+  totalAmount: number;
 }
 
-/**
- * Derive the base asset symbol from a pair string (e.g. "USDC/XLM" → "USDC").
- */
-function baseSymbol(pair: TradingPair): string {
-  return pair.split("/")[0];
+interface RawLiquiditySource {
+  dex: string;
+  totalLiquidity: number;
+  bidDepth: number;
+  askDepth: number;
+  priceLevels?: RawPriceLevel[];
 }
 
-/**
- * Normalise raw venue liquidity data from the REST API into VenueLiquidity[].
- * Handles missing or zero-total cases gracefully.
- */
-function normaliseVenues(
-  sources: Array<{ dex: string; bidDepth: number; askDepth: number; totalLiquidity: number }>
-): VenueLiquidity[] {
-  const total = sources.reduce((sum, s) => sum + s.totalLiquidity, 0);
-  return sources.map((s) => ({
-    venue: s.dex as LiquidityVenue,
-    totalLiquidity: round7(s.totalLiquidity),
-    bidDepth: round7(s.bidDepth),
-    askDepth: round7(s.askDepth),
-    share: total > 0 ? round7((s.totalLiquidity / total) * 100) : 0,
-  }));
+interface RawLiquidityData {
+  totalLiquidity?: number;
+  sources?: RawLiquiditySource[];
+  bestBid?: { price?: number };
+  bestAsk?: { price?: number };
+  lastUpdated?: string;
 }
 
-/**
- * Build a synthetic DepthData from venue data when no WebSocket message
- * has arrived yet (REST bootstrap).
- */
-function buildSyntheticDepth(
-  pair: TradingPair,
-  venues: VenueLiquidity[]
-): DepthData {
-  const bids: OrderBookLevel[] = [];
-  const asks: OrderBookLevel[] = [];
-  let cumBid = 0;
-  let cumAsk = 0;
+// Helper function to round to 7 decimal places
+function round7(num: number): number {
+  return Math.round(num * 1e7) / 1e7;
+}
 
-  venues.forEach((v) => {
-    // Spread synthetic levels across 5 price steps per venue
-    const bidStep = v.bidDepth / 5;
-    const askStep = v.askDepth / 5;
-    for (let i = 1; i <= 5; i++) {
-      cumBid += bidStep;
-      bids.push({ price: round7(1 - i * 0.001), volume: round7(cumBid), venue: v.venue });
-      cumAsk += askStep;
-      asks.push({ price: round7(1 + i * 0.001), volume: round7(cumAsk), venue: v.venue });
+export function useLiquidity(pair: string): LiquidityState {
+  // Extract the main asset symbol from the pair if a slash exists.
+  // e.g. "USDC/XLM" -> "XLM" (since the backend aggregates against USDC)
+  // or "EURC/XLM" -> "EURC"
+  const symbol = useMemo(() => {
+    if (!pair) return "";
+    if (pair.includes("/")) {
+      const parts = pair.split("/");
+      return parts[0] === "USDC" ? parts[1] : parts[0];
     }
-  });
+    return pair;
+  }, [pair]);
 
-  bids.sort((a, b) => b.price - a.price);
-  asks.sort((a, b) => a.price - b.price);
-
-  return { pair, bids, asks, midPrice: 1, timestamp: new Date().toISOString() };
-}
-
-/**
- * useLiquidity hook.
- *
- * @param pair - The Phase 1 trading pair to subscribe to.
- * @returns LiquidityState with depth, venues, history, loading, and error.
- */
-export function useLiquidity(pair: TradingPair): LiquidityState {
-  const symbol = baseSymbol(pair);
-  const channel = `liquidity:${pair}`;
-
-  const [state, setState] = useState<LiquidityState>({
+  // Local state to store our formatted/derived data and history
+  const [history, setHistory] = useState<LiquiditySnapshot[]>([]);
+  const [derivedState, setDerivedState] = useState<{
+    depth: DepthData | null;
+    venues: VenueLiquidity[];
+    lastUpdated: string | null;
+  }>({
     depth: null,
     venues: [],
-    history: [],
-    isLoading: true,
-    error: null,
     lastUpdated: null,
   });
 
-  // Keep a rolling history buffer (max 60 snapshots)
-  const historyRef = useRef<LiquiditySnapshot[]>([]);
-
-  /** Append a snapshot to the rolling history buffer */
-  const pushSnapshot = useCallback((totalLiquidity: number) => {
-    const snapshot: LiquiditySnapshot = {
-      timestamp: new Date().toISOString(),
-      totalLiquidity: round7(totalLiquidity),
-      pair,
-    };
-    historyRef.current = [...historyRef.current.slice(-59), snapshot];
-    return historyRef.current;
-  }, [pair]);
-
-  // ── REST bootstrap via React Query ──────────────────────────────────────
-  const { data: restData, isLoading: restLoading, error: restError } = useQuery({
+  // 1. Fetch initial state using React Query with a polling interval as fallback
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["liquidity", symbol],
     queryFn: () => getAssetLiquidity(symbol),
-    staleTime: 30_000,
-    refetchInterval: 60_000,
+    enabled: Boolean(symbol),
+    refetchInterval: 5000, // Poll every 5s for real-time-like updates when WS is not sending
+    staleTime: 2500,
   });
 
-  useEffect(() => {
-    if (restLoading) return;
+  // Helper function to process the raw backend data and return new state parts
+  const processLiquidityData = useCallback((raw: RawLiquidityData | null | undefined) => {
+    if (!raw) return null;
 
-    if (restError) {
-      setState((prev) => ({
-        ...prev,
-        isLoading: false,
-        error: restError instanceof Error ? restError.message : "Failed to load liquidity",
-      }));
-      return;
-    }
+    const totalLiquidity = raw.totalLiquidity || 0;
+    const sources = raw.sources || [];
 
-    if (!restData) {
-      setState((prev) => ({ ...prev, isLoading: false }));
-      return;
-    }
+    // 1. Map venues and calculate shares
+    const venues: VenueLiquidity[] = sources.map((source) => {
+      // Map "StellarX AMM" -> "StellarX" to match the frontend types
+      const venue = source.dex === "StellarX AMM" ? "StellarX" : source.dex;
+      return {
+        venue: venue as VenueLiquidity["venue"],
+        totalLiquidity: round7(source.totalLiquidity),
+        bidDepth: round7(source.bidDepth),
+        askDepth: round7(source.askDepth),
+        share: totalLiquidity > 0 ? round7((source.totalLiquidity / totalLiquidity) * 100) : 0,
+      };
+    });
 
-    const venues = normaliseVenues(restData.sources);
-    const depth = buildSyntheticDepth(pair, venues);
-    const history = pushSnapshot(restData.totalLiquidity);
+    // 2. Build DepthData
+    const bestBidPrice = raw.bestBid?.price || 0;
+    const bestAskPrice = (raw.bestAsk?.price && raw.bestAsk.price !== Infinity) ? raw.bestAsk.price : bestBidPrice;
+    const midPrice = (bestBidPrice + bestAskPrice) / 2 || 1;
 
-    setState((prev) => ({
-      ...prev,
+    const bids: OrderBookLevel[] = [];
+    const asks: OrderBookLevel[] = [];
+
+    sources.forEach((source) => {
+      const venue = source.dex === "StellarX AMM" ? "StellarX" : source.dex;
+      const levels = source.priceLevels || [];
+      // First 4 are bids, next 4 are asks
+      const bidLevels = levels.slice(0, 4);
+      const askLevels = levels.slice(4, 8);
+
+      bidLevels.forEach((level) => {
+        const price = bestBidPrice * (1 - level.priceImpact);
+        bids.push({
+          price: round7(price),
+          volume: round7(level.totalAmount),
+          venue: venue as OrderBookLevel["venue"],
+        });
+      });
+
+      askLevels.forEach((level) => {
+        const price = bestAskPrice * (1 + level.priceImpact);
+        asks.push({
+          price: round7(price),
+          volume: round7(level.totalAmount),
+          venue: venue as OrderBookLevel["venue"],
+        });
+      });
+    });
+
+    // Sort bids descending (highest price first), asks ascending (lowest price first)
+    bids.sort((a, b) => b.price - a.price);
+    asks.sort((a, b) => a.price - b.price);
+
+    const depth: DepthData = {
+      pair: pair as TradingPair,
+      bids,
+      asks,
+      midPrice: round7(midPrice),
+      timestamp: raw.lastUpdated || new Date().toISOString(),
+    };
+
+    return {
       depth,
       venues,
-      history,
-      isLoading: false,
-      error: null,
-      lastUpdated: new Date().toISOString(),
-    }));
-  }, [restData, restLoading, restError, pair, pushSnapshot]);
-
-  // ── WebSocket real-time updates ──────────────────────────────────────────
-  const handleWsMessage = useCallback(
-    (raw: unknown) => {
-      const msg = raw as LiquidityWsMessage;
-      if (!msg?.depth || !msg?.venues) return;
-
-      const venues = msg.venues.map((v) => ({
-        ...v,
-        totalLiquidity: round7(v.totalLiquidity),
-        bidDepth: round7(v.bidDepth),
-        askDepth: round7(v.askDepth),
-        share: round7(v.share),
-      }));
-
-      const totalLiquidity = venues.reduce((s, v) => s + v.totalLiquidity, 0);
-      const history = pushSnapshot(totalLiquidity);
-
-      setState({
-        depth: msg.depth,
-        venues,
-        history,
-        isLoading: false,
-        error: null,
-        lastUpdated: new Date().toISOString(),
-      });
-    },
-    [pushSnapshot]
-  );
-
-  useEffect(() => {
-    // Subscribe and return cleanup to unsubscribe on unmount / pair change
-    const unsubscribe = wsService.subscribe(channel, handleWsMessage);
-    return () => {
-      unsubscribe();
+      lastUpdated: depth.timestamp,
+      totalLiquidity,
     };
-  }, [channel, handleWsMessage]);
+  }, [pair]);
 
-  return state;
+  // Synchronise state from React Query data
+  useEffect(() => {
+    if (data) {
+      const processed = processLiquidityData(data);
+      if (processed) {
+        setDerivedState({
+          depth: processed.depth,
+          venues: processed.venues,
+          lastUpdated: processed.lastUpdated,
+        });
+
+        // Add to history (rolling 60 points max)
+        setHistory((prev) => {
+          // Avoid duplicate entries for the exact same timestamp
+          if (prev.length > 0 && prev[prev.length - 1].timestamp === processed.lastUpdated) {
+            return prev;
+          }
+          const nextSnapshot: LiquiditySnapshot = {
+            timestamp: processed.lastUpdated || new Date().toISOString(),
+            totalLiquidity: processed.totalLiquidity,
+            pair: pair as TradingPair,
+          };
+          const newHistory = [...prev, nextSnapshot];
+          if (newHistory.length > 60) {
+            newHistory.shift();
+          }
+          return newHistory;
+        });
+      }
+    }
+  }, [data, processLiquidityData, pair]);
+
+  // 2. Subscribe to WebSocket channel
+  // Even if the backend does not currently broadcast, we implement it for future-proofing
+  // and match the requirements.
+  useWebSocket(`liquidity:${symbol}`, (wsData: unknown) => {
+    const rawData =
+      wsData && typeof wsData === "object" && "data" in wsData
+        ? (wsData as { data?: RawLiquidityData }).data
+        : (wsData as RawLiquidityData);
+    const processed = processLiquidityData(rawData);
+    if (processed) {
+      setDerivedState({
+        depth: processed.depth,
+        venues: processed.venues,
+        lastUpdated: processed.lastUpdated,
+      });
+
+      setHistory((prev) => {
+        if (prev.length > 0 && prev[prev.length - 1].timestamp === processed.lastUpdated) {
+          return prev;
+        }
+        const nextSnapshot: LiquiditySnapshot = {
+          timestamp: processed.lastUpdated || new Date().toISOString(),
+          totalLiquidity: processed.totalLiquidity,
+          pair: pair as TradingPair,
+        };
+        const newHistory = [...prev, nextSnapshot];
+        if (newHistory.length > 60) {
+          newHistory.shift();
+        }
+        return newHistory;
+      });
+    }
+  });
+
+  return {
+    depth: derivedState.depth,
+    venues: derivedState.venues,
+    history,
+    isLoading: isLoading && !derivedState.depth,
+    error: error ? (error instanceof Error ? error.message : "Error loading liquidity") : null,
+    lastUpdated: derivedState.lastUpdated,
+    refetch,
+  };
 }

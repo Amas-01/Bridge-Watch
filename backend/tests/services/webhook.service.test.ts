@@ -82,6 +82,10 @@ function makeEndpointRow(overrides: Partial<Record<string, unknown>> = {}) {
     filter_event_types: "[]",
     is_batch_delivery_enabled: false,
     batch_window_ms: 5000,
+    consecutive_failures: 0,
+    circuit_breaker_status: "closed",
+    circuit_breaker_tripped_at: null,
+    circuit_breaker_reset_at: null,
     created_at: new Date(),
     updated_at: new Date(),
     ...overrides,
@@ -217,5 +221,71 @@ describe("WebhookService — singleton", () => {
     const a = WebhookService.getInstance();
     const b = WebhookService.getInstance();
     expect(a).toBe(b);
+  });
+});
+
+describe("WebhookService — circuit breaker", () => {
+  let service: WebhookService;
+
+  beforeEach(() => {
+    (WebhookService as any).instance = undefined;
+    service = WebhookService.getInstance();
+    service.removeAllListeners();
+  });
+
+  it("getCircuitBreakerState returns correct state for a closed breaker", () => {
+    const endpoint = (service as any).mapToEndpoint(makeEndpointRow({
+      consecutive_failures: 0,
+      circuit_breaker_status: "closed",
+    }));
+    const state = service.getCircuitBreakerState(endpoint);
+    expect(state.status).toBe("closed");
+    expect(state.consecutiveFailures).toBe(0);
+    expect(state.threshold).toBe(10);
+    expect(state.trippedAt).toBeNull();
+    expect(state.resetAt).toBeNull();
+  });
+
+  it("getCircuitBreakerState returns correct state for an open breaker", () => {
+    const trippedAt = new Date();
+    const endpoint = (service as any).mapToEndpoint(makeEndpointRow({
+      consecutive_failures: 10,
+      circuit_breaker_status: "open",
+      circuit_breaker_tripped_at: trippedAt,
+    }));
+    const state = service.getCircuitBreakerState(endpoint);
+    expect(state.status).toBe("open");
+    expect(state.consecutiveFailures).toBe(10);
+    expect(state.trippedAt).toBe(trippedAt);
+  });
+
+  it("mapToEndpoint parses new circuit breaker fields", () => {
+    const trippedAt = new Date();
+    const resetAt = new Date();
+    const row = makeEndpointRow({
+      consecutive_failures: 5,
+      circuit_breaker_status: "half_open",
+      circuit_breaker_tripped_at: trippedAt,
+      circuit_breaker_reset_at: resetAt,
+    });
+    const endpoint = (service as any).mapToEndpoint(row);
+    expect(endpoint.consecutiveFailures).toBe(5);
+    expect(endpoint.circuitBreakerStatus).toBe("half_open");
+    expect(endpoint.circuitBreakerTrippedAt).toBe(trippedAt);
+    expect(endpoint.circuitBreakerResetAt).toBe(resetAt);
+  });
+
+  it("mapToEndpoint defaults circuit breaker fields when missing", () => {
+    const row = makeEndpointRow({
+      consecutive_failures: undefined,
+      circuit_breaker_status: undefined,
+      circuit_breaker_tripped_at: undefined,
+      circuit_breaker_reset_at: undefined,
+    });
+    const endpoint = (service as any).mapToEndpoint(row);
+    expect(endpoint.consecutiveFailures).toBe(0);
+    expect(endpoint.circuitBreakerStatus).toBe("closed");
+    expect(endpoint.circuitBreakerTrippedAt).toBeNull();
+    expect(endpoint.circuitBreakerResetAt).toBeNull();
   });
 });

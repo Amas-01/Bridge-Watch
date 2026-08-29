@@ -1,0 +1,61 @@
+{
+  "network": {
+    "passphrase": "Standalone Network ; February 2017",
+    "rpcUrl": "http://127.0.0.1:8000/soroban/rpc",
+    "horizonUrl": "http://127.0.0.1:8000"
+  },
+  "contracts": [
+    {
+      "name": "bridge-watch-contracts",
+      "path": "contracts/soroban",
+      "wasmPath": "contracts/target/wasm32-unknown-unknown/release/bridge_watch_contracts.wasm"
+    },
+    {
+      "name": "transfer-state-machine",
+      "path": "contracts/transfer_state_machine",
+      "wasmPath": "contracts/target/wasm32-unknown-unknown/release/transfer_state_machine.wasm"
+    }
+  ],
+  "seedAccounts": [
+    {
+      "name": "admin",
+      "fundAmount": "10000"
+    },
+    {
+      "name": "operator",
+      "fundAmount": "10000"
+    },
+    {
+      "name": "test_user",
+      "fundAmount": "5000"
+    },
+    {
+      "name": "treasury",
+      "fundAmount": "10000"
+    }
+  ],
+  "mockOperators": [
+    {
+      "name": "Primary Oracle",
+      "accountKey": "operator"
+    }
+  ],
+  "testAssets": [
+    {
+      "code": "USDC",
+      "issuerAccount": "treasury"
+    },
+    {
+      "code": "EURC",
+      "issuerAccount": "treasury"
+    },
+    {
+      "code": "PYUSD",
+      "issuerAccount": "treasury"
+    }
+  ],
+  "persistence": {
+    "resetOnStart": true,
+    "ttlSeconds": 0
+  }
+}

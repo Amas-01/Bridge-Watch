@@ -1,0 +1,182 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "bridgewatch-system-overview",
+    "title": "Bridge Watch - System Overview (Template)",
+    "tags": ["bridge-watch", "template", "overview"],
+    "timezone": "browser",
+    "schemaVersion": 39,
+    "version": 1,
+    "refresh": "30s",
+    "time": { "from": "now-6h", "to": "now" },
+    "templating": {
+      "list": [
+        {
+          "name": "datasource",
+          "type": "datasource",
+          "label": "Datasource",
+          "query": "prometheus",
+          "current": { "selected": false, "text": "Prometheus", "value": "Prometheus" }
+        },
+        {
+          "name": "job",
+          "type": "query",
+          "label": "Job",
+          "datasource": { "type": "prometheus", "uid": "$datasource" },
+          "query": { "query": "label_values(up, job)", "refId": "PromJob" },
+          "refresh": 2,
+          "sort": 1,
+          "multi": true,
+          "includeAll": true,
+          "allValue": ".*",
+          "current": { "selected": true, "text": "bridge-watch-backend", "value": "bridge-watch-backend" }
+        },
+        {
+          "name": "instance",
+          "type": "query",
+          "label": "Instance",
+          "datasource": { "type": "prometheus", "uid": "$datasource" },
+          "query": { "query": "label_values(up{job=~\"$job\"}, instance)", "refId": "PromInstance" },
+          "refresh": 2,
+          "sort": 1,
+          "multi": true,
+          "includeAll": true,
+          "allValue": ".*"
+        }
+      ]
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Availability (Up)",
+        "type": "stat",
+        "gridPos": { "x": 0, "y": 0, "w": 6, "h": 5 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "avg(up{job=~\"$job\", instance=~\"$instance\"}) * 100"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "decimals": 2,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "red", "value": 0 },
+                { "color": "yellow", "value": 95 },
+                { "color": "green", "value": 99 }
+              ]
+            }
+          }
+        },
+        "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "horizontal" }
+      },
+      {
+        "id": 2,
+        "title": "Request Rate (RPS)",
+        "type": "timeseries",
+        "gridPos": { "x": 6, "y": 0, "w": 9, "h": 5 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "sum(rate(http_requests_total{job=~\"$job\", instance=~\"$instance\"}[5m]))"
+          }
+        ],
+        "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 2 } },
+        "options": { "legend": { "showLegend": false } }
+      },
+      {
+        "id": 3,
+        "title": "Error Rate (5xx %)",
+        "type": "timeseries",
+        "gridPos": { "x": 15, "y": 0, "w": 9, "h": 5 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "(sum(rate(http_requests_total{job=~\"$job\", instance=~\"$instance\", status_code=~\"5..\"}[5m])) / sum(rate(http_requests_total{job=~\"$job\", instance=~\"$instance\"}[5m]))) * 100"
+          }
+        ],
+        "fieldConfig": { "defaults": { "unit": "percent", "decimals": 2 } }
+      },
+      {
+        "id": 4,
+        "title": "p50 / p95 HTTP Latency (s)",
+        "type": "timeseries",
+        "gridPos": { "x": 0, "y": 5, "w": 12, "h": 7 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "histogram_quantile(0.50, sum by (le) (rate(http_request_duration_seconds_bucket{job=~\"$job\", instance=~\"$instance\"}[5m])))",
+            "legendFormat": "p50"
+          },
+          {
+            "refId": "B",
+            "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job=~\"$job\", instance=~\"$instance\"}[5m])))",
+            "legendFormat": "p95"
+          }
+        ],
+        "fieldConfig": { "defaults": { "unit": "s", "decimals": 3 } }
+      },
+      {
+        "id": 5,
+        "title": "Node CPU / Memory (%)",
+        "type": "timeseries",
+        "gridPos": { "x": 12, "y": 5, "w": 12, "h": 7 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "(1 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\", instance=~\"$instance\"}[5m]))) * 100",
+            "legendFormat": "CPU {{instance}}"
+          },
+          {
+            "refId": "B",
+            "expr": "(1 - (node_memory_MemAvailable_bytes{instance=~\"$instance\"} / node_memory_MemTotal_bytes{instance=~\"$instance\"})) * 100",
+            "legendFormat": "Mem {{instance}}"
+          }
+        ],
+        "fieldConfig": { "defaults": { "unit": "percent", "decimals": 1 } }
+      },
+      {
+        "id": 6,
+        "title": "DB Query Rate / Errors",
+        "type": "timeseries",
+        "gridPos": { "x": 0, "y": 12, "w": 12, "h": 7 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "sum(rate(db_queries_total{job=~\"$job\", instance=~\"$instance\"}[5m]))",
+            "legendFormat": "Queries/s"
+          },
+          {
+            "refId": "B",
+            "expr": "sum(rate(db_query_errors_total{job=~\"$job\", instance=~\"$instance\"}[5m]))",
+            "legendFormat": "Errors/s"
+          }
+        ],
+        "fieldConfig": { "defaults": { "decimals": 2 } }
+      },
+      {
+        "id": 7,
+        "title": "Queue Jobs Completed / Failed",
+        "type": "timeseries",
+        "gridPos": { "x": 12, "y": 12, "w": 12, "h": 7 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "sum(rate(queue_jobs_completed_total{job=~\"$job\", instance=~\"$instance\"}[5m]))",
+            "legendFormat": "Completed/s"
+          },
+          {
+            "refId": "B",
+            "expr": "sum(rate(queue_jobs_failed_total{job=~\"$job\", instance=~\"$instance\"}[5m]))",
+            "legendFormat": "Failed/s"
+          }
+        ],
+        "fieldConfig": { "defaults": { "decimals": 2 } }
+      }
+    ]
+  },
+  "overwrite": true
+}

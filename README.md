@@ -1,10 +1,5 @@
 # Stellar Bridge Watch
 
-[![CI](https://github.com/StellaBridge/Bridge-Watch/actions/workflows/ci.yml/badge.svg)](https://github.com/StellaBridge/Bridge-Watch/actions/workflows/ci.yml)
-[![Security](https://github.com/StellaBridge/Bridge-Watch/actions/workflows/security.yml/badge.svg)](https://github.com/StellaBridge/Bridge-Watch/actions/workflows/security.yml)
-[![Deploy](https://github.com/StellaBridge/Bridge-Watch/actions/workflows/deploy.yml/badge.svg)](https://github.com/StellaBridge/Bridge-Watch/actions/workflows/deploy.yml)
-[![Code Quality](https://github.com/StellaBridge/Bridge-Watch/actions/workflows/code-quality.yml/badge.svg)](https://github.com/StellaBridge/Bridge-Watch/actions/workflows/code-quality.yml)
-
 ## Overview
 
 Stellar Bridge Watch is an open-source monitoring platform for cross-chain asset bridges, decentralized exchange liquidity, and bridged asset health on the Stellar network. It provides real-time analytics, automated alerts, and transparent reporting designed for developers, traders, and institutions operating within the Stellar ecosystem.
@@ -13,9 +8,11 @@ As institutional adoption accelerates and real-world assets continue to grow on 
 
 > Project Status: Early development -- contributions and feedback are welcome.
 
+
 ## Mission
 
 To provide the Stellar ecosystem with transparent, reliable, and open-source monitoring infrastructure that strengthens trust in cross-chain bridges and improves liquidity visibility across decentralized exchanges.
+
 
 ## Problem Statement
 
@@ -29,6 +26,7 @@ The Stellar network is experiencing rapid growth in bridged assets and tokenized
 
 Stellar Bridge Watch solves this by providing a unified monitoring and analytics layer purpose-built for Stellar.
 
+
 ## Vision
 
 To become the standard monitoring infrastructure for bridged assets on Stellar, enabling:
@@ -37,6 +35,7 @@ To become the standard monitoring infrastructure for bridged assets on Stellar, 
 - Transparent, real-time visibility into cross-chain asset flows
 - Aggregated liquidity intelligence across all major Stellar DEXs
 - A public foundation that developers and institutions can build on
+
 
 ## Target Users
 
@@ -47,11 +46,38 @@ To become the standard monitoring infrastructure for bridged assets on Stellar, 
 - Compliance teams needing transparent audit trails
 - Open-source contributors interested in Stellar infrastructure
 
+
 ## Core Features
 
 ### Bridge Integrity Monitoring
 
 Continuous tracking of bridged asset supplies across chains with automated verification against official reserve data. This includes monitoring mint and burn events, detecting supply mismatches, and maintaining historical records of bridge performance and uptime.
+
+### On-Chain Bridge Status Aggregation (Soroban)
+
+The Soroban contract maintains **pre-aggregated rollups** for fast reads (no scanning across all assets/bridges at query time). Rollups are normalized into severity tiers:
+
+`StatusTier`: `Ok` | `Low` | `Medium` | `High`
+
+Stored rollup views:
+
+- **Per-asset**: `AssetStatusRollup` (health score + price deviation alerts + paused/active flags)
+- **Per-bridge**: `BridgeStatusRollup` (latest supply mismatch severity)
+- **Contract-level**: `ContractStatusRollup` (counts by tier across assets and bridges, plus an overall tier)
+
+Read functions (Soroban):
+
+- `get_asset_status_rollup(asset_code)`
+- `get_bridge_status_rollup(bridge_id)`
+- `get_contract_status_rollup()`
+
+Rollups are updated deterministically when new signals are submitted (for example, `submit_health`, `check_price_deviation`, and `record_supply_mismatch`).
+
+Events:
+
+- `asset_st` — asset tier updated
+- `bridge_st` — bridge tier updated
+- `ctr_st` — contract-level tier updated
 
 ### Liquidity Analytics
 
@@ -68,6 +94,7 @@ Composite health scores (0-100) for each monitored asset based on liquidity dept
 ### Analytics and Reporting
 
 Daily, weekly, and monthly bridge volume statistics. Cross-chain flow visualization showing which assets are flowing in and out of Stellar. Institutional asset tracking covering Franklin Templeton FOBXX, Ondo USDY, Centrifuge tokens, and others. Export functionality supports custom report generation.
+
 
 ## Architecture
 
@@ -91,14 +118,13 @@ The project is structured around five core layers:
 
 **Infrastructure:** Docker and Docker Compose for containerization, GitHub Actions for CI/CD
 
+
 ## Repository Structure
 
 ```
 stellar-bridge-watch/
 ├── contracts/
-│   ├── Cargo.toml          # workspace (soroban + transfer_state_machine)
-│   ├── soroban/            # Bridge Watch main Soroban package
-│   └── transfer_state_machine/  # bridge transfer lifecycle state machine (#16)
+│   └── soroban/
 ├── backend/
 │   ├── src/
 │   │   ├── api/
@@ -115,6 +141,9 @@ stellar-bridge-watch/
 │   │   ├── hooks/
 │   │   └── services/
 │   └── public/
+├── sdk/
+│   ├── src/
+│   └── examples/
 ├── docs/
 ├── scripts/
 ├── .github/
@@ -124,38 +153,88 @@ stellar-bridge-watch/
 └── LICENSE
 ```
 
+
 ## Quick Start
 
-### Automated Setup (Recommended)
+### Standard Setup
 
 ```bash
 # Clone the repository
 git clone https://github.com/StellaBridge/Bridge-Watch.git
 cd Bridge-Watch
 
-# Run the setup script — handles everything
-./scripts/setup.sh
+# Install dependencies
+npm install
 
-# Start the full dev environment
-make dev
+# Configure environment variables
+cp .env.example .env
+
+# Start services with Docker Compose
+docker-compose up -d
+
+# Run the development server
+npm run dev
 ```
 
-The setup script checks prerequisites, installs dependencies, configures `.env`, starts Docker services (PostgreSQL + Redis), runs database migrations and seeds, builds Soroban contracts, and generates IDE configuration. Run `./scripts/setup.sh --help` for all options.
+### Local Sandbox (for Contract Development)
 
-See [docs/DEVELOPMENT_SETUP.md](docs/DEVELOPMENT_SETUP.md) for detailed setup documentation, manual steps, and troubleshooting.
-
-### Manual Setup
+If you're developing Soroban smart contracts, you can spin up a local Stellar network with deployed contracts using a single command:
 
 ```bash
-git clone https://github.com/StellaBridge/Bridge-Watch.git
-cd Bridge-Watch
-cp .env.example .env
-npm install
-docker compose -f docker-compose.dev.yml up -d postgres redis
-npm run migrate --workspace=backend
-npm run seed --workspace=backend
-make dev
+# Start local Soroban sandbox with contracts deployed
+npm run sandbox:start
 ```
+
+This command will:
+1. Check prerequisites (Docker, soroban-cli, Rust toolchain)
+2. Start a local Stellar Quickstart container with Soroban RPC
+3. Compile all contracts to WASM
+4. Deploy contracts to the local network
+5. Generate and fund test accounts
+6. Initialize contract state with mock data
+
+**Prerequisites:**
+- Docker (running)
+- [soroban-cli](https://soroban.stellar.org/docs/getting-started/setup) — `cargo install --locked soroban-cli`
+- Rust toolchain — `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+- wasm32-unknown-unknown target — `rustup target add wasm32-unknown-unknown`
+
+**Generated Files:**
+- `.env.sandbox` — Contains deployed contract addresses and test account public keys (gitignored)
+- Private keys are managed by soroban-cli in `~/.config/soroban/identity/`
+
+**Network Endpoints:**
+- RPC: `http://127.0.0.1:8000/soroban/rpc`
+- Horizon: `http://127.0.0.1:8000`
+
+**Test Accounts:** admin, operator, test_user, treasury (all funded via friendbot)
+
+**Companion Commands:**
+```bash
+npm run sandbox:stop    # Stop the sandbox
+npm run sandbox:reset   # Reset to clean state
+npm run sandbox:logs    # View container logs
+```
+
+**Example Usage:**
+```bash
+# Invoke a contract function
+soroban contract invoke \
+  --id <CONTRACT_ID_FROM_.env.sandbox> \
+  --source-account admin \
+  --rpc-url http://127.0.0.1:8000/soroban/rpc \
+  --network-passphrase "Standalone Network ; February 2017" \
+  -- \
+  get_health \
+  --asset_code "USDC"
+```
+
+**Troubleshooting:**
+- **Container fails to start:** Check Docker daemon with `docker info`
+- **Compilation fails:** Verify Rust toolchain version with `cargo --version` and ensure wasm target is installed
+- **Deployment fails:** Check container health with `docker logs bridge-watch-soroban-sandbox`
+- **Reset state:** Run `npm run sandbox:reset` to start fresh
+
 
 ## API Endpoints (MVP)
 
@@ -170,19 +249,18 @@ GET  /api/v1/bridges/:bridge/stats     # Bridge-specific statistics
 WS   /api/v1/ws                        # WebSocket for real-time updates
 ```
 
-## Load Testing
+## Feature Documentation
 
-Bridge-Watch includes a k6-based load testing framework with scenario profiles for smoke, ramp-up, spike, and endurance testing.
+- Build cache matrix: [docs/build-cache-matrix.md](docs/build-cache-matrix.md)
+- Support handbook: [docs/support-handbook.md](docs/support-handbook.md)
+- Migration notes template: [docs/migration-notes-template.md](docs/migration-notes-template.md)
+- API authentication guide: [docs/api-authentication-guide.md](docs/api-authentication-guide.md)
+- Time range selector API: [docs/time-range-selector-api.md](docs/time-range-selector-api.md)
+- Watchlist feature: [docs/watchlist-feature.md](docs/watchlist-feature.md)
+- Visualization color system: [docs/data-visualization-color-system.md](docs/data-visualization-color-system.md)
+- Contract integration SDK: [sdk/README.md](sdk/README.md)
+- Export picker flow: [docs/user-guide/export-picker-flow.md](docs/user-guide/export-picker-flow.md)
 
-- Framework entry point: [load-tests/README.md](load-tests/README.md)
-- Methodology: [docs/load-testing-methodology.md](docs/load-testing-methodology.md)
-- Baselines: [docs/performance-baselines.md](docs/performance-baselines.md)
-
-Run a local smoke test (requires k6 installed):
-
-```bash
-npm run test:load
-```
 
 ## Roadmap
 
@@ -221,6 +299,7 @@ npm run test:load
 - Custom alert rules and notification channels
 - Multi-chain expansion beyond Ethereum bridges
 
+
 ## Initial Asset Coverage
 
 **Phase 1 Priority:**
@@ -228,6 +307,7 @@ USDC (Circle), PYUSD (PayPal), EURC (Circle), XLM (Native), FOBXX (Franklin Temp
 
 **Phase 2 Expansion:**
 USDY (Ondo Finance), Centrifuge RWA tokens, Wormhole-bridged assets, additional stablecoins
+
 
 ## Expected Impact
 
@@ -239,6 +319,7 @@ When fully developed, Stellar Bridge Watch will:
 - Reduce the barrier to entry for developers who need reliable bridge and liquidity data
 - Serve as a public good and open foundation for the Stellar community
 
+
 ## Success Metrics
 
 - Monitor 20+ bridged assets within 6 months
@@ -248,6 +329,7 @@ When fully developed, Stellar Bridge Watch will:
 - 50+ active API users and integrations
 - Community contributions from 10+ developers
 - Featured in Stellar ecosystem documentation
+
 
 ## Contributing
 
@@ -263,17 +345,16 @@ Ways to contribute:
 
 Please review the contribution guidelines before submitting a pull request.
 
-## Clipboard Utilities
-
-The frontend clipboard API and usage examples are documented in `docs/copy-clipboard.md`.
 
 ## Maintainer Commitment
 
 This project is actively maintained with the goal of long-term ecosystem support. We are committed to clear documentation, responsive issue management, and a stable development process. Major decisions will be discussed openly and community input will be valued throughout the project lifecycle.
 
+
 ## License
 
 MIT License
+
 
 ## Community and Support
 
@@ -284,33 +365,3 @@ If you are building on Stellar and want to collaborate:
 - Submit a pull request
 
 Together, we can build the monitoring infrastructure the Stellar ecosystem needs.
-
-## Data Refresh Controls
-
-The frontend now includes per-view refresh controls in Dashboard, Analytics, Bridges, Transactions, and Asset Detail pages.
-
-### What users can control
-
-- **Manual refresh:** trigger an immediate fetch for selected data groups.
-- **Auto refresh:** turn polling on/off per view.
-- **Refresh interval:** choose 10s, 30s, 60s, or 5m per view.
-- **Refresh scope:** refresh all datasets in a view or select only specific datasets (for example assets, bridges, prices, or transactions).
-- **Refresh on focus:** optionally fetch new data when the browser tab regains focus.
-- **Cancel refresh:** stop active refresh jobs from the control bar.
-
-### Visibility and feedback
-
-- **Last updated timestamp** is displayed in each control bar.
-- **Refresh in progress indicator** is shown with animated icon and button state while refresh is running.
-
-### Persistence behavior
-
-Refresh preferences are persisted to browser `localStorage` per view using scoped keys:
-
-- `bridge-watch:refresh-preferences:dashboard:v1`
-- `bridge-watch:refresh-preferences:analytics:v1`
-- `bridge-watch:refresh-preferences:bridges:v1`
-- `bridge-watch:refresh-preferences:transactions:v1`
-- `bridge-watch:refresh-preferences:asset-detail-<SYMBOL>:v1`
-
-This preserves each view's refresh behavior across reloads and sessions.

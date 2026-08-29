@@ -1,176 +1,201 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import GlobalSearch from "./search/GlobalSearch";
-import ThemeToggle from "./ThemeToggle";
-import { SkeletonText } from "./Skeleton";
-import NotificationCenter from "./NotificationCenter";
-import { useNotificationContext } from "../hooks/useNotificationContext";
-import { WatchlistSidebar } from "./WatchlistSidebar";
-import ConnectionStatus from "./ConnectionStatus";
+import { useNotificationLiveUpdates } from "../hooks/useNotificationLiveUpdates";
+import { useWatchlist } from "../hooks/useWatchlist";
+import {
+  selectCriticalCount,
+  selectUnreadCount,
+  useNotificationStore,
+} from "../stores/notificationStore";
+import EntitySwitcher from "./EntitySwitcher";
 import HamburgerButton from "./MobileNav/HamburgerButton";
 import MobileMenu from "./MobileNav/MobileMenu";
-import { desktopNavItems, isNavItemActive } from "./MobileNav/navigation";
+import { isNavItemActive } from "./MobileNav/navigation";
+import { useTranslatedDesktopNavItems } from "../hooks/useTranslatedNav";
+import NotificationsDrawer from "./NotificationsDrawer";
+import GlobalSearch from "./search/GlobalSearch";
+import UnreadCountBadge from "./UnreadCountBadge";
+import ThemeToggle from "./ThemeToggle";
 
-interface NavbarProps {
-  isLoading?: boolean;
-}
-
-export default function Navbar({ isLoading = false }: NavbarProps) {
+export default function Navbar() {
   const location = useLocation();
-  const [isNotifOpen, setIsNotifOpen] = useState(false);
-  const [isWatchlistOpen, setIsWatchlistOpen] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const { unreadCount } = useNotificationContext();
-  const navRef = useRef<HTMLDivElement>(null);
+  const desktopNavItems = useTranslatedDesktopNavItems();
+  const { activeSymbols } = useWatchlist();
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const notificationTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const previousDrawerOpen = useRef(false);
+  const unreadCount = useNotificationStore(selectUnreadCount);
+  const criticalCount = useNotificationStore(selectCriticalCount);
+
+  useNotificationLiveUpdates();
 
   useEffect(() => {
-    setMobileOpen(false);
-  }, [location.pathname]);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (navRef.current && !navRef.current.contains(event.target as Node)) {
-        setIsNotifOpen(false);
-      }
+    if (previousDrawerOpen.current && !isNotificationsOpen) {
+      notificationTriggerRef.current?.focus();
     }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+    previousDrawerOpen.current = isNotificationsOpen;
+  }, [isNotificationsOpen]);
 
-  if (isLoading) {
-    return (
-      <nav className="border-b border-stellar-border bg-stellar-card px-4 py-3" aria-label="Primary loading navigation">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <SkeletonText width="110px" height="1rem" variant="title" />
-            <div className="hidden md:flex gap-2">
-              {Array.from({ length: 9 }).map((_, i) => (
-                <SkeletonText key={i} width="70px" height="1rem" variant="text" />
-              ))}
-            </div>
-          </div>
-          <SkeletonText width="36px" height="2.25rem" variant="text" className="md:hidden rounded-md" />
-        </div>
-      </nav>
-    );
-  }
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [location.pathname]);
 
   return (
     <>
-      <nav className="border-b border-stellar-border bg-stellar-card sticky top-0 z-50" aria-label="Primary" ref={navRef}>
-        <a
-          href="#main-content"
-          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-stellar-card focus:px-3 focus:py-2 focus:text-stellar-text-primary focus:outline-none focus:ring-2 focus:ring-stellar-blue focus:ring-offset-2 focus:ring-offset-stellar-card rounded-sm"
-        >
-          Skip to content
-        </a>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16 gap-2">
-            <div className="flex items-center min-w-0 flex-1 md:flex-initial md:space-x-8">
-              <Link
-                to="/"
-                className="text-xl font-bold text-stellar-text-primary shrink-0 focus:outline-none focus:ring-2 focus:ring-stellar-blue focus:ring-offset-2 focus:ring-offset-stellar-card rounded-sm"
-                aria-label="Bridge Watch home"
-              >
-                Bridge <span className="text-stellar-blue">Watch</span>
+      <nav className="border-b border-stellar-border bg-stellar-card">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex h-16 items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-6">
+              <Link to="/dashboard" className="shrink-0 text-xl font-bold text-white">
+                Bridge Watch
               </Link>
-              <div className="hidden md:flex space-x-4">
-                {desktopNavItems.map((link) => (
-                  <Link
-                    key={link.to}
-                    to={link.to}
-                    aria-current={isNavItemActive(location.pathname, link.to) ? "page" : undefined}
-                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${isNavItemActive(location.pathname, link.to)
-                        ? "bg-stellar-blue text-white"
-                        : "text-stellar-text-secondary hover:text-stellar-text-primary"
-                      } focus:outline-none focus:ring-2 focus:ring-stellar-blue focus:ring-offset-2 focus:ring-offset-stellar-card`}
-                  >
-                    {link.label}
-                  </Link>
-                ))}
+
+              <div className="hidden items-center gap-1 xl:flex" aria-label="Primary navigation">
+                {desktopNavItems.slice(0, 8).map((item) => {
+                  const active = isNavItemActive(location.pathname, item.to);
+                  return (
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      className={`rounded-md px-3 py-2 text-sm font-medium transition ${
+                        active
+                          ? "bg-stellar-blue/20 text-white"
+                          : "text-stellar-text-secondary hover:bg-stellar-dark hover:text-white"
+                      }`}
+                      aria-current={active ? "page" : undefined}
+                    >
+                      {item.label}
+                    </Link>
+                  );
+                })}
               </div>
             </div>
 
-            {/* Right side: global search, theme toggle, shortcuts hint, network status */}
             <div className="flex items-center gap-3">
-              <GlobalSearch />
-              <ThemeToggle />
+              <div className="hidden lg:block">
+                <GlobalSearch />
+              </div>
+              <div className="hidden md:block">
+                <EntitySwitcher />
+              </div>
               <button
                 type="button"
-                onClick={() => window.dispatchEvent(new CustomEvent("bridgewatch:open-shortcuts"))}
-                aria-label="Show keyboard shortcuts (?)"
-                title="Keyboard shortcuts (?)"
-                className="hidden lg:inline-flex items-center justify-center w-7 h-7 rounded border border-stellar-border bg-stellar-dark text-stellar-text-secondary hover:text-stellar-text-primary hover:border-stellar-blue/60 font-mono text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-stellar-blue"
+                className="hidden rounded-md px-2 py-1 text-sm text-stellar-text-secondary hover:bg-stellar-dark hover:text-white lg:inline-flex"
+                onClick={() =>
+                  window.dispatchEvent(new CustomEvent("bridgewatch:open-shortcuts"))
+                }
+                aria-label="Keyboard shortcuts"
               >
                 ?
               </button>
-              <span className="text-sm text-stellar-text-secondary hidden sm:block">Stellar Network Monitor</span>
-            </div>
+              <div className="hidden items-center gap-2 text-xs text-stellar-text-secondary lg:flex">
+                <span>Quick:</span>
+                {activeSymbols.length === 0 ? (
+                  <span>No watchlist assets</span>
+                ) : (
+                  activeSymbols.slice(0, 3).map((symbol) => (
+                    <Link
+                      key={symbol}
+                      to={`/assets/${symbol}`}
+                      className="rounded border border-stellar-border px-2 py-1 hover:text-white"
+                    >
+                      {symbol}
+                    </Link>
+                  ))
+                )}
+              </div>
 
-            <div className="flex items-center gap-4">
+              <div className="hidden lg:block">
+                <ThemeToggle />
+              </div>
+
               <button
+                ref={notificationTriggerRef}
                 type="button"
-                onClick={() => setIsWatchlistOpen(true)}
-                className="p-2 rounded-full transition-colors relative focus:outline-none focus:ring-2 focus:ring-stellar-blue text-stellar-text-secondary hover:text-white"
-                aria-label="Open Watchlist"
+                onClick={() => setIsNotificationsOpen((open) => !open)}
+                className={`relative rounded-full p-2 transition-colors focus:outline-none focus:ring-2 focus:ring-stellar-blue ${
+                  isNotificationsOpen
+                    ? "bg-stellar-blue/20 text-white"
+                    : "text-stellar-text-secondary hover:text-white"
+                }`}
+                aria-label={
+                  isNotificationsOpen
+                    ? "Close notifications"
+                    : unreadCount > 0
+                    ? `Open notifications (${unreadCount} unread)`
+                    : "Open notifications"
+                }
+                aria-expanded={isNotificationsOpen}
+                aria-controls="notifications-drawer"
               >
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={2}
-                    d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
+                    d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
                   />
                 </svg>
-              </button>
-              <WatchlistSidebar isOpen={isWatchlistOpen} onClose={() => setIsWatchlistOpen(false)} />
-
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setIsNotifOpen(!isNotifOpen)}
-                  className={`p-2 rounded-full transition-colors relative focus:outline-none focus:ring-2 focus:ring-stellar-blue ${isNotifOpen ? "bg-stellar-dark text-white" : "text-stellar-text-secondary hover:text-white"
-                    }`}
-                  aria-label={`${unreadCount} notifications`}
-                  aria-expanded={isNotifOpen}
-                >
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+                <UnreadCountBadge unreadCount={unreadCount} />
+                {criticalCount > 0 && (
+                  <span
+                    className="absolute top-1 left-1 flex h-2.5 w-2.5"
+                    role="status"
+                    aria-label={`${criticalCount} unacknowledged critical alerts`}
+                  >
+                    <span
+                      className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"
+                      aria-hidden="true"
                     />
-                  </svg>
-                  {unreadCount > 0 && (
-                    <span className="absolute top-1.5 right-1.5 block h-4 w-4 rounded-full bg-red-500 text-[10px] font-bold text-white flex items-center justify-center border-2 border-stellar-card">
-                      {unreadCount > 9 ? "9+" : unreadCount}
-                    </span>
-                  )}
-                </button>
+                    <span
+                      className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500"
+                      aria-hidden="true"
+                    />
+                  </span>
+                )}
+              </button>
 
-                <NotificationCenter
-                  isOpen={isNotifOpen}
-                  onClose={() => setIsNotifOpen(false)}
-                />
-              </div>
-
-              <div className="hidden sm:flex items-center gap-3 border-l border-stellar-border pl-4">
-                <ConnectionStatus />
-              </div>
+              <Link
+                to="/settings"
+                className="rounded-full p-2 text-stellar-text-secondary hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-stellar-blue"
+                aria-label="User settings"
+                title="User settings"
+              >
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
+                </svg>
+              </Link>
 
               <HamburgerButton
-                open={mobileOpen}
-                onClick={() => setMobileOpen((current) => !current)}
+                open={isMobileMenuOpen}
+                onClick={() => setIsMobileMenuOpen((open) => !open)}
               />
             </div>
           </div>
         </div>
       </nav>
+
+      <NotificationsDrawer
+        open={isNotificationsOpen}
+        drawerId="notifications-drawer"
+        onClose={() => setIsNotificationsOpen(false)}
+      />
       <MobileMenu
-        open={mobileOpen}
+        open={isMobileMenuOpen}
         pathname={location.pathname}
-        onClose={() => setMobileOpen(false)}
+        onClose={() => setIsMobileMenuOpen(false)}
       />
     </>
   );

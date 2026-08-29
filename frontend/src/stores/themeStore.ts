@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { devtools } from "zustand/middleware";
+import { getPresetById } from "../theme/themePresets";
 
 export type ThemeMode = "light" | "dark" | "system";
 
@@ -20,6 +21,15 @@ export interface FontSettings {
   family: string;
   size: "sm" | "md" | "lg";
   lineHeight: "tight" | "normal" | "relaxed";
+}
+
+export interface CustomPresetSnapshot {
+  id: string;
+  label: string;
+  colorsLight: ThemeColors;
+  colorsDark: ThemeColors;
+  font: FontSettings;
+  density: "compact" | "comfortable" | "spacious";
 }
 
 export interface ThemeState {
@@ -42,6 +52,11 @@ export interface ThemeState {
 
   // Custom CSS variables
   customCssVars: Record<string, string>;
+
+  /** Built-in preset id from {@link ../theme/themePresets}, `custom`, or a saved preset id */
+  activePresetId: string;
+  /** User-saved theme snapshots (light + dark) */
+  customPresets: CustomPresetSnapshot[];
 }
 
 export interface ThemeActions {
@@ -76,6 +91,12 @@ export interface ThemeActions {
 
   // Reset
   resetTheme: () => void;
+
+  // Presets (library + user snapshots)
+  applyLibraryPreset: (id: string) => void;
+  applySavedCustomPreset: (id: string) => void;
+  saveCurrentAsCustomPreset: (label: string) => void;
+  removeCustomPreset: (id: string) => void;
 }
 
 const defaultLightColors: ThemeColors = {
@@ -102,10 +123,12 @@ const defaultDarkColors: ThemeColors = {
   info: "#60a5fa",
 };
 
+const stellarBoot = getPresetById("stellar");
+
 const initialThemeState: ThemeState = {
   mode: "system",
   resolvedMode: "dark",
-  colors: defaultDarkColors,
+  colors: stellarBoot ? stellarBoot.dark : defaultDarkColors,
   font: {
     family: "Inter, system-ui, sans-serif",
     size: "md",
@@ -115,6 +138,8 @@ const initialThemeState: ThemeState = {
   animationsEnabled: true,
   reducedMotion: false,
   customCssVars: {},
+  activePresetId: "stellar",
+  customPresets: [],
 };
 
 const getSystemTheme = (): "light" | "dark" => {
@@ -124,6 +149,25 @@ const getSystemTheme = (): "light" | "dark" => {
     : "light";
 };
 
+function resolveColorsForMode(
+  activePresetId: string,
+  resolvedMode: "light" | "dark",
+  customPresets: CustomPresetSnapshot[]
+): ThemeColors {
+  if (activePresetId === "custom") {
+    return resolvedMode === "dark" ? defaultDarkColors : defaultLightColors;
+  }
+  const lib = getPresetById(activePresetId);
+  if (lib) {
+    return resolvedMode === "dark" ? lib.dark : lib.light;
+  }
+  const saved = customPresets.find((p) => p.id === activePresetId);
+  if (saved) {
+    return resolvedMode === "dark" ? saved.colorsDark : saved.colorsLight;
+  }
+  return resolvedMode === "dark" ? defaultDarkColors : defaultLightColors;
+}
+
 export const useThemeStore = create<ThemeState & ThemeActions>()(
   devtools(
     persist(
@@ -132,7 +176,8 @@ export const useThemeStore = create<ThemeState & ThemeActions>()(
 
         setMode: (mode) => {
           const resolvedMode = mode === "system" ? getSystemTheme() : mode;
-          const colors = resolvedMode === "dark" ? defaultDarkColors : defaultLightColors;
+          const { activePresetId, customPresets } = get();
+          const colors = resolveColorsForMode(activePresetId, resolvedMode, customPresets);
           set({ mode, resolvedMode, colors }, false, `setMode/${mode}`);
           get().applyTheme();
         },
@@ -140,7 +185,8 @@ export const useThemeStore = create<ThemeState & ThemeActions>()(
         toggleMode: () => {
           const current = get().resolvedMode;
           const newMode = current === "dark" ? "light" : "dark";
-          const colors = newMode === "dark" ? defaultDarkColors : defaultLightColors;
+          const { activePresetId, customPresets } = get();
+          const colors = resolveColorsForMode(activePresetId, newMode, customPresets);
           set(
             { resolvedMode: newMode, colors, mode: newMode },
             false,
@@ -150,14 +196,18 @@ export const useThemeStore = create<ThemeState & ThemeActions>()(
         },
 
         setResolvedMode: (mode) => {
-          const colors = mode === "dark" ? defaultDarkColors : defaultLightColors;
+          const { activePresetId, customPresets } = get();
+          const colors = resolveColorsForMode(activePresetId, mode, customPresets);
           set({ resolvedMode: mode, colors }, false, "setResolvedMode");
           get().applyTheme();
         },
 
         setPrimaryColor: (color) => {
           set(
-            { colors: { ...get().colors, primary: color } },
+            {
+              colors: { ...get().colors, primary: color },
+              activePresetId: "custom",
+            },
             false,
             "setPrimaryColor"
           );
@@ -166,7 +216,10 @@ export const useThemeStore = create<ThemeState & ThemeActions>()(
 
         setAccentColor: (color) => {
           set(
-            { colors: { ...get().colors, accent: color } },
+            {
+              colors: { ...get().colors, accent: color },
+              activePresetId: "custom",
+            },
             false,
             "setAccentColor"
           );
@@ -174,34 +227,41 @@ export const useThemeStore = create<ThemeState & ThemeActions>()(
         },
 
         resetColors: () => {
-          const colors =
-            get().resolvedMode === "dark" ? defaultDarkColors : defaultLightColors;
+          const { resolvedMode, activePresetId, customPresets } = get();
+          const colors = resolveColorsForMode(activePresetId, resolvedMode, customPresets);
           set({ colors }, false, "resetColors");
           get().applyTheme();
         },
 
         setFontFamily: (family) => {
           set(
-            { font: { ...get().font, family } },
+            { font: { ...get().font, family }, activePresetId: "custom" },
             false,
             "setFontFamily"
           );
         },
 
         setFontSize: (size) => {
-          set({ font: { ...get().font, size } }, false, "setFontSize");
+          set(
+            { font: { ...get().font, size }, activePresetId: "custom" },
+            false,
+            "setFontSize"
+          );
         },
 
         setLineHeight: (lineHeight) => {
           set(
-            { font: { ...get().font, lineHeight } },
+            {
+              font: { ...get().font, lineHeight },
+              activePresetId: "custom",
+            },
             false,
             "setLineHeight"
           );
         },
 
         setDensity: (density) => {
-          set({ density }, false, "setDensity");
+          set({ density, activePresetId: "custom" }, false, "setDensity");
         },
 
         setAnimationsEnabled: (enabled) => {
@@ -237,6 +297,7 @@ export const useThemeStore = create<ThemeState & ThemeActions>()(
 
           // Set theme attribute
           root.setAttribute("data-theme", resolvedMode);
+          root.setAttribute("data-density", get().density);
 
           // Apply color variables
           Object.entries(colors).forEach(([key, value]) => {
@@ -253,11 +314,114 @@ export const useThemeStore = create<ThemeState & ThemeActions>()(
           set(initialThemeState, false, "resetTheme");
           get().applyTheme();
         },
+
+        applyLibraryPreset: (id) => {
+          const def = getPresetById(id);
+          if (!def) return;
+          const rm = get().resolvedMode;
+          const colors = rm === "dark" ? def.dark : def.light;
+          const font = def.font ? { ...get().font, ...def.font } : get().font;
+          const density = def.density ?? get().density;
+          set(
+            {
+              activePresetId: id,
+              colors,
+              font,
+              density,
+            },
+            false,
+            `applyLibraryPreset/${id}`
+          );
+          get().applyTheme();
+        },
+
+        applySavedCustomPreset: (id) => {
+          const snap = get().customPresets.find((p) => p.id === id);
+          if (!snap) return;
+          const rm = get().resolvedMode;
+          const colors = rm === "dark" ? snap.colorsDark : snap.colorsLight;
+          set(
+            {
+              activePresetId: id,
+              colors,
+              font: snap.font,
+              density: snap.density,
+            },
+            false,
+            `applySavedCustomPreset/${id}`
+          );
+          get().applyTheme();
+        },
+
+        saveCurrentAsCustomPreset: (label) => {
+          const labelTrim = label.trim();
+          if (!labelTrim) return;
+          const genId =
+            typeof crypto !== "undefined" && crypto.randomUUID
+              ? `saved-${crypto.randomUUID()}`
+              : `saved-${Date.now()}`;
+          const state = get();
+          const rm = state.resolvedMode;
+          const cur = state.colors;
+          const colorsLight = rm === "light" ? { ...cur } : { ...defaultLightColors };
+          const colorsDark = rm === "dark" ? { ...cur } : { ...defaultDarkColors };
+          const snapshot: CustomPresetSnapshot = {
+            id: genId,
+            label: labelTrim,
+            colorsLight,
+            colorsDark,
+            font: state.font,
+            density: state.density,
+          };
+          set(
+            {
+              customPresets: [...state.customPresets, snapshot],
+              activePresetId: genId,
+            },
+            false,
+            "saveCurrentAsCustomPreset"
+          );
+          get().applyTheme();
+        },
+
+        removeCustomPreset: (id) => {
+          const state = get();
+          const next = state.customPresets.filter((p) => p.id !== id);
+          let activePresetId = state.activePresetId;
+          if (activePresetId === id) {
+            activePresetId = "stellar";
+          }
+          const rm = state.resolvedMode;
+          const colors = resolveColorsForMode(activePresetId, rm, next);
+          set(
+            {
+              customPresets: next,
+              activePresetId,
+              colors,
+            },
+            false,
+            "removeCustomPreset"
+          );
+          get().applyTheme();
+        },
       }),
       {
         name: "bridge-watch-theme",
         storage: createJSONStorage(() => localStorage),
-        version: 1,
+        version: 2,
+        migrate: (persisted: unknown, version: number) => {
+          const p = persisted as Record<string, unknown>;
+          if (version < 2) {
+            return {
+              ...p,
+              activePresetId: typeof p.activePresetId === "string" ? p.activePresetId : "stellar",
+              customPresets: Array.isArray(p.customPresets)
+                ? (p.customPresets as CustomPresetSnapshot[])
+                : [],
+            };
+          }
+          return persisted;
+        },
         partialize: (state) => ({
           mode: state.mode,
           colors: state.colors,
@@ -266,6 +430,8 @@ export const useThemeStore = create<ThemeState & ThemeActions>()(
           animationsEnabled: state.animationsEnabled,
           reducedMotion: state.reducedMotion,
           customCssVars: state.customCssVars,
+          activePresetId: state.activePresetId,
+          customPresets: state.customPresets,
         }),
       }
     ),

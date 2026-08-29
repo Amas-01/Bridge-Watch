@@ -1,212 +1,372 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { v4 as uuidv4 } from "uuid";
-import { Watchlist } from "../types/watchlist";
+import {
+  createElement,
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
-const WATCHLIST_STORAGE_KEY = "bridgewatch_watchlists";
-const CLIENT_ID_KEY = "bridgewatch_client_id";
-
-function getClientId(): string {
-  let clientId = localStorage.getItem(CLIENT_ID_KEY);
-  if (!clientId) {
-    clientId = uuidv4();
-    localStorage.setItem(CLIENT_ID_KEY, clientId);
-  }
-  return clientId;
+export interface Watchlist {
+  id: string;
+  name: string;
+  assets: string[];
 }
 
-// Local Storage Fallback Functions
-function getLocalWatchlists(): Watchlist[] {
+interface WatchlistStore {
+  activeListId: string;
+  lists: Watchlist[];
+}
+
+const STORAGE_KEY = "bridgewatch.watchlists.v1";
+
+function slugify(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+function createDefaultStore(): WatchlistStore {
+  return {
+    activeListId: "default",
+    lists: [{ id: "default", name: "Default", assets: [] }],
+  };
+}
+
+function readStore(): WatchlistStore {
+  if (typeof window === "undefined") {
+    return createDefaultStore();
+  }
+
+  const raw = window.localStorage.getItem(STORAGE_KEY);
+  if (!raw) {
+    return createDefaultStore();
+  }
+
   try {
-    const data = localStorage.getItem(WATCHLIST_STORAGE_KEY);
-    if (data) {
-      return JSON.parse(data) as Watchlist[];
+    const parsed = JSON.parse(raw) as WatchlistStore;
+    if (!parsed.lists?.length) {
+      return createDefaultStore();
     }
-  } catch (err) {
-    console.error("Failed to parse local watchlists", err);
+
+    const activeExists = parsed.lists.some((list) => list.id === parsed.activeListId);
+
+    return {
+      activeListId: activeExists ? parsed.activeListId : parsed.lists[0].id,
+      lists: parsed.lists,
+    };
+  } catch {
+    return createDefaultStore();
   }
-  return [];
 }
 
-function setLocalWatchlists(lists: Watchlist[]) {
-  localStorage.setItem(WATCHLIST_STORAGE_KEY, JSON.stringify(lists));
+function persistStore(store: WatchlistStore) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
 }
 
-// Since the DB is currently inaccessible, we will only use the localStorage fallback for persistence
-export function useWatchlist() {
-  const queryClient = useQueryClient();
-  const clientId = getClientId();
+interface WatchlistContextValue {
+  watchlists: Watchlist[];
+  activeWatchlist: Watchlist | undefined;
+  activeListId: string;
+  activeSymbols: string[];
+  addAsset: (symbol: string, listId?: string) => void;
+  removeAsset: (symbol: string, listId?: string) => void;
+  reorderAsset: (symbol: string, direction: "up" | "down", listId?: string) => void;
+  updateAssetOrder: (watchlistId: string, assets: string[]) => void;
+  createWatchlist: (name: string) => void;
+  deleteWatchlist: (listId: string) => void;
+  renameWatchlist: (listId: string, name: string) => void;
+  setActiveWatchlist: (listId: string) => void;
+  clearActiveWatchlist: () => void;
+  exportWatchlists: () => string;
+  importWatchlists: (payload: string) => boolean;
+  isInWatchlist: (symbol: string, listId?: string) => boolean;
+}
 
-  // Queries
-  const { data: watchlists = [], isLoading } = useQuery({
-    queryKey: ["watchlists", clientId],
-    queryFn: async (): Promise<Watchlist[]> => {
-      const lists = getLocalWatchlists();
-      if (lists.length === 0) {
-        // Create an initial default watchlist if none exist
-        const defaultList: Watchlist = {
-          id: uuidv4(),
-          name: "My Watchlist",
-          isDefault: true,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          assets: ["XLM", "USDC"],
+const WatchlistContext = createContext<WatchlistContextValue | undefined>(
+  undefined
+);
+
+function useWatchlistState(): WatchlistContextValue {
+  const [store, setStore] = useState<WatchlistStore>(readStore);
+
+  const updateStore = useCallback((updater: (previous: WatchlistStore) => WatchlistStore) => {
+    setStore((previous) => {
+      const next = updater(previous);
+      persistStore(next);
+      return next;
+    });
+  }, []);
+
+  const activeWatchlist = useMemo(
+    () =>
+      store.lists.find((list) => list.id === store.activeListId) ??
+      store.lists[0],
+    [store.activeListId, store.lists]
+  );
+
+  const addAsset = useCallback(
+    (symbol: string, listId?: string) => {
+      const normalized = symbol.trim().toUpperCase();
+      if (!normalized) {
+        return;
+      }
+
+      updateStore((previous) => {
+        const targetId = listId ?? previous.activeListId;
+
+        return {
+          ...previous,
+          lists: previous.lists.map((list) => {
+            if (list.id !== targetId || list.assets.includes(normalized)) {
+              return list;
+            }
+
+            return {
+              ...list,
+              assets: [...list.assets, normalized],
+            };
+          }),
         };
-        setLocalWatchlists([defaultList]);
-        return [defaultList];
-      }
-      return lists;
-    },
-  });
-
-  const activeWatchlist = watchlists.find(w => w.isDefault) || watchlists[0];
-
-  // Mutations
-  const createWatchlist = useMutation({
-    mutationFn: async ({ name, isDefault = false }: { name: string; isDefault?: boolean }) => {
-      const lists = [...getLocalWatchlists()];
-      if (isDefault) {
-        lists.forEach(w => w.isDefault = false);
-      }
-      const newList: Watchlist = {
-        id: uuidv4(),
-        name,
-        isDefault,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        assets: [],
-      };
-      lists.push(newList);
-      setLocalWatchlists(lists);
-      return newList;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["watchlists"] });
-    },
-  });
-
-  const renameWatchlist = useMutation({
-    mutationFn: async ({ id, name }: { id: string; name: string }) => {
-      const lists = getLocalWatchlists();
-      const list = lists.find(w => w.id === id);
-      if (list) {
-        list.name = name;
-        list.updatedAt = new Date().toISOString();
-        setLocalWatchlists(lists);
-      }
-      return list;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["watchlists"] });
-    },
-  });
-
-  const setDefaultWatchlist = useMutation({
-    mutationFn: async (id: string) => {
-      const lists = getLocalWatchlists();
-      lists.forEach(w => {
-        w.isDefault = w.id === id;
       });
-      setLocalWatchlists(lists);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["watchlists"] });
-    },
-  });
+    [updateStore]
+  );
 
-  const deleteWatchlist = useMutation({
-    mutationFn: async (id: string) => {
-      const lists = getLocalWatchlists().filter(w => w.id !== id);
-      // Ensure there's a default
-      if (lists.length > 0 && !lists.some(w => w.isDefault)) {
-        lists[0].isDefault = true;
+  const removeAsset = useCallback(
+    (symbol: string, listId?: string) => {
+      const normalized = symbol.trim().toUpperCase();
+      updateStore((previous) => {
+        const targetId = listId ?? previous.activeListId;
+
+        return {
+          ...previous,
+          lists: previous.lists.map((list) => {
+            if (list.id !== targetId) {
+              return list;
+            }
+
+            return {
+              ...list,
+              assets: list.assets.filter((asset) => asset !== normalized),
+            };
+          }),
+        };
+      });
+    },
+    [updateStore]
+  );
+
+  const reorderAsset = useCallback(
+    (symbol: string, direction: "up" | "down", listId?: string) => {
+      const normalized = symbol.trim().toUpperCase();
+
+      updateStore((previous) => {
+        const targetId = listId ?? previous.activeListId;
+
+        return {
+          ...previous,
+          lists: previous.lists.map((list) => {
+            if (list.id !== targetId) {
+              return list;
+            }
+
+            const index = list.assets.indexOf(normalized);
+            if (index === -1) {
+              return list;
+            }
+
+            const nextIndex = direction === "up" ? index - 1 : index + 1;
+            if (nextIndex < 0 || nextIndex >= list.assets.length) {
+              return list;
+            }
+
+            const assets = [...list.assets];
+            [assets[index], assets[nextIndex]] = [assets[nextIndex], assets[index]];
+
+            return {
+              ...list,
+              assets,
+            };
+          }),
+        };
+      });
+    },
+    [updateStore]
+  );
+
+  const updateAssetOrder = useCallback(
+    (watchlistId: string, assets: string[]) => {
+      updateStore((previous) => ({
+        ...previous,
+        lists: previous.lists.map((list) =>
+          list.id === watchlistId ? { ...list, assets } : list
+        ),
+      }));
+    },
+    [updateStore]
+  );
+
+  const createWatchlist = useCallback(
+    (name: string) => {
+      const normalizedName = name.trim();
+      if (!normalizedName) {
+        return;
       }
-      setLocalWatchlists(lists);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["watchlists"] });
-    },
-  });
 
-  const addAsset = useMutation({
-    mutationFn: async ({ watchlistId, symbol }: { watchlistId: string; symbol: string }) => {
-      const lists = getLocalWatchlists();
-      const list = lists.find(w => w.id === watchlistId);
-      if (list && !list.assets.includes(symbol)) {
-        list.assets.push(symbol);
-        list.updatedAt = new Date().toISOString();
-        setLocalWatchlists(lists);
+      updateStore((previous) => {
+        const base = slugify(normalizedName) || `watchlist-${previous.lists.length + 1}`;
+        let id = base;
+        let suffix = 1;
+
+        while (previous.lists.some((list) => list.id === id)) {
+          id = `${base}-${suffix}`;
+          suffix += 1;
+        }
+
+        return {
+          activeListId: id,
+          lists: [...previous.lists, { id, name: normalizedName, assets: [] }],
+        };
+      });
+    },
+    [updateStore]
+  );
+
+  const deleteWatchlist = useCallback(
+    (listId: string) => {
+      updateStore((previous) => {
+        if (previous.lists.length <= 1) {
+          return previous;
+        }
+
+        const lists = previous.lists.filter((list) => list.id !== listId);
+        if (!lists.length) {
+          return previous;
+        }
+
+        return {
+          activeListId:
+            previous.activeListId === listId ? lists[0].id : previous.activeListId,
+          lists,
+        };
+      });
+    },
+    [updateStore]
+  );
+
+  const renameWatchlist = useCallback(
+    (listId: string, name: string) => {
+      const normalizedName = name.trim();
+      if (!normalizedName) {
+        return;
       }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["watchlists"] });
-    },
-  });
 
-  const removeAsset = useMutation({
-    mutationFn: async ({ watchlistId, symbol }: { watchlistId: string; symbol: string }) => {
-      const lists = getLocalWatchlists();
-      const list = lists.find(w => w.id === watchlistId);
-      if (list) {
-        list.assets = list.assets.filter(a => a !== symbol);
-        list.updatedAt = new Date().toISOString();
-        setLocalWatchlists(lists);
-      }
+      updateStore((previous) => ({
+        ...previous,
+        lists: previous.lists.map((list) =>
+          list.id === listId ? { ...list, name: normalizedName } : list
+        ),
+      }));
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["watchlists"] });
-    },
-  });
+    [updateStore]
+  );
 
-  const updateAssetOrder = useMutation({
-    mutationFn: async ({ watchlistId, assets }: { watchlistId: string; assets: string[] }) => {
-      const lists = getLocalWatchlists();
-      const list = lists.find(w => w.id === watchlistId);
-      if (list) {
-        list.assets = assets;
-        list.updatedAt = new Date().toISOString();
-        setLocalWatchlists(lists);
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["watchlists"] });
-    },
-  });
+  const setActiveWatchlist = useCallback(
+    (listId: string) => {
+      updateStore((previous) => {
+        if (!previous.lists.some((list) => list.id === listId)) {
+          return previous;
+        }
 
-  const importWatchlists = useMutation({
-    mutationFn: async (dataJson: string) => {
+        return {
+          ...previous,
+          activeListId: listId,
+        };
+      });
+    },
+    [updateStore]
+  );
+
+  const clearActiveWatchlist = useCallback(() => {
+    updateStore((previous) => ({
+      ...previous,
+      lists: previous.lists.map((list) =>
+        list.id === previous.activeListId ? { ...list, assets: [] } : list
+      ),
+    }));
+  }, [updateStore]);
+
+  const exportWatchlists = useCallback(() => JSON.stringify(store, null, 2), [store]);
+
+  const importWatchlists = useCallback(
+    (payload: string) => {
       try {
-        const parsed = JSON.parse(dataJson) as Watchlist[];
-        // Merge or replace
-        const existing = getLocalWatchlists();
-        const merged = [...existing];
-        parsed.forEach(p => {
-          if (!merged.some(e => e.id === p.id)) {
-            // ensure any imported lists are not default to avoid conflict, only one default
-            p.isDefault = false;
-            merged.push(p);
-          }
-        });
-        setLocalWatchlists(merged);
-      } catch (err) {
-        throw new Error("Invalid JSON format");
+        const parsed = JSON.parse(payload) as WatchlistStore;
+        if (!parsed.lists?.length) {
+          return false;
+        }
+
+        updateStore(() => ({
+          activeListId: parsed.activeListId,
+          lists: parsed.lists,
+        }));
+
+        return true;
+      } catch {
+        return false;
       }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["watchlists"] });
+    [updateStore]
+  );
+
+  const isInWatchlist = useCallback(
+    (symbol: string, listId?: string) => {
+      const normalized = symbol.trim().toUpperCase();
+      const targetId = listId ?? store.activeListId;
+      const list = store.lists.find((entry) => entry.id === targetId);
+      return list?.assets.includes(normalized) ?? false;
     },
-  });
+    [store.activeListId, store.lists]
+  );
 
   return {
-    watchlists,
+    watchlists: store.lists,
     activeWatchlist,
-    isLoading,
-    createWatchlist,
-    renameWatchlist,
-    setDefaultWatchlist,
-    deleteWatchlist,
+    activeListId: store.activeListId,
+    activeSymbols: activeWatchlist?.assets ?? [],
     addAsset,
     removeAsset,
+    reorderAsset,
     updateAssetOrder,
+    createWatchlist,
+    deleteWatchlist,
+    renameWatchlist,
+    setActiveWatchlist,
+    clearActiveWatchlist,
+    exportWatchlists,
     importWatchlists,
+    isInWatchlist,
   };
+}
+
+export function WatchlistProvider({ children }: { children: ReactNode }) {
+  const value = useWatchlistState();
+  return createElement(WatchlistContext.Provider, { value }, children);
+}
+
+export function useWatchlist() {
+  const context = useContext(WatchlistContext);
+  if (!context) {
+    throw new Error("useWatchlist must be used inside WatchlistProvider");
+  }
+
+  return context;
 }

@@ -1,72 +1,88 @@
 import type { FastifyInstance } from "fastify";
-import { assetsRoutes } from "./assets.js";
-import { bridgesRoutes } from "./bridges.js";
-import { websocketRoutes } from "./websocket.js";
-import { alertsRoutes } from "./alerts.routes.js";
-import { exportsRoutes } from "./exports.js";
-import { circuitBreakerRoutes } from "./circuitBreaker.js";
-import { preferencesRoutes } from "./preferences.js";
-import { apiKeysRoutes } from "./apiKeys.js";
-import jobsRoutes from "./jobs.js";
-import { webhooksRoutes } from "./webhooks.js";
-import { configRoutes } from "./config.js";
-import { aggregationRoutes } from "./aggregation.js";
-import { metadataRoutes } from "./metadata.js";
-import { analyticsRoutes } from "./analytics.js";
-import { watchlistsRoutes } from "./watchlists.js";
-import { cacheRoutes } from "./cache.js";
-import { healthRoutes } from "./health.js";
-import { rateLimitAdminRoutes } from "./rateLimitAdmin.js";
-import { tracingAdminRoutes } from "./tracingAdmin.js";
-import { validationAdminRoutes } from "./validationAdmin.js";
-import { metricsRoutes } from "./metrics.js";
-import { priceFeedsRoutes } from "./priceFeeds.js";
-import { supplyChainRoutes } from "./supplyChain.js";
-import { transactionsRoutes } from "./transactions.js";
-import { balanceRoutes } from "./balances.js";
-import { poolRoutes } from "./pools.routes.js";
-import { searchRoutes } from "./search.routes.js";
-import { cleanupRoutes } from "./cleanup.routes.js";
-import { discordRoutes } from "./discord.routes.js";
-import { loginRiskSignalsRoutes } from "./loginRiskSignals.js";
-import { dataCorrectionsRoutes } from "./dataCorrections.js";
-import { replayComparisonRoutes } from "./replayComparison.js";
-import { notificationAnalyticsRoutes } from "./notificationAnalytics.js";
+import { registerCoreRoutes } from "./route-groups/core-routes.js";
+import { registerAssetRoutes } from "./route-groups/asset-routes.js";
+import { registerBridgeRoutes } from "./route-groups/bridge-routes.js";
+import { registerAlertRoutes } from "./route-groups/alert-routes.js";
+import { registerAnalyticsRoutes } from "./route-groups/analytics-routes.js";
+import { registerAdminRoutes } from "./route-groups/admin-routes.js";
+import { registerIncidentRoutes } from "./route-groups/incident-routes.js";
+import { registerPriceRoutes } from "./route-groups/price-routes.js";
+import { registerReconciliationRoutes } from "./route-groups/reconciliation-routes.js";
+import { registerDataRoutes } from "./route-groups/data-routes.js";
+import { registerIntegrationRoutes } from "./route-groups/integration-routes.js";
+import { registerProviderRoutes } from "./route-groups/provider-routes.js";
+import { registerSourceRoutes } from "./route-groups/source-routes.js";
+import { registerAnomalyRoutes } from "./route-groups/anomaly-routes.js";
+import { registerAutomationRoutes } from "./route-groups/automation-routes.js";
+import { registerUtilityRoutes } from "./route-groups/utility-routes.js";
+import { registerCompatibilityRoutes } from "./route-groups/compatibility-routes.js";
+import { registerOperationalRoutes } from "./route-groups/operational-routes.js";
+import { registerOperationalMonitoringRoutes } from "./route-groups/operational-monitoring-routes.js";
+import { registerLiquidityRoutes } from "./route-groups/liquidity-routes.js";
+import { sorobanEventsRoutes } from "./sorobanEvents.routes.js";
+import { backfillRoutes } from "./backfill.routes.js";
 
-export async function registerRoutes(server: FastifyInstance) {
-  server.register(assetsRoutes, { prefix: "/api/v1/assets" });
-  server.register(bridgesRoutes, { prefix: "/api/v1/bridges" });
-  server.register(websocketRoutes, { prefix: "/api/v1/ws" });
-  server.register(alertsRoutes, { prefix: "/api/v1/alerts" });
-  server.register(exportsRoutes, { prefix: "/api/v1/exports" });
-  server.register(circuitBreakerRoutes, { prefix: "/api/v1/circuit-breaker" });
-  server.register(preferencesRoutes, { prefix: "/api/v1/preferences" });
-  server.register(apiKeysRoutes, { prefix: "/api/v1/admin/api-keys" });
-  server.register(jobsRoutes, { prefix: "/api/v1/jobs" });
-  server.register(webhooksRoutes, { prefix: "/api/v1/webhooks" });
-  server.register(configRoutes, { prefix: "/api/v1/config" });
-  server.register(aggregationRoutes, { prefix: "/api/v1/aggregation" });
-  server.register(metadataRoutes, { prefix: "/api/v1/metadata" });
-  server.register(analyticsRoutes, { prefix: "/api/v1/analytics" });
-  server.register(watchlistsRoutes, { prefix: "/api/v1/watchlists" });
-  server.register(cacheRoutes, { prefix: "/api/v1/cache" });
-  server.register(healthRoutes, { prefix: "/api/v1/health" });
-  // Backward-compatible health endpoints for load tests and probes
-  server.register(healthRoutes, { prefix: "/health" });
-  server.register(rateLimitAdminRoutes, { prefix: "/api/v1/admin/rate-limit" });
-  server.register(tracingAdminRoutes, { prefix: "/api/v1/admin/tracing" });
-  server.register(validationAdminRoutes, { prefix: "/api/v1/admin/validation" });
-  server.register(metricsRoutes, { prefix: "/metrics" });
-  server.register(priceFeedsRoutes, { prefix: "/api/v1/price-feeds" });
-  server.register(supplyChainRoutes, { prefix: "/api/v1/supply-chain" });
-  server.register(transactionsRoutes, { prefix: "/api/v1/transactions" });
-  server.register(balanceRoutes, { prefix: "/api/v1/balances" });
-  server.register(poolRoutes, { prefix: "/api/v1/pools" });
-  server.register(searchRoutes, { prefix: "/api/v1/search" });
-  server.register(cleanupRoutes, { prefix: "/api/v1/cleanup" });
-  server.register(discordRoutes, { prefix: "/api/v1/discord" });
-  server.register(loginRiskSignalsRoutes, { prefix: "/api/v1/login-risk-signals" });
-  server.register(dataCorrectionsRoutes, { prefix: "/api/v1/data-corrections" });
-  server.register(replayComparisonRoutes, { prefix: "/api/v1/replay-comparison" });
-  server.register(notificationAnalyticsRoutes, { prefix: "/api/v1/notification-analytics" });
+export async function registerRoutes(server: FastifyInstance): Promise<void> {
+  // Core routes: health, websocket, config, preferences, caching
+  await registerCoreRoutes(server);
+
+  // Asset management: monitoring, health, freshness
+  await registerAssetRoutes(server);
+
+  // Bridge monitoring: status, registry, verification
+  await registerBridgeRoutes(server);
+
+  // Alert system: rules, suppression, escalation, routing
+  await registerAlertRoutes(server);
+
+  // Incident management: correlation, timeline, visualization
+  await registerIncidentRoutes(server);
+
+  // Analytics and metrics: aggregation, baselines, trends
+  await registerAnalyticsRoutes(server);
+
+  // Price data: feeds, sources, comparisons
+  await registerPriceRoutes(server);
+
+  // Reconciliation: data consistency, batch operations
+  await registerReconciliationRoutes(server);
+
+  // Data operations: transactions, balances, supply chain
+  await registerDataRoutes(server);
+
+  // External integrations: webhooks, discord, oauth
+  await registerIntegrationRoutes(server);
+
+  // Provider management: health, allowlists, circuit breakers
+  await registerProviderRoutes(server);
+
+  // Data source management: health scoring, decommission
+  await registerSourceRoutes(server);
+
+  // Anomaly detection: detection and tuning
+  await registerAnomalyRoutes(server);
+
+  // DEX liquidity: pool discovery, quality ranking, impact presets, route quotes
+  await registerLiquidityRoutes(server);
+
+  // Automation: rules, evaluator, playbooks, cleanup
+  await registerAutomationRoutes(server);
+
+  // Operational monitoring: ledger delays, cursor audit
+  await registerOperationalMonitoringRoutes(server);
+
+  // Administrative functions
+  await registerAdminRoutes(server);
+
+  // Utility routes: exports, metadata, cleanup
+  await registerUtilityRoutes(server);
+
+  // API compatibility: negotiated contracts, capabilities, and versions
+  await registerCompatibilityRoutes(server);
+
+  // Operational routes: query baseline, rollback readiness, canary metrics, promotion gates, risk clustering
+  await registerOperationalRoutes(server);
+
+  server.register(sorobanEventsRoutes, { prefix: "/api/v1/soroban-events" });
+  server.register(backfillRoutes, { prefix: "/api/v1/backfill" });
 }

@@ -41,6 +41,9 @@ export interface UIState {
   selectedBridge: string | null;
   selectedTimeRange: "1h" | "24h" | "7d" | "30d";
 
+  // Asset insights tray
+  insightsTrayOpen: boolean;
+
   // View states
   isMobileView: boolean;
   isTouchDevice: boolean;
@@ -70,6 +73,10 @@ export interface UIActions {
   setSelectedBridge: (bridge: string | null) => void;
   setSelectedTimeRange: (range: "1h" | "24h" | "7d" | "30d") => void;
 
+  // Asset insights tray actions
+  openInsightsTray: (symbol: string) => void;
+  closeInsightsTray: () => void;
+
   // View actions
   setIsMobileView: (isMobile: boolean) => void;
   setIsTouchDevice: (isTouch: boolean) => void;
@@ -91,6 +98,7 @@ const initialUIState: UIState = {
   selectedTimeRange: "24h",
   isMobileView: false,
   isTouchDevice: false,
+  insightsTrayOpen: false,
 };
 
 export const useUIStore = create<UIState & UIActions>()(
@@ -175,6 +183,14 @@ export const useUIStore = create<UIState & UIActions>()(
         set({ selectedTimeRange: range }, false, "setSelectedTimeRange");
       },
 
+      openInsightsTray: (symbol) => {
+        set({ selectedAsset: symbol, insightsTrayOpen: true }, false, "openInsightsTray");
+      },
+
+      closeInsightsTray: () => {
+        set({ insightsTrayOpen: false }, false, "closeInsightsTray");
+      },
+
       setIsMobileView: (isMobile) => {
         set({ isMobileView: isMobile }, false, "setIsMobileView");
       },
@@ -212,3 +228,10 @@ export const selectSelectedAsset = (state: UIState & UIActions) =>
 
 export const selectIsMobileView = (state: UIState & UIActions) =>
   state.isMobileView;
+
+export const selectInsightsTray = (state: UIState & UIActions) => ({
+  open: state.insightsTrayOpen,
+  symbol: state.selectedAsset,
+  openInsightsTray: state.openInsightsTray,
+  closeInsightsTray: state.closeInsightsTray,
+});

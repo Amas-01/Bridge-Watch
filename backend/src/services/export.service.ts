@@ -2,6 +2,7 @@ import { getDatabase } from "../database/connection.js";
 import { logger } from "../utils/logger.js";
 import { config } from "../config/index.js";
 import crypto from "crypto";
+import { getTenantContext } from "../multi-tenant/tenantContext.js";
 import type {
   ExportRequest,
   ExportRecord,
@@ -11,6 +12,7 @@ import type {
   PaginatedExports,
 } from "../types/export.types.js";
 import { exportQueue } from "../jobs/export.job.js";
+import { exportQuotaService, QuotaExceededException } from "./exportQuota.service.js";
 
 /**
  * Export Service
@@ -40,12 +42,43 @@ export class ExportService {
       throw new Error("Email address required when email delivery is enabled");
     }
 
+    // Check export quota before proceeding
+    const quotaCheck = await exportQuotaService.checkQuota(userId, "daily");
+    if (!quotaCheck.allowed) {
+      const error = new QuotaExceededException(
+        "Daily export quota exceeded",
+        quotaCheck.remaining,
+        quotaCheck.resetsAt
+      );
+      logger.warn(
+        { userId, remaining: quotaCheck.remaining, resetsAt: quotaCheck.resetsAt },
+        "Export quota exceeded"
+      );
+      throw error;
+    }
+
     const db = getDatabase();
 
     // Create export history record
     const record = await this.insertExportRecord(db, userId, payload);
 
     logger.info({ exportId: record.id, userId }, "Export record created");
+
+    // Increment quota after successful record creation
+    try {
+      // Estimate record count (can be refined based on actual data)
+      const estimatedRecordCount = 1000;
+      await exportQuotaService.incrementExport(
+        userId,
+        payload.format,
+        estimatedRecordCount
+      );
+      logger.info({ userId, exportId: record.id }, "Export quota incremented");
+    } catch (quotaError) {
+      // If quota increment fails, delete the export record
+      await db("export_history").where({ id: record.id }).del();
+      throw quotaError;
+    }
 
     // Enqueue export job
     const jobPayload: ExportJobPayload = {
@@ -88,7 +121,12 @@ export class ExportService {
     logger.info({ exportId }, "Fetching export status");
 
     const db = getDatabase();
-    const record = await db("export_history").where({ id: exportId }).first();
+    const query: Record<string, unknown> = { id: exportId };
+    const ctx = getTenantContext();
+    if (ctx && !ctx.bypass) {
+      query.tenant_id = ctx.tenantId;
+    }
+    const record = await db("export_history").where(query).first();
 
     if (!record) {
       logger.warn({ exportId }, "Export record not found");
@@ -112,8 +150,14 @@ export class ExportService {
     const { page, limit } = options;
     const offset = (page - 1) * limit;
 
+    const filter: Record<string, unknown> = { requested_by: userId };
+    const ctx = getTenantContext();
+    if (ctx && !ctx.bypass) {
+      filter.tenant_id = ctx.tenantId;
+    }
+
     const recordsQuery = db("export_history")
-      .where({ requested_by: userId })
+      .where(filter)
       .orderBy("created_at", "desc")
       .limit(limit);
 
@@ -121,7 +165,7 @@ export class ExportService {
       ? (recordsQuery as { offset: (value: number) => Promise<unknown[]> }).offset(offset)
       : recordsQuery;
 
-    const countQuery = db("export_history").where({ requested_by: userId }) as {
+    const countQuery = db("export_history").where(filter) as {
       count?: (value: string) => { first: () => Promise<{ count?: string | number } | undefined> };
       first: () => Promise<{ count?: string | number } | undefined>;
     };
@@ -157,7 +201,12 @@ export class ExportService {
     logger.info({ exportId }, "Generating download URL");
 
     const db = getDatabase();
-    const record = await db("export_history").where({ id: exportId }).first();
+    const query: Record<string, unknown> = { id: exportId };
+    const ctx = getTenantContext();
+    if (ctx && !ctx.bypass) {
+      query.tenant_id = ctx.tenantId;
+    }
+    const record = await db("export_history").where(query).first();
 
     if (!record) {
       throw new Error("Export not found");
@@ -206,7 +255,12 @@ export class ExportService {
     logger.info({ exportId }, "Deleting export");
 
     const db = getDatabase();
-    const record = await db("export_history").where({ id: exportId }).first();
+    const query: Record<string, unknown> = { id: exportId };
+    const ctx = getTenantContext();
+    if (ctx && !ctx.bypass) {
+      query.tenant_id = ctx.tenantId;
+    }
+    const record = await db("export_history").where(query).first();
 
     if (!record) {
       throw new Error("Export not found");
@@ -225,7 +279,7 @@ export class ExportService {
     }
 
     // Delete database record
-    await db("export_history").where({ id: exportId }).del();
+    await db("export_history").where(query).del();
 
     logger.info({ exportId }, "Export record deleted");
   }
@@ -254,7 +308,13 @@ export class ExportService {
     if (updates.is_compressed !== undefined) dbUpdates.is_compressed = updates.is_compressed;
     if (updates.error_message !== undefined) dbUpdates.error_message = updates.error_message;
 
-    await db("export_history").where({ id: exportId }).update(dbUpdates);
+    const whereClause: Record<string, unknown> = { id: exportId };
+    const ctx = getTenantContext();
+    if (ctx && !ctx.bypass) {
+      whereClause.tenant_id = ctx.tenantId;
+    }
+
+    await db("export_history").where(whereClause).update(dbUpdates);
 
     logger.info({ exportId }, "Export status updated");
   }
@@ -295,7 +355,7 @@ export class ExportService {
   }
 
   private async insertExportRecord(db: ReturnType<typeof getDatabase>, userId: string, payload: ExportRequest): Promise<Record<string, any>> {
-    const insertPayload = {
+    const insertPayload: Record<string, unknown> = {
       requested_by: userId,
       format: payload.format,
       data_type: payload.dataType,
@@ -304,6 +364,11 @@ export class ExportService {
       email_delivery: payload.emailDelivery || false,
       email_address: payload.emailAddress || null,
     };
+
+    const ctx = getTenantContext();
+    if (ctx && !ctx.bypass) {
+      insertPayload.tenant_id = ctx.tenantId;
+    }
 
     const insertQuery = db("export_history").insert(insertPayload) as {
       returning?: (value: string) => Promise<Record<string, any>[]>;

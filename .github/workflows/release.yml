@@ -10,11 +10,34 @@ on:
         description: "Version to release (e.g., v1.0.0)"
         required: true
         type: string
+      override_release_shield:
+        description: "Emergency override of failed release gates"
+        required: false
+        default: false
+        type: boolean
+      override_reason:
+        description: "Required audit reason when overriding release gates"
+        required: false
+        type: string
 
 jobs:
+  release-shield:
+    name: Release Shield
+    uses: ./.github/workflows/release-shield.yml
+    permissions:
+      actions: read
+      contents: read
+    with:
+      version: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+      health_urls: ${{ vars.RELEASE_HEALTH_URLS }}
+      required_workflows: ${{ vars.RELEASE_REQUIRED_WORKFLOWS || 'CI,Code Quality,Security Scanning' }}
+      override: ${{ github.event_name == 'workflow_dispatch' && inputs.override_release_shield || false }}
+      override_reason: ${{ github.event_name == 'workflow_dispatch' && inputs.override_reason || '' }}
+
   create-release:
     name: Create Release
     runs-on: ubuntu-latest
+    needs: release-shield
     permissions:
       contents: write
       packages: write
@@ -111,7 +134,9 @@ jobs:
 
       - name: Extract version
         id: version
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        env:
+          RELEASE_VERSION: ${{ needs.create-release.outputs.version }}
+        run: echo "version=${RELEASE_VERSION#v}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push backend image
         uses: docker/build-push-action@v5
@@ -136,7 +161,6 @@ jobs:
             ghcr.io/${{ github.repository }}/frontend:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-        continue-on-error: true
 
   publish-npm:
     name: Publish NPM Packages

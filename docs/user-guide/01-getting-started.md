@@ -68,9 +68,9 @@ When you first land on the platform, you'll see:
 
 Now that you're set up, explore:
 
-- [Dashboard Overview](./02-dashboard-overview.md) - Learn about all dashboard features
-- [Asset Monitoring Guide](./03-asset-monitoring.md) - Deep dive into asset monitoring
-- [Alert Configuration](./04-alert-configuration.md) - Advanced alert setup
+- [Alerts Guide](./02-alerts.md) - Learn about all alert features
+- [Watchlists Guide](./03-watchlists.md) - Deep dive into asset watchlists
+- [Exports Guide](./04-exports.md) - Advanced data exports
 
 ## Quick Tips
 
@@ -102,4 +102,4 @@ A: Yes, Stellar Bridge Watch is completely free and open-source.
 
 ---
 
-Next: [Dashboard Overview](./02-dashboard-overview.md)
+Next: [Alerts Guide](./02-alerts.md)

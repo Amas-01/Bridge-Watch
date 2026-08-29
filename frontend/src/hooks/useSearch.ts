@@ -1,29 +1,23 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getAssets, getBridges } from "../services/api";
+import { searchIndexed, type IndexedSearchResult, type AssetSearchFacets } from "../services/api";
 
-// ─── Types ─────────────────────────────────────────────────────────────────────
-
-export type SearchCategory = "assets" | "bridges" | "pages";
+export type SearchCategory = "assets" | "bridges" | "incidents" | "alerts" | "pages";
 
 export interface SearchResult {
   id: string;
-  /** Display title shown in the results list. */
   title: string;
-  /** Optional secondary line (e.g. bridge status or asset description). */
   subtitle?: string;
   category: SearchCategory;
-  /** React Router path to navigate to on selection. */
   href: string;
-  /** Raw value used for highlight matching (defaults to title). */
   matchText?: string;
 }
 
 const STORAGE_KEY = "bridge-watch:recent-searches";
+const SAVED_STORAGE_KEY = "bridge-watch:saved-searches";
 const MAX_RECENT = 8;
+const MAX_SAVED = 30;
 const DEBOUNCE_MS = 200;
-
-// ─── Static page results ───────────────────────────────────────────────────────
 
 const PAGE_RESULTS: SearchResult[] = [
   {
@@ -36,9 +30,16 @@ const PAGE_RESULTS: SearchResult[] = [
   {
     id: "page-bridges",
     title: "Bridges",
-    subtitle: "Cross-chain bridge status and TVL",
+    subtitle: "Cross-chain bridge status, incidents, and TVL",
     category: "pages",
     href: "/bridges",
+  },
+  {
+    id: "page-incidents",
+    title: "Incidents",
+    subtitle: "Bridge incident tracking and follow-up actions",
+    category: "pages",
+    href: "/incidents",
   },
   {
     id: "page-analytics",
@@ -48,6 +49,13 @@ const PAGE_RESULTS: SearchResult[] = [
     href: "/analytics",
   },
   {
+    id: "page-settings",
+    title: "Settings",
+    subtitle: "Notification preferences and alert controls",
+    category: "pages",
+    href: "/settings",
+  },
+  {
     id: "page-help",
     title: "Help Center",
     subtitle: "Documentation, FAQ, and contextual guidance",
@@ -55,8 +63,6 @@ const PAGE_RESULTS: SearchResult[] = [
     href: "/help",
   },
 ];
-
-// ─── Local storage helpers ─────────────────────────────────────────────────────
 
 function loadRecentSearches(): SearchResult[] {
   try {
@@ -71,13 +77,35 @@ function saveRecentSearches(items: SearchResult[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items.slice(0, MAX_RECENT)));
   } catch {
-    // Storage quota exceeded – ignore
+    // Ignore storage quota failures.
   }
 }
 
-// ─── Scoring helper ───────────────────────────────────────────────────────────
+export interface SavedSearch {
+  id: string;
+  name: string;
+  query: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
-/** Returns a numeric match score (higher = better). Used to rank results. */
+function loadSavedSearches(): SavedSearch[] {
+  try {
+    const raw = localStorage.getItem(SAVED_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as SavedSearch[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveSavedSearches(items: SavedSearch[]): void {
+  try {
+    localStorage.setItem(SAVED_STORAGE_KEY, JSON.stringify(items.slice(0, MAX_SAVED)));
+  } catch {
+    // Ignore storage quota failures.
+  }
+}
+
 function matchScore(text: string, query: string): number {
   const t = text.toLowerCase();
   const q = query.toLowerCase();
@@ -87,17 +115,64 @@ function matchScore(text: string, query: string): number {
   return 0;
 }
 
-// ─── Hook ─────────────────────────────────────────────────────────────────────
+function mapIndexedCategory(type: IndexedSearchResult["type"]): SearchCategory {
+  switch (type) {
+    case "asset":
+      return "assets";
+    case "bridge":
+      return "bridges";
+    case "incident":
+      return "incidents";
+    case "alert":
+      return "alerts";
+  }
+}
+
+function resolveHref(result: IndexedSearchResult): string {
+  if (typeof result.metadata.href === "string") {
+    return result.metadata.href;
+  }
+
+  switch (result.type) {
+    case "asset":
+      return typeof result.metadata.symbol === "string"
+        ? `/assets/${result.metadata.symbol}`
+        : "/";
+    case "bridge":
+      return "/bridges";
+    case "incident":
+      return "/incidents";
+    case "alert":
+      return "/settings";
+  }
+}
+
+function mapIndexedResult(result: IndexedSearchResult): SearchResult {
+  return {
+    id: `${result.type}-${result.id}`,
+    title: result.title,
+    subtitle: result.description,
+    category: mapIndexedCategory(result.type),
+    href: resolveHref(result),
+    matchText: [result.title, result.description, ...result.highlights].join(" ").trim(),
+  };
+}
 
 export interface UseSearchReturn {
   query: string;
   setQuery: (q: string) => void;
   results: SearchResult[];
+  assetFacets: AssetSearchFacets | undefined;
   isLoading: boolean;
   recentSearches: SearchResult[];
   addRecentSearch: (result: SearchResult) => void;
   clearRecentSearches: () => void;
-  /** The debounced query that was used to compute `results`. */
+  savedSearches: SavedSearch[];
+  saveCurrentQuery: (name?: string) => SavedSearch | null;
+  deleteSavedSearch: (id: string) => void;
+  renameSavedSearch: (id: string, name: string) => void;
+  applySavedSearch: (id: string) => string | null;
+  getSavedSearchShareUrl: (saved: SavedSearch) => string;
   debouncedQuery: string;
 }
 
@@ -107,102 +182,63 @@ export function useSearch(): UseSearchReturn {
   const [recentSearches, setRecentSearches] = useState<SearchResult[]>(
     loadRecentSearches
   );
+  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>(loadSavedSearches);
 
-  // ── Debounce ────────────────────────────────────────────────────────────────
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(query.trim()), DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [query]);
 
-  // ── Data fetching ────────────────────────────────────────────────────────────
-  const { data: assetsData, isLoading: assetsLoading } = useQuery({
-    queryKey: ["assets"],
-    queryFn: getAssets,
-    staleTime: 60_000,
+  const { data: indexedData, isFetching } = useQuery({
+    queryKey: ["indexed-search", debouncedQuery],
+    queryFn: () => searchIndexed(debouncedQuery, 12),
+    enabled: debouncedQuery.length >= 2,
+    staleTime: 30_000,
   });
 
-  const { data: bridgesData, isLoading: bridgesLoading } = useQuery({
-    queryKey: ["bridges"],
-    queryFn: getBridges,
-    staleTime: 60_000,
+  const { data: assetFacetsData } = useQuery({
+    queryKey: ["indexed-search-asset-facets", debouncedQuery],
+    queryFn: () => searchIndexed(debouncedQuery, 1, "asset"),
+    enabled: debouncedQuery.length >= 2,
+    staleTime: 30_000,
   });
 
-  const isLoading = assetsLoading || bridgesLoading;
+  const assetFacets: AssetSearchFacets | undefined = assetFacetsData?.data.facets;
 
-  // ── Result computation ───────────────────────────────────────────────────────
   const results = useMemo<SearchResult[]>(() => {
     const q = debouncedQuery;
     if (!q) return [];
 
-    const scored: Array<{ result: SearchResult; score: number }> = [];
+    const remoteResults = (indexedData?.data.results ?? []).map(mapIndexedResult);
 
-    // Assets
-    if (assetsData?.assets) {
-      for (const asset of assetsData.assets) {
-        const nameScore = matchScore(asset.name ?? asset.symbol, q);
-        const symbolScore = matchScore(asset.symbol, q);
-        const score = Math.max(nameScore, symbolScore);
-        if (score > 0) {
-          scored.push({
-            score,
-            result: {
-              id: `asset-${asset.symbol}`,
-              title: asset.symbol,
-              subtitle: asset.name,
-              category: "assets",
-              href: `/assets/${asset.symbol}`,
-              matchText: `${asset.symbol} ${asset.name ?? ""}`.trim(),
-            },
-          });
-        }
-      }
+    const pageMatches = PAGE_RESULTS
+      .map((page) => ({
+        page,
+        score: Math.max(
+          matchScore(page.title, q),
+          matchScore(page.subtitle ?? "", q)
+        ),
+      }))
+      .filter((item) => item.score > 0)
+      .sort((left, right) => right.score - left.score)
+      .map((item) => item.page);
+
+    const combined = [...remoteResults, ...pageMatches];
+    const deduped: SearchResult[] = [];
+    const seen = new Set<string>();
+
+    for (const result of combined) {
+      if (seen.has(result.id)) continue;
+      seen.add(result.id);
+      deduped.push(result);
     }
 
-    // Bridges
-    if (bridgesData?.bridges) {
-      for (const bridge of bridgesData.bridges) {
-        const score = matchScore(bridge.name, q);
-        if (score > 0) {
-          scored.push({
-            score,
-            result: {
-              id: `bridge-${bridge.name}`,
-              title: bridge.name,
-              subtitle: `Status: ${bridge.status} · TVL $${(
-                bridge.totalValueLocked / 1_000_000
-              ).toFixed(2)}M`,
-              category: "bridges",
-              href: "/bridges",
-              matchText: bridge.name,
-            },
-          });
-        }
-      }
-    }
+    return deduped;
+  }, [debouncedQuery, indexedData]);
 
-    // Pages
-    for (const page of PAGE_RESULTS) {
-      const score = Math.max(
-        matchScore(page.title, q),
-        matchScore(page.subtitle ?? "", q)
-      );
-      if (score > 0) {
-        scored.push({ score, result: page });
-      }
-    }
-
-    scored.sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return a.result.title.localeCompare(b.result.title);
-    });
-
-    return scored.map((s) => s.result);
-  }, [debouncedQuery, assetsData, bridgesData]);
-
-  // ── Recent search management ─────────────────────────────────────────────────
   const addRecentSearch = useCallback((result: SearchResult) => {
     setRecentSearches((prev) => {
-      const deduped = [result, ...prev.filter((r) => r.id !== result.id)];
+      const deduped = [result, ...prev.filter((item) => item.id !== result.id)];
       const trimmed = deduped.slice(0, MAX_RECENT);
       saveRecentSearches(trimmed);
       return trimmed;
@@ -214,14 +250,82 @@ export function useSearch(): UseSearchReturn {
     localStorage.removeItem(STORAGE_KEY);
   }, []);
 
+  const saveCurrentQuery = useCallback((name?: string) => {
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery) return null;
+
+    const now = new Date().toISOString();
+    const newSaved: SavedSearch = {
+      id: `saved-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name: name?.trim() || normalizedQuery,
+      query: normalizedQuery,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    setSavedSearches((prev) => {
+      const deduped = [
+        newSaved,
+        ...prev.filter(
+          (item) => item.query.toLowerCase() !== normalizedQuery.toLowerCase() || item.name !== newSaved.name
+        ),
+      ];
+      saveSavedSearches(deduped);
+      return deduped.slice(0, MAX_SAVED);
+    });
+
+    return newSaved;
+  }, [query]);
+
+  const deleteSavedSearch = useCallback((id: string) => {
+    setSavedSearches((prev) => {
+      const next = prev.filter((item) => item.id !== id);
+      saveSavedSearches(next);
+      return next;
+    });
+  }, []);
+
+  const renameSavedSearch = useCallback((id: string, name: string) => {
+    const normalized = name.trim();
+    if (!normalized) return;
+
+    setSavedSearches((prev) => {
+      const next = prev.map((item) =>
+        item.id === id ? { ...item, name: normalized, updatedAt: new Date().toISOString() } : item
+      );
+      saveSavedSearches(next);
+      return next;
+    });
+  }, []);
+
+  const applySavedSearch = useCallback((id: string) => {
+    const selected = savedSearches.find((item) => item.id === id);
+    if (!selected) return null;
+    setQuery(selected.query);
+    return selected.query;
+  }, [savedSearches]);
+
+  const getSavedSearchShareUrl = useCallback((saved: SavedSearch) => {
+    const share = new URL(window.location.href);
+    share.searchParams.set("q", saved.query);
+    return share.toString();
+  }, []);
+
   return {
     query,
     setQuery,
     results,
-    isLoading,
+    assetFacets,
+    isLoading: isFetching,
     recentSearches,
     addRecentSearch,
     clearRecentSearches,
+    savedSearches,
+    saveCurrentQuery,
+    deleteSavedSearch,
+    renameSavedSearch,
+    applySavedSearch,
+    getSavedSearchShareUrl,
     debouncedQuery,
   };
 }

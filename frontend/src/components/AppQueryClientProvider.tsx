@@ -5,8 +5,8 @@ import {
   QueryClientProvider,
 } from "@tanstack/react-query";
 import { useMemo, type ReactNode } from "react";
-import { usePreferences } from "../context/PreferencesContext";
-import { useToast } from "../context/ToastContext";
+import { usePreferences } from "../context/PreferencesContextValue";
+import { useToast } from "../context/ToastContextValue";
 
 export default function AppQueryClientProvider({ children }: { children: ReactNode }) {
   const { showError } = useToast();

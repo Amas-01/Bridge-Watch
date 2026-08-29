@@ -5,7 +5,8 @@
   "private": true,
   "workspaces": [
     "backend",
-    "frontend"
+    "frontend",
+    "sdk"
   ],
   "scripts": {
     "dev": "npm run dev --workspaces --if-present",
@@ -14,13 +15,26 @@
     "build": "npm run build --workspaces --if-present",
     "build:backend": "npm run build --workspace=backend",
     "build:frontend": "npm run build --workspace=frontend",
+    "build:sdk": "npm run build --workspace=sdk",
     "test": "npm run test --workspaces --if-present",
     "test:backend": "npm run test --workspace=backend",
+    "test:prometheus-alerts": "bash scripts/validate-prometheus-alerts.sh",
+    "test:sdk": "npm run test --workspace=sdk",
+    "coverage": "node scripts/coverage.mjs",
+    "coverage:combine": "node scripts/coverage.mjs",
     "test:load": "k6 run load-tests/scenarios/api-load.js -e PROFILE=smoke -e BASE_URL=http://127.0.0.1:3001",
     "test:load:report": "node load-tests/scripts/generate-report.mjs load-tests/results/summary.json load-tests/results/report.md",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report",
+    "check:api-contract": "node scripts/check-api-contract.mjs",
+    "generate:api-contract": "node scripts/check-api-contract.mjs --write",
     "lint": "npm run lint --workspaces --if-present",
     "setup": "bash scripts/setup.sh",
-    "setup:quick": "bash scripts/setup.sh --skip-contracts --skip-ide -y"
+    "setup:quick": "bash scripts/setup.sh --skip-contracts --skip-ide -y",
+    "sandbox": "NODE_ENV=sandbox tsx sandbox/seed.ts && npm run dev",
+    "sandbox:reset": "NODE_ENV=sandbox tsx sandbox/seed.ts"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -41,6 +55,10 @@
     "analytics"
   ],
   "devDependencies": {
-    "@rollup/rollup-linux-x64-gnu": "^4.60.2"
+    "@playwright/test": "^1.54.2",
+    "@types/use-sync-external-store": "^1.5.0"
+  },
+  "overrides": {
+    "@asamuzakjp/css-color": "4.1.2"
   }
 }

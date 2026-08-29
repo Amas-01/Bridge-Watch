@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: bridge-watch-frontend
+  namespace: bridge-watch
+  labels:
+    app.kubernetes.io/name: bridge-watch
+    app.kubernetes.io/component: frontend
+spec:
+  selector:
+    app: bridge-watch-frontend
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+      protocol: TCP
+  type: ClusterIP

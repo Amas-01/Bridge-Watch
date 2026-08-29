@@ -1,6 +1,7 @@
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import type { HealthFactors, HealthStatus } from "../types";
 import Sparkline from "./Sparkline";
+import Tooltip from "./Tooltip/Tooltip";
 
 interface HealthScoreCardProps {
   symbol: string;
@@ -33,6 +34,28 @@ function getStatusColor(status: HealthStatus): string {
       return "#eab308";
     case "critical":
       return "#ef4444";
+  }
+}
+
+function getStatusSurfaceClasses(status: HealthStatus): string {
+  switch (status) {
+    case "healthy":
+      return "bg-green-500/20 text-green-400";
+    case "warning":
+      return "bg-yellow-500/20 text-yellow-400";
+    case "critical":
+      return "bg-red-500/20 text-red-400";
+  }
+}
+
+function getStatusFillClass(status: HealthStatus): string {
+  switch (status) {
+    case "healthy":
+      return "bg-green-500";
+    case "warning":
+      return "bg-yellow-500";
+    case "critical":
+      return "bg-red-500";
   }
 }
 
@@ -130,8 +153,7 @@ export default function HealthScoreCard({
     >
       <div className="flex items-center gap-3 mb-4">
         <div
-          className="w-10 h-10 rounded-full flex items-center justify-center text-xl font-bold"
-          style={{ backgroundColor: `${statusColor}20`, color: statusColor }}
+          className={`w-10 h-10 rounded-full flex items-center justify-center text-xl font-bold ${getStatusSurfaceClasses(status)}`}
           aria-hidden="true"
         >
           {ASSET_ICONS[symbol] || symbol.charAt(0)}
@@ -142,14 +164,38 @@ export default function HealthScoreCard({
             <p className="text-sm text-stellar-text-secondary truncate">{name}</p>
           )}
         </div>
-        <div
-          className="px-2.5 py-1 rounded-full text-xs font-medium"
-          style={{ backgroundColor: `${statusColor}20`, color: statusColor }}
-          role="status"
-          aria-label={`Status: ${getStatusLabel(status)}`}
+        <Tooltip
+          placement="left"
+          delay={200}
+          content={
+            <div className="space-y-2">
+              <div className="font-semibold text-stellar-text-primary">Health Breakdown</div>
+              {(Object.entries(factors) as [keyof HealthFactors, number][]).map(
+                ([key, value]) => (
+                  <div key={key} className="flex justify-between gap-4 text-xs">
+                    <span className="text-stellar-text-secondary">{FACTOR_LABELS[key]}:</span>
+                    <span className="font-medium text-stellar-text-primary">{value}/100</span>
+                  </div>
+                )
+              )}
+              <div className="border-t border-stellar-border/40 pt-2 mt-2">
+                <div className="flex justify-between gap-4 text-xs">
+                  <span className="text-stellar-text-secondary font-medium">Overall:</span>
+                  <span className="font-bold text-stellar-text-primary">{overallScore}/100</span>
+                </div>
+              </div>
+            </div>
+          }
+          aria-label={`${symbol} health score breakdown tooltip`}
         >
-          {getStatusLabel(status)}
-        </div>
+          <div
+            className={`px-2.5 py-1 rounded-full text-xs font-medium cursor-help ${getStatusSurfaceClasses(status)}`}
+            role="status"
+            aria-label={`Status: ${getStatusLabel(status)}`}
+          >
+            {getStatusLabel(status)}
+          </div>
+        </Tooltip>
       </div>
 
       <div className="flex justify-center mb-4">
@@ -206,28 +252,27 @@ export default function HealthScoreCard({
           {(Object.entries(factors) as [keyof HealthFactors, number][]).map(
             ([key, value]) => {
               const factorStatus = getHealthStatus(value);
-              const factorColor = getStatusColor(factorStatus);
               return (
                 <div
                   key={key}
-                  className="flex items-center justify-between gap-2"
+                  className="grid grid-cols-1 gap-1 xs:flex xs:items-center xs:justify-between xs:gap-2"
                   role="listitem"
                   aria-label={`${FACTOR_LABELS[key]}: ${value} out of 100`}
                 >
-                  <span className="text-sm text-stellar-text-secondary flex-shrink-0">
+                  <span className="text-sm text-stellar-text-secondary xs:flex-shrink-0">
                     {FACTOR_LABELS[key]}
                   </span>
-                  <div className="flex items-center gap-2 flex-1 justify-end">
+                  <div className="flex items-center gap-2 xs:flex-1 xs:justify-end">
                     <div
-                      className="w-20 h-1.5 bg-stellar-border rounded-full overflow-hidden"
+                      className="flex-1 xs:w-20 xs:flex-none h-1.5 bg-stellar-border rounded-full overflow-hidden"
                       role="progressbar"
                       aria-valuenow={value}
                       aria-valuemin={0}
                       aria-valuemax={100}
                     >
                       <div
-                        className="h-full rounded-full transition-all duration-300"
-                        style={{ width: `${value}%`, backgroundColor: factorColor }}
+                        className={`h-full rounded-full transition-all duration-300 ${getStatusFillClass(factorStatus)}`}
+                        style={{ width: `${value}%` }}
                       />
                     </div>
                     <span className="text-sm text-stellar-text-primary w-7 text-right tabular-nums">

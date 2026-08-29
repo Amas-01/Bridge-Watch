@@ -2,6 +2,8 @@
 
 This document outlines the testing infrastructure and best practices for the Stellar Bridge Watch frontend.
 
+> **Fixture inventory:** Shared test data (MSW handlers, type factories, and E2E mocks) is catalogued in [FIXTURE_AUDIT_REPORT.md](../../docs/FIXTURE_AUDIT_REPORT.md). Prefer `src/test/factories.ts` builders over inline mock arrays when adding new tests.
+
 ## Testing Stack
 
 - **Testing Framework**: [Vitest](https://vitest.dev/)

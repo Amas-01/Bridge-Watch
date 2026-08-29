@@ -1,0 +1,294 @@
+name: Release Dry-Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to test (e.g., v1.0.0)"
+        required: true
+        type: string
+  pull_request:
+    paths:
+      - "contracts/**"
+      - "backend/**"
+      - "frontend/**"
+      - ".github/workflows/release-dry-run.yml"
+      - ".github/workflows/release-shield.yml"
+
+jobs:
+  release-shield:
+    name: Release Shield Dry-Run
+    uses: ./.github/workflows/release-shield.yml
+    permissions:
+      actions: read
+      contents: read
+    with:
+      version: ${{ github.event_name == 'workflow_dispatch' && inputs.version || 'v0.0.0-dryrun' }}
+      enforce_external_gates: false
+      report_only: true
+
+  validate-version:
+    name: Validate Version
+    runs-on: ubuntu-latest
+    needs: release-shield
+
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+
+    steps:
+      - name: Extract and validate version format
+        id: version
+        run: |
+          VERSION="${{ github.event.inputs.version || 'v0.0.0-dryrun' }}"
+          if [[ ! $VERSION =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$ ]]; then
+            echo "Invalid version format: $VERSION"
+            exit 1
+          fi
+          echo "value=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version validation passed: $VERSION"
+
+      - name: Check for duplicate releases
+        run: |
+          VERSION="${{ steps.version.outputs.value }}"
+          echo "Checking if release $VERSION would create a duplicate..."
+          echo "(Actual duplicate check would happen during real release)"
+
+  dry-run-contract-build:
+    name: Dry-Run Contract Build
+    runs-on: ubuntu-latest
+    needs: validate-version
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Validate contract structure
+        working-directory: contracts
+        run: |
+          echo "Validating contract directory structure..."
+          ls -la
+
+      - name: Build contracts (dry-run)
+        working-directory: contracts
+        run: |
+          echo "Building contracts for version ${{ needs.validate-version.outputs.version }}..."
+          cargo check --workspace --target wasm32-unknown-unknown --release 2>&1 | tee build.log
+          # grep for lines starting with `error` (actual compilation errors),
+          # not harmless things like the `thiserror` crate name
+          if grep -q "^error" build.log; then
+            echo "Build validation failed"
+            exit 1
+          fi
+          echo "Build validation passed"
+
+      - name: Verify contract artifacts
+        working-directory: contracts
+        run: |
+          echo "Verifying contract artifacts would be produced..."
+          echo "Would generate: soroban-contracts-${{ needs.validate-version.outputs.version }}.tar.gz"
+
+      - name: Report contract build status
+        if: always()
+        run: |
+          echo "Contract build validation: ${{ job.status }}"
+
+  dry-run-image-build:
+    name: Dry-Run Docker Images
+    runs-on: ubuntu-latest
+    needs: validate-version
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lowercase repository name
+        id: repo
+        run: echo "name=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate Dockerfile structure
+        run: |
+          echo "Validating Docker files..."
+          [ -f backend/Dockerfile ] && echo "backend/Dockerfile: OK" || echo "backend/Dockerfile: MISSING"
+          [ -f frontend/Dockerfile ] && echo "frontend/Dockerfile: OK" || echo "frontend/Dockerfile: MISSING"
+
+      - name: Build backend image (dry-run)
+        uses: docker/build-push-action@v5
+        continue-on-error: true
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: false
+          tags: |
+            ghcr.io/${{ steps.repo.outputs.name }}/backend:${{ needs.validate-version.outputs.version }}
+            ghcr.io/${{ steps.repo.outputs.name }}/backend:dryrun
+
+      - name: Build frontend image (dry-run)
+        uses: docker/build-push-action@v5
+        continue-on-error: true
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: false
+          tags: |
+            ghcr.io/${{ steps.repo.outputs.name }}/frontend:${{ needs.validate-version.outputs.version }}
+            ghcr.io/${{ steps.repo.outputs.name }}/frontend:dryrun
+
+      - name: Report Docker build status
+        if: always()
+        run: |
+          echo "Docker image build validation: ${{ job.status }}"
+
+  dry-run-changelog:
+    name: Dry-Run Changelog Generation
+    runs-on: ubuntu-latest
+    needs: validate-version
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Simulate changelog generation
+        run: |
+          echo "Simulating changelog generation for ${{ needs.validate-version.outputs.version }}..."
+          echo "## What's Changed" > CHANGELOG_DRYRUN.md
+          echo "" >> CHANGELOG_DRYRUN.md
+
+          # Get recent commits for dry-run
+          git log --oneline -10 >> CHANGELOG_DRYRUN.md || echo "- No commits available for changelog" >> CHANGELOG_DRYRUN.md
+
+          echo "" >> CHANGELOG_DRYRUN.md
+          echo "**Full Changelog:** Would be generated during actual release" >> CHANGELOG_DRYRUN.md
+
+          cat CHANGELOG_DRYRUN.md
+
+      - name: Validate changelog format
+        run: |
+          if [ ! -f CHANGELOG_DRYRUN.md ] || [ ! -s CHANGELOG_DRYRUN.md ]; then
+            echo "Changelog generation validation failed"
+            exit 1
+          fi
+          echo "Changelog format validation passed"
+
+      - name: Report changelog status
+        if: always()
+        run: |
+          echo "Changelog generation: ${{ job.status }}"
+
+  dry-run-environment-simulation:
+    name: Dry-Run Environment Simulation
+    runs-on: ubuntu-latest
+    needs: validate-version
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Simulate environment checks
+        run: |
+          VERSION="${{ needs.validate-version.outputs.version }}"
+          echo "Simulating release environment for $VERSION..."
+          echo ""
+          echo "Environment Validation:"
+          echo "- GitHub Actions version: $(gh --version || echo 'N/A')"
+          echo "- Node version: $(node --version || echo 'N/A')"
+          echo "- Rust version: $(rustc --version || echo 'N/A')"
+          echo "- Docker version: $(docker --version || echo 'N/A')"
+
+      - name: Verify release prerequisites
+        run: |
+          echo "Checking release prerequisites..."
+          echo "- Git repository: $(git rev-parse --git-dir)"
+          echo "- Current branch: $(git rev-parse --abbrev-ref HEAD)"
+          echo "- Latest tag: $(git describe --tags --abbrev=0 2>/dev/null || echo 'No tags')"
+          echo ""
+          echo "Prerequisites check: PASS"
+
+      - name: Report environment simulation
+        if: always()
+        run: |
+          echo "Environment simulation: ${{ job.status }}"
+
+  dry-run-summary:
+    name: Dry-Run Summary
+    runs-on: ubuntu-latest
+    needs: [validate-version, dry-run-contract-build, dry-run-image-build, dry-run-changelog, dry-run-environment-simulation]
+    if: always()
+
+    steps:
+      - name: Generate dry-run report
+        run: |
+          echo "===== RELEASE DRY-RUN REPORT ====="
+          echo ""
+          echo "Version: ${{ needs.validate-version.outputs.version }}"
+          echo "Timestamp: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          echo ""
+          echo "Job Results:"
+          echo "- Version Validation: ${{ needs.validate-version.result }}"
+          echo "- Contract Build: ${{ needs.dry-run-contract-build.result }}"
+          echo "- Docker Images: ${{ needs.dry-run-image-build.result }}"
+          echo "- Changelog: ${{ needs.dry-run-changelog.result }}"
+          echo "- Environment: ${{ needs.dry-run-environment-simulation.result }}"
+          echo ""
+          echo "===== DRY-RUN COMPLETE ====="
+
+      - name: Determine overall status
+        run: |
+          STATUS="PASSED"
+          
+          # For PRs, be more lenient - only fail if core validation fails
+          if [ "${{ needs.validate-version.result }}" != "success" ]; then 
+            echo "Version validation failed"
+            STATUS="FAILED"
+          fi
+          
+          # Docker images and contract builds are optional for PRs
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            if [ "${{ needs.dry-run-contract-build.result }}" != "success" ]; then 
+              echo "Contract build failed"
+              STATUS="FAILED"
+            fi
+            if [ "${{ needs.dry-run-image-build.result }}" != "success" ] && [ "${{ needs.dry-run-image-build.result }}" != "skipped" ]; then 
+              echo "Docker images build failed"
+              STATUS="FAILED"
+            fi
+          else
+            echo "Running in PR mode - skipping strict build validation"
+          fi
+          
+          if [ "${{ needs.dry-run-changelog.result }}" != "success" ]; then 
+            echo "Changelog generation failed"
+            STATUS="FAILED"
+          fi
+          
+          if [ "${{ needs.dry-run-environment-simulation.result }}" != "success" ]; then 
+            echo "Environment simulation failed"
+            STATUS="FAILED"
+          fi
+
+          echo "Overall Dry-Run Status: $STATUS"
+
+          if [ "$STATUS" = "FAILED" ]; then
+            echo "Dry-run failed. Fix issues before proceeding with actual release."
+            exit 1
+          fi
+
+      - name: Generate release readiness checklist
+        run: |
+          echo "Release Readiness Checklist:"
+          echo "- [ ] Version validation passed"
+          echo "- [ ] All contracts build successfully"
+          echo "- [ ] Docker images build successfully"
+          echo "- [ ] Changelog generated"
+          echo "- [ ] All prerequisites met"
+          echo ""
+          echo "Next steps:"
+          echo "1. Review dry-run results"
+          echo "2. Address any validation errors"
+          echo "3. Trigger actual release via workflow_dispatch"
+          echo "4. Monitor release progress"

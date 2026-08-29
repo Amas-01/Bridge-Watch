@@ -29,9 +29,17 @@ function getActiveTraceEntries(): Array<[string, any]> {
 export async function tracingAdminRoutes(server: FastifyInstance) {
   // Admin authentication middleware
   server.addHook("preHandler", async (request: FastifyRequest, reply: FastifyReply) => {
-    const apiKey = request.headers["x-api-key"] as string | string[] | undefined;
+    const rawApiKey = request.headers["x-api-key"] as string | string[] | undefined;
+    const apiKey = Array.isArray(rawApiKey) ? rawApiKey[0] : rawApiKey;
 
-    if (!apiKey || (Array.isArray(apiKey) ? apiKey[0] : apiKey).startsWith(config.RATE_LIMIT_ADMIN_API_KEY_PREFIX) === false) {
+    if (!apiKey) {
+      return reply.status(401).send({
+        error: "Unauthorized",
+        message: "Admin API key required for tracing management",
+      });
+    }
+
+    if (!apiKey.startsWith(config.RATE_LIMIT_ADMIN_API_KEY_PREFIX)) {
       return reply.status(403).send({
         error: "Forbidden",
         message: "Admin API key required for tracing management",

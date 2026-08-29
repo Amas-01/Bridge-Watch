@@ -26,14 +26,23 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
     query,
     setQuery,
     results,
+    assetFacets,
     isLoading,
     recentSearches,
     addRecentSearch,
     clearRecentSearches,
+    savedSearches,
+    saveCurrentQuery,
+    deleteSavedSearch,
+    renameSavedSearch,
+    applySavedSearch,
+    getSavedSearchShareUrl,
     debouncedQuery,
   } = useSearch();
 
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [renameTarget, setRenameTarget] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   // Flat ordered list of items visible right now (used for keyboard nav)
   const flatItems = useMemo<SearchResult[]>(() => {
@@ -49,6 +58,11 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
   // Focus input when modal opens, clear query on close
   useEffect(() => {
     if (isOpen) {
+      const params = new URLSearchParams(window.location.search);
+      const queryFromUrl = params.get("q");
+      if (queryFromUrl) {
+        setQuery(queryFromUrl);
+      }
       // Small delay so the CSS transition doesn't interrupt focus
       const t = setTimeout(() => inputRef.current?.focus(), 50);
       return () => clearTimeout(t);
@@ -104,6 +118,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
   const showResults = debouncedQuery.length > 0;
   const showEmpty = showResults && !isLoading && results.length === 0;
   const showRecent = !showResults && recentSearches.length > 0;
+  const showSaved = !showResults && savedSearches.length > 0;
 
   if (!isOpen) return null;
 
@@ -150,13 +165,22 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search assets, bridges, pages…"
+            placeholder="Search assets, bridges, incidents, alerts, pages..."
             className="flex-1 bg-transparent py-4 text-white placeholder-stellar-text-secondary text-sm outline-none"
             aria-autocomplete="list"
             aria-controls="search-results-list"
             autoComplete="off"
             spellCheck={false}
           />
+          {query.trim().length > 0 && (
+            <button
+              type="button"
+              onClick={() => saveCurrentQuery()}
+              className="flex-none px-2 py-1 text-xs rounded-md border border-stellar-border text-stellar-text-secondary hover:text-white hover:border-stellar-blue/60"
+            >
+              Save
+            </button>
+          )}
 
           {/* Loading spinner */}
           {isLoading && debouncedQuery && (
@@ -226,6 +250,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
               onSelect={handleSelect}
               onHover={setActiveIndex}
               flatItems={flatItems}
+              assetFacets={assetFacets}
             />
           )}
 
@@ -241,28 +266,117 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
             />
           )}
 
-          {!showResults && !showRecent && (
+          {showSaved && (
+            <div className="px-3 py-2 border-t border-stellar-border/60">
+              <div className="flex items-center justify-between mb-2 text-xs text-stellar-text-secondary">
+                <span>Saved searches</span>
+              </div>
+              <ul className="space-y-1">
+                {savedSearches.map((saved) => (
+                  <li key={saved.id} className="rounded-md border border-stellar-border/60 px-2 py-2">
+                    <div className="flex items-center justify-between gap-2">
+                      {renameTarget === saved.id ? (
+                        <input
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          className="flex-1 bg-transparent text-sm outline-none border-b border-stellar-border"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              renameSavedSearch(saved.id, renameValue);
+                              setRenameTarget(null);
+                              setRenameValue("");
+                            }
+                            if (e.key === "Escape") {
+                              setRenameTarget(null);
+                              setRenameValue("");
+                            }
+                          }}
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          className="text-sm text-left hover:text-white text-stellar-text-primary"
+                          onClick={() => {
+                            applySavedSearch(saved.id);
+                          }}
+                        >
+                          {saved.name}
+                        </button>
+                      )}
+                      <div className="flex items-center gap-2 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRenameTarget(saved.id);
+                            setRenameValue(saved.name);
+                          }}
+                          className="text-stellar-text-secondary hover:text-white"
+                        >
+                          Rename
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteSavedSearch(saved.id)}
+                          className="text-stellar-text-secondary hover:text-red-400"
+                        >
+                          Delete
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const url = getSavedSearchShareUrl(saved);
+                            await navigator.clipboard.writeText(url);
+                          }}
+                          className="text-stellar-text-secondary hover:text-white"
+                        >
+                          Copy link
+                        </button>
+                      </div>
+                    </div>
+                    <p className="mt-1 text-xs text-stellar-text-secondary">{saved.query}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {!showResults && !showRecent && !showSaved && (
             <div className="px-4 py-8 text-center text-xs text-stellar-text-secondary">
-              Start typing to search across assets, bridges, and pages.
+              Start typing to search across assets, bridges, incidents, alerts, and pages.
             </div>
           )}
         </div>
 
         {/* Footer hint */}
-        <div className="px-4 py-2 border-t border-stellar-border flex items-center gap-4 text-xs text-stellar-text-secondary">
-          <span className="flex items-center gap-1">
-            <kbd className="px-1.5 py-0.5 rounded bg-stellar-border font-mono">↑</kbd>
-            <kbd className="px-1.5 py-0.5 rounded bg-stellar-border font-mono">↓</kbd>
-            navigate
-          </span>
-          <span className="flex items-center gap-1">
-            <kbd className="px-1.5 py-0.5 rounded bg-stellar-border font-mono">↵</kbd>
-            select
-          </span>
-          <span className="flex items-center gap-1">
-            <kbd className="px-1.5 py-0.5 rounded bg-stellar-border font-mono">ESC</kbd>
-            close
-          </span>
+        <div className="px-4 py-2 border-t border-stellar-border flex items-center justify-between gap-4 text-xs text-stellar-text-secondary">
+          <div className="flex items-center gap-4">
+            <span className="flex items-center gap-1">
+              <kbd className="px-1.5 py-0.5 rounded bg-stellar-border font-mono">↑</kbd>
+              <kbd className="px-1.5 py-0.5 rounded bg-stellar-border font-mono">↓</kbd>
+              navigate
+            </span>
+            <span className="flex items-center gap-1">
+              <kbd className="px-1.5 py-0.5 rounded bg-stellar-border font-mono">↵</kbd>
+              select
+            </span>
+            <span className="flex items-center gap-1">
+              <kbd className="px-1.5 py-0.5 rounded bg-stellar-border font-mono">ESC</kbd>
+              close
+            </span>
+          </div>
+          {debouncedQuery.length >= 2 && (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                navigate(`/search?q=${encodeURIComponent(debouncedQuery)}`);
+              }}
+              className="text-stellar-blue hover:text-stellar-blue/80 transition-colors font-medium"
+            >
+              View all results →
+            </button>
+          )}
         </div>
       </div>
     </div>

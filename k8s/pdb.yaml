@@ -1,0 +1,28 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: bridge-watch-backend-pdb
+  namespace: bridge-watch
+  labels:
+    app.kubernetes.io/name: bridge-watch
+    app.kubernetes.io/component: backend
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: bridge-watch-backend
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: bridge-watch-frontend-pdb
+  namespace: bridge-watch
+  labels:
+    app.kubernetes.io/name: bridge-watch
+    app.kubernetes.io/component: frontend
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: bridge-watch-frontend

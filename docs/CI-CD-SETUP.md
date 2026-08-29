@@ -361,6 +361,8 @@ az containerapp update --name backend --image ${{ needs.build-and-push.outputs.b
 
 ## Setup Instructions
 
+For cache strategy and invalidation details, see [Build Cache Matrix](./build-cache-matrix.md).
+
 ### Step 1: Repository Secrets
 
 Configure these secrets in `Settings > Secrets and variables > Actions`:

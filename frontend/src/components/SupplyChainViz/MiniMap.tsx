@@ -15,10 +15,10 @@ const MM_WIDTH = 140;
 const MM_HEIGHT = 100;
 const PADDING = 20;
 
-const STATUS_COLORS: Record<BridgeEdge["status"], string> = {
-  healthy: "#22c55e",
-  degraded: "#f59e0b",
-  offline: "#ef4444",
+const STATUS_STROKE: Record<BridgeEdge["status"], string> = {
+  healthy: "stroke-status-success",
+  degraded: "stroke-status-warning",
+  offline: "stroke-status-danger",
 };
 
 export default function MiniMap({
@@ -86,7 +86,7 @@ export default function MiniMap({
               key={edge.id}
               x1={s.x} y1={s.y}
               x2={t.x} y2={t.y}
-              stroke={STATUS_COLORS[edge.status]}
+              className={STATUS_STROKE[edge.status]}
               strokeWidth={0.8}
               opacity={0.5}
             />

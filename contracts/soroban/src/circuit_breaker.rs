@@ -222,7 +222,7 @@ impl CircuitBreakerContract {
             .set(&DataKey::Guardians, &guardians);
 
         env.events()
-            .publish((Symbol::new(&env, EVENT_GUARDIAN_ADDED),), (guardian, role));
+            .publish(("cb_guardian_added",), (guardian, role));
     }
 
     pub fn remove_guardian(env: Env, caller: Address, guardian: Address) {
@@ -251,8 +251,7 @@ impl CircuitBreakerContract {
             .instance()
             .set(&DataKey::Guardians, &new_guardians);
 
-        env.events()
-            .publish((Symbol::new(&env, EVENT_GUARDIAN_REMOVED),), guardian);
+        env.events().publish(("cb_guardian_removed",), guardian);
     }
 
     pub fn get_guardians(env: Env) -> Vec<GuardianInfo> {
@@ -287,7 +286,7 @@ impl CircuitBreakerContract {
             .set(&DataKey::PauseState(pause_id), &pause_state);
 
         env.events().publish(
-            (Symbol::new(&env, EVENT_PAUSE_TRIGGERED),),
+            ("cb_pause_triggered",),
             (pause_id, PauseScope::Global, PauseLevel::Full),
         );
     }
@@ -315,7 +314,7 @@ impl CircuitBreakerContract {
             .set(&DataKey::PauseState(pause_id), &pause_state);
 
         env.events().publish(
-            (Symbol::new(&env, EVENT_PAUSE_TRIGGERED),),
+            ("cb_pause_triggered",),
             (pause_id, PauseScope::Bridge(bridge_id), PauseLevel::Partial),
         );
     }
@@ -343,7 +342,7 @@ impl CircuitBreakerContract {
             .set(&DataKey::PauseState(pause_id), &pause_state);
 
         env.events().publish(
-            (Symbol::new(&env, EVENT_PAUSE_TRIGGERED),),
+            ("cb_pause_triggered",),
             (pause_id, PauseScope::Asset(asset_code), PauseLevel::Warning),
         );
     }
@@ -383,10 +382,8 @@ impl CircuitBreakerContract {
             .instance()
             .set(&DataKey::RecoveryRequests, &recovery_requests);
 
-        env.events().publish(
-            (Symbol::new(&env, EVENT_RECOVERY_REQUESTED),),
-            (pause_id, caller),
-        );
+        env.events()
+            .publish(("cb_recovery_requested",), (pause_id, caller));
     }
 
     pub fn approve_recovery(env: Env, caller: Address, pause_id: u32) {
@@ -398,30 +395,26 @@ impl CircuitBreakerContract {
             .get(&DataKey::RecoveryRequests)
             .unwrap_or(Vec::new(&env));
 
-        let mut found_idx = None;
-        for (i, req) in recovery_requests.iter().enumerate() {
+        let mut found = false;
+        let len = recovery_requests.len();
+        for i in 0..len {
+            let mut req = recovery_requests.get(i).unwrap();
             if req.pause_id == pause_id {
-                found_idx = Some(i as u32);
+                req.approvals += 1;
+                recovery_requests.set(i, req);
+                found = true;
                 break;
             }
         }
 
-        assert!(found_idx.is_some(), "recovery request not found");
-
-        if let Some(idx) = found_idx {
-            let mut req = recovery_requests.get(idx).unwrap();
-            req.approvals += 1;
-            recovery_requests.set(idx, req);
-        }
+        assert!(found, "recovery request not found");
 
         env.storage()
             .instance()
             .set(&DataKey::RecoveryRequests, &recovery_requests);
 
-        env.events().publish(
-            (Symbol::new(&env, EVENT_GUARDIAN_APPROVED),),
-            (pause_id, caller, "recovery"),
-        );
+        env.events()
+            .publish(("cb_guardian_approved",), (pause_id, caller, "recovery"));
     }
 
     pub fn execute_recovery(env: Env, caller: Address, pause_id: u32) {
@@ -462,8 +455,7 @@ impl CircuitBreakerContract {
             .persistent()
             .remove(&DataKey::PauseState(pause_id));
 
-        env.events()
-            .publish((Symbol::new(&env, EVENT_RECOVERY_EXECUTED),), pause_id);
+        env.events().publish(("cb_recovery_executed",), pause_id);
     }
 
     // ── Trigger Configuration ─────────────────────────────────────────────────
@@ -498,12 +490,10 @@ impl CircuitBreakerContract {
             .set(&DataKey::TriggerConfigs, &trigger_configs);
 
         env.events().publish(
-            (Symbol::new(&env, EVENT_TRIGGER_CONFIG_UPDATED),),
+            ("cb_trigger_updated",),
             (alert_type, threshold, pause_level),
         );
     }
-
-    // ── Whitelist Management ──────────────────────────────────────────────────
 
     pub fn add_to_address_whitelist(env: Env, caller: Address, address: Address) {
         Self::only_admin(&env, &caller);
@@ -532,10 +522,8 @@ impl CircuitBreakerContract {
             .instance()
             .set(&DataKey::WhitelistAddresses, &whitelist);
 
-        env.events().publish(
-            (Symbol::new(&env, EVENT_WHITELIST_UPDATED),),
-            ("address", address, true),
-        );
+        env.events()
+            .publish(("cb_whitelist_updated",), ("address", address, true));
     }
 
     pub fn add_asset_to_whitelist(env: Env, caller: Address, asset_code: String) {
@@ -565,23 +553,20 @@ impl CircuitBreakerContract {
             .instance()
             .set(&DataKey::WhitelistAssets, &whitelist);
 
-        env.events().publish(
-            (Symbol::new(&env, EVENT_WHITELIST_UPDATED),),
-            ("asset", asset_code, true),
-        );
+        env.events()
+            .publish(("cb_whitelist_updated",), ("asset", asset_code, true));
     }
 
     // ── Query Functions ───────────────────────────────────────────────────────
 
     pub fn get_pause_state(env: Env, pause_id: u32) -> PauseState {
-        let default_addr = env.current_contract_address();
         env.storage()
             .persistent()
             .get(&DataKey::PauseState(pause_id))
             .unwrap_or(PauseState {
                 scope: PauseScope::Global,
                 level: PauseLevel::None,
-                triggered_by: default_addr,
+                triggered_by: env.current_contract_address(),
                 trigger_reason: String::from_str(&env, ""),
                 timestamp: 0,
                 recovery_deadline: 0,
@@ -697,38 +682,64 @@ impl CircuitBreakerContract {
 mod tests {
     use super::*;
     use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::Env;
 
-    fn setup() -> (Env, CircuitBreakerContractClient<'static>, Address) {
+    fn create_test_env() -> Env {
         let env = Env::default();
         env.mock_all_auths();
+        env
+    }
+
+    fn create_test_addresses(env: &Env) -> (Address, Address, Address, Address) {
+        let admin = Address::generate(env);
+        let guardian1 = Address::generate(env);
+        let guardian2 = Address::generate(env);
+        let user = Address::generate(env);
+        (admin, guardian1, guardian2, user)
+    }
+
+    fn setup() -> (
+        Env,
+        Address,
+        CircuitBreakerContractClient<'static>,
+        Address,
+        Address,
+        Address,
+        Address,
+    ) {
+        let env = create_test_env();
+        let (admin, guardian1, guardian2, user) = create_test_addresses(&env);
         let contract_id = env.register_contract(None, CircuitBreakerContract);
         let client = CircuitBreakerContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
-        client.initialize(&admin, &2, &3600, &7200, &14400, &100);
-        (env, client, admin)
+        (env, contract_id, client, admin, guardian1, guardian2, user)
     }
 
     #[test]
     fn test_initialization() {
-        let (_, client, admin) = setup();
-        // Verify by calling a query - if initialized correctly it won't panic
-        let _ = client.get_guardians();
-        drop(admin);
+        let (env, contract_id, client, admin, _, _, _) = setup();
+
+        client.initialize(&admin, &2, &3600, &7200, &14400, &100);
+
+        let has_config = env.as_contract(&contract_id, || {
+            env.storage().instance().has(&DataKey::Config)
+        });
+        assert!(has_config);
     }
 
     #[test]
+    #[should_panic]
     fn test_double_initialization() {
-        let (env, client, admin) = setup();
-        let result = client.try_initialize(&admin, &2, &3600, &7200, &14400, &100);
-        assert!(result.is_err());
-        drop(env);
+        let (_env, _contract_id, client, admin, _, _, _) = setup();
+
+        client.initialize(&admin, &2, &3600, &7200, &14400, &100);
+        client.initialize(&admin, &2, &3600, &7200, &14400, &100);
     }
 
     #[test]
     fn test_add_guardian() {
-        let (env, client, admin) = setup();
-        let guardian1 = Address::generate(&env);
+        let (_env, _contract_id, client, admin, guardian1, _, _) = setup();
 
+        client.initialize(&admin, &2, &3600, &7200, &14400, &100);
         client.add_guardian(&admin, &guardian1, &GuardianRole::StandardGuardian);
 
         let guardians = client.get_guardians();
@@ -741,20 +752,19 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn test_add_guardian_non_admin() {
-        let (env, client, _admin) = setup();
-        let guardian1 = Address::generate(&env);
-        let user = Address::generate(&env);
+        let (_env, _contract_id, client, admin, guardian1, _, user) = setup();
 
-        let result = client.try_add_guardian(&user, &guardian1, &GuardianRole::StandardGuardian);
-        assert!(result.is_err());
+        client.initialize(&admin, &2, &3600, &7200, &14400, &100);
+        client.add_guardian(&user, &guardian1, &GuardianRole::StandardGuardian);
     }
 
     #[test]
     fn test_pause_global() {
-        let (env, client, admin) = setup();
-        let guardian1 = Address::generate(&env);
+        let (env, _contract_id, client, admin, guardian1, _, _) = setup();
 
+        client.initialize(&admin, &2, &3600, &7200, &14400, &100);
         client.add_guardian(&admin, &guardian1, &GuardianRole::EmergencyGuardian);
 
         let reason = String::from_str(&env, "Test global pause");
@@ -765,9 +775,9 @@ mod tests {
 
     #[test]
     fn test_pause_bridge() {
-        let (env, client, admin) = setup();
-        let guardian1 = Address::generate(&env);
+        let (env, _contract_id, client, admin, guardian1, _, _) = setup();
 
+        client.initialize(&admin, &2, &3600, &7200, &14400, &100);
         client.add_guardian(&admin, &guardian1, &GuardianRole::StandardGuardian);
 
         let bridge_id = String::from_str(&env, "test-bridge");
@@ -779,9 +789,9 @@ mod tests {
 
     #[test]
     fn test_pause_asset() {
-        let (env, client, admin) = setup();
-        let guardian1 = Address::generate(&env);
+        let (env, _contract_id, client, admin, guardian1, _, _) = setup();
 
+        client.initialize(&admin, &2, &3600, &7200, &14400, &100);
         client.add_guardian(&admin, &guardian1, &GuardianRole::StandardGuardian);
 
         let asset_code = String::from_str(&env, "USDC");
@@ -792,35 +802,28 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn test_pause_non_guardian() {
-        let (env, client, _admin) = setup();
-        let user = Address::generate(&env);
+        let (env, _contract_id, client, admin, _guardian1, _guardian2, user) = setup();
+
+        client.initialize(&admin, &2, &3600, &7200, &14400, &100);
 
         let reason = String::from_str(&env, "Test pause");
-        let result = client.try_pause_global(&user, &reason);
-        assert!(result.is_err());
+        client.pause_global(&user, &reason);
     }
 
     #[test]
     fn test_recovery_flow() {
-        let (env, client, admin) = setup();
-        let guardian1 = Address::generate(&env);
-        let guardian2 = Address::generate(&env);
+        let (env, _contract_id, client, admin, guardian1, guardian2, _) = setup();
 
+        client.initialize(&admin, &2, &3600, &7200, &14400, &100);
         client.add_guardian(&admin, &guardian1, &GuardianRole::EmergencyGuardian);
         client.add_guardian(&admin, &guardian2, &GuardianRole::StandardGuardian);
 
-        // Pause
         let reason = String::from_str(&env, "Test pause");
         client.pause_global(&guardian1, &reason);
-
-        // Request recovery
         client.request_recovery(&guardian2, &1);
-
-        // Approve recovery
         client.approve_recovery(&guardian1, &1);
-
-        // Execute recovery
         client.execute_recovery(&guardian2, &1);
 
         assert!(!client.is_paused(&PauseScope::Global));
@@ -828,9 +831,9 @@ mod tests {
 
     #[test]
     fn test_whitelist_address() {
-        let (env, client, admin) = setup();
-        let user = Address::generate(&env);
+        let (_env, _contract_id, client, admin, _, _, user) = setup();
 
+        client.initialize(&admin, &2, &3600, &7200, &14400, &100);
         client.add_to_address_whitelist(&admin, &user);
 
         assert!(client.is_whitelisted_address(&user));
@@ -838,7 +841,9 @@ mod tests {
 
     #[test]
     fn test_whitelist_asset() {
-        let (env, client, admin) = setup();
+        let (env, _contract_id, client, admin, _, _, _) = setup();
+
+        client.initialize(&admin, &2, &3600, &7200, &14400, &100);
 
         let asset_code = String::from_str(&env, "USDC");
         client.add_asset_to_whitelist(&admin, &asset_code);
@@ -847,12 +852,11 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn test_whitelist_non_admin() {
-        let (env, client, _admin) = setup();
-        let guardian1 = Address::generate(&env);
-        let user = Address::generate(&env);
+        let (_env, _contract_id, client, admin, guardian1, _, user) = setup();
 
-        let result = client.try_add_to_address_whitelist(&user, &guardian1);
-        assert!(result.is_err());
+        client.initialize(&admin, &2, &3600, &7200, &14400, &100);
+        client.add_to_address_whitelist(&user, &guardian1);
     }
 }

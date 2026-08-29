@@ -7,11 +7,13 @@ node_modules/
 dist/
 build/
 *.tsbuildinfo
+frontend/storybook-static/
 
 # Environment variables
 .env
 .env.local
 .env.*.local
+.env.sandbox
 
 # Logs
 logs/
@@ -31,6 +33,9 @@ Thumbs.db
 
 # Testing
 coverage/
+playwright-report/
+test-results/
+blob-report/
 load-tests/results/*.json
 load-tests/results/*.txt
 load-tests/results/*.md
@@ -39,9 +44,8 @@ load-tests/results/*.log
 # Docker
 docker-compose.override.yml
 
-# Rust / Soroban (workspace root: contracts/)
-contracts/target/
-# Ephemeral snapshot output from local `cargo test` (do not bulk-commit)
+# Rust / Soroban
+**/target/
 contracts/soroban/test_snapshots/
 
 # Editor-specific

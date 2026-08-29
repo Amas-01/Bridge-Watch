@@ -61,14 +61,14 @@ setup_colors() {
   if [[ "$NO_COLOR" == true ]] || [[ ! -t 1 ]]; then
     RED="" GREEN="" YELLOW="" BLUE="" CYAN="" BOLD="" DIM="" RESET=""
   else
-    RED="\033[0;31m"
-    GREEN="\033[0;32m"
-    YELLOW="\033[1;33m"
-    BLUE="\033[0;34m"
-    CYAN="\033[0;36m"
-    BOLD="\033[1m"
-    DIM="\033[2m"
-    RESET="\033[0m"
+    RED=$'\033[0;31m'
+    GREEN=$'\033[0;32m'
+    YELLOW=$'\033[1;33m'
+    BLUE=$'\033[0;34m'
+    CYAN=$'\033[0;36m'
+    BOLD=$'\033[1m'
+    DIM=$'\033[2m'
+    RESET=$'\033[0m'
   fi
 }
 
@@ -318,6 +318,66 @@ print_install_hints() {
 # ---------------------------------------------------------------------------
 # Environment file
 # ---------------------------------------------------------------------------
+strip_wrapping_quotes() {
+  local value="$1"
+
+  if [[ "$value" =~ ^\".*\"$ ]]; then
+    value="${value:1:${#value}-2}"
+  elif [[ "$value" =~ ^\'.*\'$ ]]; then
+    value="${value:1:${#value}-2}"
+  fi
+
+  printf '%s' "$value"
+}
+
+get_env_value() {
+  local key="$1"
+  local env_file="$PROJECT_ROOT/.env"
+
+  [[ -f "$env_file" ]] || return 1
+
+  awk -F= -v key="$key" '
+    $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
+      sub(/^[[:space:]]*[^=]+=[[:space:]]*/, "", $0)
+      gsub(/\r$/, "", $0)
+      print $0
+      exit
+    }
+  ' "$env_file"
+}
+
+set_env_default() {
+  local key="$1"
+  local fallback="$2"
+  local current_value="${!key:-}"
+
+  if [[ -n "$current_value" ]]; then
+    return 0
+  fi
+
+  local file_value
+  file_value="$(get_env_value "$key" || true)"
+  file_value="$(strip_wrapping_quotes "$file_value")"
+
+  if [[ -z "$file_value" ]]; then
+    file_value="$fallback"
+  fi
+
+  export "$key=$file_value"
+}
+
+load_runtime_env_defaults() {
+  set_env_default "POSTGRES_PORT" "5432"
+  set_env_default "POSTGRES_USER" "bridge_watch"
+  set_env_default "POSTGRES_DB" "bridge_watch"
+  set_env_default "REDIS_PORT" "6379"
+  set_env_default "PORT" "3001"
+  set_env_default "WS_PORT" "3002"
+  set_env_default "FRONTEND_PORT" "5173"
+  set_env_default "PGADMIN_PORT" "5050"
+  set_env_default "REDIS_COMMANDER_PORT" "8081"
+}
+
 setup_env_file() {
   header "Setting up environment file"
 
@@ -335,13 +395,9 @@ setup_env_file() {
     die ".env.example not found at project root"
   fi
 
-  # Source .env so variables are available for Docker, DB, and port checks
-  if [[ -f "$env_file" ]]; then
-    set -a
-    # shellcheck disable=SC1090
-    source "$env_file"
-    set +a
-  fi
+  # Avoid sourcing .env directly because unquoted values (e.g. SMTP_FROM_NAME)
+  # can break shell parsing; load only required keys safely.
+  load_runtime_env_defaults
 }
 
 # ---------------------------------------------------------------------------

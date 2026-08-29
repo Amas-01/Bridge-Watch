@@ -1,3 +1,5 @@
+import type { AssetWithHealth, Bridge } from "../../types";
+
 export interface StatItem {
   id: string;
   label: string;
@@ -11,34 +13,11 @@ export interface StatItem {
   href?: string;
 }
 
+export type AssetData = AssetWithHealth;
+export type BridgeData = Bridge;
+
 export interface QuickStatsProps {
   assets: AssetData[];
   bridges: BridgeData[];
   isLoading?: boolean;
-}
-
-export interface AssetData {
-  symbol: string;
-  name: string;
-  health: {
-    overallScore: number;
-    factors: {
-      liquidityDepth: number;
-      priceStability: number;
-      bridgeUptime: number;
-      reserveBacking: number;
-      volumeTrend: number;
-    };
-    trend: "improving" | "stable" | "deteriorating";
-    lastUpdated: string;
-  } | null;
-}
-
-export interface BridgeData {
-  name: string;
-  status: "healthy" | "degraded" | "down" | "unknown";
-  totalValueLocked: number;
-  supplyOnStellar: number;
-  supplyOnSource: number;
-  mismatchPercentage: number;
 }

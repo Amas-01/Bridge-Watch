@@ -1,4 +1,5 @@
 export { DataTable } from "./DataTable";
+export { useTableSorting } from "./useTableSorting";
 export type {
   DataTableColumnDef,
   DataTableFilterType,

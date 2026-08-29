@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
+import rateLimit from "@fastify/rate-limit";
 import { config } from "./config/index.js";
 import { logger } from "./utils/logger.js";
 import { registerRoutes } from "./api/routes/index.js";
@@ -22,6 +23,10 @@ import { swaggerOptions, swaggerUiOptions } from "./config/openapi.js";
 import { registerCorrelationMiddleware } from "./api/middleware/correlation.middleware.js";
 import { registerRequestLoggingMiddleware } from "./api/middleware/logging.middleware.js";
 import { registerTracing } from "./api/middleware/tracing.js";
+import { getTelegramBotService } from "./services/telegram.bot.service.js";
+import { registerCompatibilityMiddleware } from "./api/compatibility/middleware.js";
+import { registerDrainProtectionMiddleware } from "./api/middleware/drainProtection.middleware.js";
+import { drainProtocolService } from "./services/drainProtocol.service.js";
 
 export async function buildServer() {
   const server = Fastify({
@@ -72,11 +77,28 @@ export async function buildServer() {
   // Register metrics middleware (to capture all requests)
   await registerMetrics(server as any);
 
+  // Register graceful shutdown drain protection middleware
+  await registerDrainProtectionMiddleware(server as any);
+
   // Register plugins
   await server.register(cors, {
-    origin: true,
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      // Check if origin is in the allowed list
+      if (config.CORS_ALLOWED_ORIGINS.includes(origin)) {
+        return callback(null, true);
+      }
+      
+      // Log rejected origins for debugging
+      logger.warn({ msg: 'CORS_REJECTED', origin });
+      return callback(null, false);
+    },
     credentials: true,
   });
+
+  await registerCompatibilityMiddleware(server);
 
   // OpenAPI / Swagger — must be registered before routes so schemas are collected
   await server.register(swagger, swaggerOptions);
@@ -84,6 +106,17 @@ export async function buildServer() {
 
   // Sliding-window Redis rate limiting (replaces the simple @fastify/rate-limit global)
   await registerRateLimiting(server as any);
+
+  // Register official rate-limit plugin to satisfy CodeQL and handle per-route config
+  await server.register(rateLimit, {
+    global: false,
+    addHeaders: {
+      "x-ratelimit-limit": false,
+      "x-ratelimit-remaining": false,
+      "x-ratelimit-reset": false,
+      "retry-after": false,
+    },
+  });
 
   // Enable permessage-deflate compression for WebSocket frames.
   await server.register(websocket, {
@@ -135,6 +168,17 @@ async function start() {
 
     // Initialize webhook delivery worker
     await initWebhookWorker();
+
+    // Initialize Telegram bot service
+    const telegramService = getTelegramBotService();
+    if (config.TELEGRAM_BOT_ENABLED && config.TELEGRAM_BOT_TOKEN) {
+      try {
+        await telegramService.start();
+      } catch (error) {
+        server.log.error(error, "Failed to start Telegram bot service");
+        // Log error but don't exit - Telegram is a secondary service
+      }
+    }
   } catch (err) {
     server.log.error(err);
     process.exit(1);
@@ -142,7 +186,18 @@ async function start() {
 
   // ─── Graceful shutdown ──────────────────────────────────────────────────────
   const shutdown = async (signal: string) => {
-    logger.info({ signal }, "Shutdown signal received");
+    logger.info({ signal }, "Shutdown signal received; initiating drain protocol");
+    await drainProtocolService.startDrain({ reason: `Received signal ${signal}`, initiatedBy: "system" });
+
+    // Stop Telegram bot service
+    const telegramService = getTelegramBotService();
+    if (telegramService.isRunning()) {
+      try {
+        await telegramService.stop();
+      } catch (error) {
+        logger.error(error, "Error stopping Telegram bot service");
+      }
+    }
 
     await wsServer.shutdown();
     await server.close();

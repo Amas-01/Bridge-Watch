@@ -173,7 +173,8 @@ Docker images use multi-stage builds to minimize attack surface:
 - API keys can be regenerated through the admin endpoint
 - Redis password changes require service restart
 
-See [Environment Setup](../deployment/environment-setup.md) for secrets configuration.
+See [Environment Setup](../deployment/environment-setup.md) for secrets configuration.  
+For periodic inventory and exposure review, use the [Secrets Audit Checklist](../secrets-audit-checklist.md) and [Secret Rotation Playbook](../runbooks/secret-rotation-playbook.md).
 
 ## Network Security
 

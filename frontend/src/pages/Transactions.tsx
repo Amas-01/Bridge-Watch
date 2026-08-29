@@ -1,7 +1,9 @@
 import { Suspense } from "react";
 import { useRefreshControls } from "../hooks/useRefreshControls";
+import { usePullToRefresh } from "../hooks/usePullToRefresh";
 import TransactionHistory from "../components/TransactionHistory";
 import RefreshControls from "../components/RefreshControls";
+import PullToRefresh from "../components/PullToRefresh";
 import { ErrorBoundary, LoadingSpinner } from "../components/Skeleton";
 
 export default function Transactions() {
@@ -10,9 +12,20 @@ export default function Transactions() {
     targets: [{ id: "transactions", label: "Transactions", queryKey: ["transactions"] }],
     defaultIntervalMs: 30_000,
   });
+  const pullToRefresh = usePullToRefresh({
+    enabled: true,
+    onRefresh: refreshControls.refreshNow,
+  });
 
   return (
     <div className="space-y-8">
+      <PullToRefresh
+        isPulling={pullToRefresh.isPulling}
+        pullDistance={pullToRefresh.pullDistance}
+        progress={pullToRefresh.progress}
+        isRefreshing={pullToRefresh.isRefreshing}
+      />
+
       <header>
         <h1 className="text-3xl font-bold text-white">Transaction History</h1>
         <p className="mt-2 text-stellar-text-secondary">
@@ -35,6 +48,18 @@ export default function Transactions() {
         isRefreshing={refreshControls.isRefreshing}
         lastUpdatedAt={refreshControls.lastUpdatedAt}
       />
+
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => {
+            void pullToRefresh.refresh();
+          }}
+          className="rounded-md border border-stellar-border px-4 py-2 text-sm text-white hover:bg-stellar-border"
+        >
+          Refresh now
+        </button>
+      </div>
 
       <ErrorBoundary onRetry={() => window.location.reload()}>
         <Suspense

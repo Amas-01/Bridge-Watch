@@ -1,10 +1,35 @@
 import type { FastifyInstance } from "fastify";
 import { BridgeService } from "../../services/bridge.service.js";
 import { BridgeTransactionService } from "../../services/bridgeTransaction.service.js";
+import { bridgeHealthSnapshotService } from "../../services/bridgeHealthSnapshot.service.js";
 
 export async function bridgesRoutes(server: FastifyInstance) {
   const bridgeService = new BridgeService();
   const bridgeTransactionService = new BridgeTransactionService();
+
+  server.get<{ Querystring: { bypassCache?: boolean } }>(
+    "/snapshot",
+    {
+      schema: {
+        tags: ["Bridges"],
+        summary: "Bridge health snapshot with trend summary",
+        description:
+          "Returns current bridge health status, asset coverage, and 24h trend. Response is cached for 30 seconds.",
+        querystring: {
+          type: "object",
+          properties: { bypassCache: { type: "boolean", default: false } },
+        },
+        response: {
+          200: { type: "object", additionalProperties: true },
+        },
+      },
+    },
+    async (request) => {
+      return bridgeHealthSnapshotService.getSnapshot({
+        bypassCache: request.query.bypassCache,
+      });
+    },
+  );
 
   server.get(
     "/",
@@ -24,7 +49,7 @@ export async function bridgesRoutes(server: FastifyInstance) {
     },
   );
 
-  server.get<{ Params: { bridge: string } }>(
+  server.get<{ Params: { bridge: string }; Querystring: { startDate?: string; endDate?: string } }>(
     "/:bridge/stats",
     {
       schema: {
@@ -35,6 +60,13 @@ export async function bridgesRoutes(server: FastifyInstance) {
           properties: { bridge: { type: "string", description: "Bridge identifier", example: "allbridge" } },
           required: ["bridge"],
         },
+        querystring: {
+          type: "object",
+          properties: {
+            startDate: { type: "string", description: "Filter start date/time (ISO or YYYY-MM-DD)" },
+            endDate: { type: "string", description: "Filter end date/time (ISO or YYYY-MM-DD)" },
+          },
+        },
         response: {
           200: { type: "object", additionalProperties: true },
           404: { $ref: "Error#" },
@@ -43,7 +75,8 @@ export async function bridgesRoutes(server: FastifyInstance) {
     },
     async (request, reply) => {
       const { bridge } = request.params;
-      const stats = await bridgeService.getBridgeStats(bridge);
+      const { startDate, endDate } = request.query;
+      const stats = await bridgeService.getBridgeStats(bridge, { startDate, endDate });
       if (!stats) {
         return reply.status(404).send({ error: "Bridge not found" });
       }
@@ -238,4 +271,57 @@ export async function bridgesRoutes(server: FastifyInstance) {
       return summary;
     },
   );
+
+  server.get<{ Params: { bridge: string }; Querystring: { limit?: string } }>(
+    "/:bridge/attestation-chain",
+    {
+      schema: {
+        tags: ["Bridges"],
+        summary: "Get Verifiable Credentials attestation verification chain",
+        params: {
+          type: "object",
+          properties: { bridge: { type: "string", example: "circle" } },
+          required: ["bridge"],
+        },
+        response: {
+          200: { type: "object", properties: { chain: { type: "array", items: { type: "object", additionalProperties: true } } } },
+        },
+      },
+    },
+    async (request, _reply) => {
+      const { circleAttestationService } = await import("../../services/circleAttestation.service.js");
+      const limit = Math.min(Number(request.query.limit || 10), 100);
+      const chain = await circleAttestationService.getAttestationChain(request.params.bridge, limit);
+      return { chain };
+    }
+  );
+
+  server.post<{ Params: { bridge: string }; Body: { assetSymbol?: string } }>(
+    "/:bridge/attestation-chain/import",
+    {
+      schema: {
+        tags: ["Bridges"],
+        summary: "Import and verify Circle Verifiable Credentials attestation",
+        params: {
+          type: "object",
+          properties: { bridge: { type: "string", example: "circle" } },
+          required: ["bridge"],
+        },
+        body: {
+          type: "object",
+          properties: { assetSymbol: { type: "string", example: "USDC" } },
+        },
+        response: {
+          200: { type: "object", additionalProperties: true },
+        },
+      },
+    },
+    async (request, reply) => {
+      const { circleAttestationService } = await import("../../services/circleAttestation.service.js");
+      const assetSymbol = request.body?.assetSymbol || "USDC";
+      const result = await circleAttestationService.importAndVerifyAttestation(request.params.bridge, assetSymbol);
+      return reply.status(200).send(result);
+    }
+  );
 }
+

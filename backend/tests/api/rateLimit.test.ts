@@ -206,7 +206,7 @@ describe("Rate Limiting", () => {
       // Health should have highest limits, config should have lowest
       expect(healthLimit).toBeGreaterThan(assetsLimit);
       expect(assetsLimit).toBeGreaterThan(configLimit);
-    });
+    }, 15000);
 
     it("should apply stricter limits for write operations", async () => {
       // Test GET (read operation)

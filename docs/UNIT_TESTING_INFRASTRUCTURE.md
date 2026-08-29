@@ -34,6 +34,10 @@ Unit testing infrastructure is standardized across backend and frontend using Vi
 - Coverage artifacts are uploaded to Codecov
 - Integration workflow separates fast unit feedback from heavier service-backed tests
 
+## Fixture inventory
+
+Reusable test fixtures (JSON payloads, factories, MSW handlers, DB seeds, and contract snapshots) are documented in [FIXTURE_AUDIT_REPORT.md](./FIXTURE_AUDIT_REPORT.md).
+
 ## Recommended test pattern
 
 1. Arrange deterministic fixtures/mocks.

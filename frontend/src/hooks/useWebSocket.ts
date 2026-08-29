@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from "react";
-import { useWebSocketContext } from "../contexts/WebSocketContext";
+import { useWebSocketContext } from "../contexts/WebSocketContextValue";
 import type { ConnectionState } from "../types";
 
 /**

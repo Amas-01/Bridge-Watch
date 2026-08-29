@@ -5,11 +5,11 @@ Welcome to the Stellar Bridge Watch User Guide! This comprehensive guide will he
 ## Table of Contents
 
 1. [Getting Started](./01-getting-started.md)
-2. [Dashboard Overview](./02-dashboard-overview.md)
-3. [Asset Monitoring Guide](./03-asset-monitoring.md)
-4. [Alert Configuration Guide](./04-alert-configuration.md)
-5. [Analytics Features Guide](./05-analytics-features.md)
-6. [Account Settings Guide](./06-account-settings.md)
+2. [Alerts Guide](./02-alerts.md)
+3. [Watchlists Guide](./03-watchlists.md)
+4. [Exports Guide](./04-exports.md)
+5. [Analytics Guide](./05-analytics.md)
+6. [Reconciliation Guide](./06-reconciliation.md)
 7. [FAQ](./07-faq.md)
 8. [Glossary](./08-glossary.md)
 9. [Mobile Usage Guide](./09-mobile-usage.md)

@@ -361,6 +361,7 @@ docker build -t frontend:local ./frontend
 ## Resources
 
 - [Full CI/CD Documentation](./CI-CD-SETUP.md)
+- [Build Cache Matrix](./build-cache-matrix.md)
 - [Contributing Guide](../CONTRIBUTING.md)
 - [GitHub Actions Docs](https://docs.github.com/en/actions)
 - [Workflow Files](../.github/workflows/)

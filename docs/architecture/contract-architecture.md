@@ -34,8 +34,11 @@ contracts/soroban/src/
 ├── multisig_treasury.rs        # Multi-signature treasury
 ├── rate_limiter.rs             # On-chain rate limiting
 ├── reputation_system.rs        # Bridge operator reputation tracking
+├── state_export.rs             # Compact contract data snapshots (issue #453)
 └── relay/                      # Relay contract directory
 ```
+
+See [contract-data-snapshot-format.md](../contract-data-snapshot-format.md) for the export schema.
 
 ### Key Data Structures
 
@@ -131,6 +134,11 @@ pub struct LiquidityDepth {
 - Proposal creation and voting
 - Parameter update through governance process
 - Time-locked execution of approved changes
+
+**Configuration history**
+- Every `set_config()` write appends an audit entry with the previous value, new value, version, timestamp, and author.
+- The history is capped per key and exposed through `get_config_audit_log()`.
+- See [contract-configuration-history.md](../contract-configuration-history.md) for the read/write flow and operational guidance.
 
 ## Transfer State Machine Contract
 

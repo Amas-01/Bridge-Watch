@@ -1,0 +1,165 @@
+name: Release Notification Flow
+
+on:
+  workflow_run:
+    workflows: ["Release"]
+    types:
+      - requested
+      - completed
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version to notify about"
+        required: true
+        type: string
+      status:
+        description: "Release status"
+        required: true
+        type: choice
+        options:
+          - started
+          - success
+          - failure
+
+env:
+  NOTIFICATION_VERSION: ${{ github.event.workflow_run && github.event.workflow_run.head_branch || inputs.version }}
+  NOTIFICATION_STATUS: ${{ github.event_name == 'workflow_dispatch' && inputs.status || (github.event.workflow_run.conclusion == 'success' && 'success' || 'failure') }}
+
+jobs:
+  notify:
+    name: Send Release Notification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine notification event
+        id: event
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "status=${{ inputs.status }}" >> "$GITHUB_OUTPUT"
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.action }}" = "requested" ]; then
+            echo "status=started" >> "$GITHUB_OUTPUT"
+            echo "version=${{ github.event.workflow_run.head_branch }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=${{ github.event.workflow_run.conclusion }}" >> "$GITHUB_OUTPUT"
+            echo "version=${{ github.event.workflow_run.head_branch }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Format notification message
+        id: message
+        env:
+          STATUS: ${{ steps.event.outputs.status }}
+          VERSION: ${{ steps.event.outputs.version }}
+          RUN_ID: ${{ github.event.workflow_run && github.event.workflow_run.id || github.run_id }}
+          REPO: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          ENV_TAG="${{ github.event.workflow_run && github.event.workflow_run.head_branch || github.ref_name }}"
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          case "$STATUS" in
+            started)
+              EMOJI=":rocket:"
+              TITLE="Release started"
+              COLOR="good"
+              ;;
+            success)
+              EMOJI=":white_check_mark:"
+              TITLE="Release completed"
+              COLOR="good"
+              ;;
+            failure)
+              EMOJI=":x:"
+              TITLE="Release failed"
+              COLOR="danger"
+              ;;
+            *)
+              EMOJI=":bell:"
+              TITLE="Release notification"
+              COLOR="warning"
+              ;;
+          esac
+
+          echo "SLACK_TEXT=${EMOJI} *${TITLE}* for \`${VERSION}\` (${ENV_TAG})" >> "$GITHUB_OUTPUT"
+          echo "SLACK_FALLBACK=${TITLE}: ${VERSION} (${ENV_TAG})" >> "$GITHUB_OUTPUT"
+          echo "SLACK_COLOR=${COLOR}" >> "$GITHUB_OUTPUT"
+          echo "TIMESTAMP=${TIMESTAMP}" >> "$GITHUB_OUTPUT"
+          echo "ENV_TAG=${ENV_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Send Slack notification
+        if: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_TEXT: ${{ steps.message.outputs.SLACK_TEXT }}
+          SLACK_FALLBACK: ${{ steps.message.outputs.SLACK_FALLBACK }}
+          SLACK_COLOR: ${{ steps.message.outputs.SLACK_COLOR }}
+          VERSION: ${{ steps.event.outputs.version }}
+          STATUS: ${{ steps.event.outputs.status }}
+          TIMESTAMP: ${{ steps.message.outputs.TIMESTAMP }}
+          ENV_TAG: ${{ steps.message.outputs.ENV_TAG }}
+          RUN_ID: ${{ github.event.workflow_run && github.event.workflow_run.id || github.run_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          RUN_URL="https://github.com/${REPO}/actions/runs/${RUN_ID}"
+          GITHUB_REF="${{ github.event.workflow_run && github.event.workflow_run.head_branch || github.ref_name }}"
+
+          payload=$(cat <<EOF
+          {
+            "attachments": [
+              {
+                "color": "${SLACK_COLOR}",
+                "fallback": "${SLACK_FALLBACK}",
+                "blocks": [
+                  {
+                    "type": "section",
+                    "text": {
+                      "type": "mrkdwn",
+                      "text": "${SLACK_TEXT}"
+                    }
+                  },
+                  {
+                    "type": "fields",
+                    "fields": [
+                      { "type": "mrkdwn", "text": "*Version:*\n${VERSION}" },
+                      { "type": "mrkdwn", "text": "*Environment:*\n${ENV_TAG}" },
+                      { "type": "mrkdwn", "text": "*Status:*\n${STATUS}" },
+                      { "type": "mrkdwn", "text": "*Timestamp:*\n${TIMESTAMP}" }
+                    ]
+                  },
+                  {
+                    "type": "actions",
+                    "elements": [
+                      {
+                        "type": "button",
+                        "text": { "type": "plain_text", "text": "View Run" },
+                        "url": "${RUN_URL}"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+          EOF
+          )
+
+          curl -s -X POST -H "Content-type: application/json" \
+            --data "$payload" \
+            "$SLACK_WEBHOOK" || echo "Slack notification failed (webhook may not be configured)"
+
+      - name: Notify — status summary
+        if: always()
+        env:
+          STATUS: ${{ steps.event.outputs.status }}
+          VERSION: ${{ steps.event.outputs.version }}
+        run: |
+          {
+            echo "## Release Notification"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Version | \`${VERSION}\` |"
+            echo "| Status | ${STATUS} |"
+            echo "| Trigger | ${{ github.event_name }} |"
+            echo "| Repository | ${{ github.repository }} |"
+            echo "| Actor | ${{ github.actor }} |"
+          } >> "$GITHUB_STEP_SUMMARY"

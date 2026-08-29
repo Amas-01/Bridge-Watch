@@ -6,10 +6,17 @@ on:
   pull_request:
     branches: [ main, develop ]
 
+env:
+  NODE_VERSION: "20"
+  CACHE_VERSION: v1
+
 jobs:
   # Node.js Job for Backend & Frontend
   node-ci:
     runs-on: ubuntu-latest
+    env:
+      COMMAND_LOG_DIR: ${{ runner.temp }}/bridge-watch-command-logs/node-ci
+      COMMAND_LOG_ARCHIVE_DIR: ${{ runner.temp }}/bridge-watch-command-log-archives
 
     services:
       postgres:
@@ -39,24 +46,73 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Initialize command log archive
+        run: |
+          mkdir -p "$COMMAND_LOG_DIR"
+          printf 'label\tcommand\tlog_file\n' > "$COMMAND_LOG_DIR/COMMANDS.tsv"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
           cache-dependency-path: package-lock.json
 
+      - name: Restore backend build and test caches
+        id: backend-cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            backend/dist
+            backend/coverage
+            backend/.eslintcache
+          key: ${{ runner.os }}-backend-cache-${{ env.CACHE_VERSION }}-${{ hashFiles('package-lock.json', 'backend/package.json', '.github/workflows/ci.yml', 'backend/src/**', 'backend/test/**') }}
+          restore-keys: |
+            ${{ runner.os }}-backend-cache-${{ env.CACHE_VERSION }}-${{ hashFiles('package-lock.json', 'backend/package.json', '.github/workflows/ci.yml') }}-
+            ${{ runner.os }}-backend-cache-${{ env.CACHE_VERSION }}-
+
       - name: Install dependencies
-        run: npm ci
+        run: |
+          set -o pipefail
+          printf 'install-dependencies\tnpm ci\tnpm-ci.log\n' >> "$COMMAND_LOG_DIR/COMMANDS.tsv"
+          npm ci 2>&1 | tee "$COMMAND_LOG_DIR/npm-ci.log"
+
+      - name: Validate API compatibility contract
+        run: npm run check:api-contract
 
       - name: Lint backend
-        run: npm --workspace=backend run lint
+        run: |
+          set -o pipefail
+          printf 'lint-backend\tnpm --workspace=backend run lint\tbackend-lint.log\n' >> "$COMMAND_LOG_DIR/COMMANDS.tsv"
+          npm --workspace=backend run lint 2>&1 | tee "$COMMAND_LOG_DIR/backend-lint.log"
+
+      - name: Validate API fixtures
+        run: npm --workspace=backend run fixtures:validate
 
       - name: Build backend
-        run: npm --workspace=backend run build
+        run: |
+          set -o pipefail
+          printf 'build-backend\tnpm --workspace=backend run build\tbackend-build.log\n' >> "$COMMAND_LOG_DIR/COMMANDS.tsv"
+          npm --workspace=backend run build 2>&1 | tee "$COMMAND_LOG_DIR/backend-build.log"
+
+      - name: Run migrations
+        run: |
+          set -o pipefail
+          printf 'run-migrations\tnpm --workspace=backend run migrate\tbackend-migrate.log\n' >> "$COMMAND_LOG_DIR/COMMANDS.tsv"
+          npm --workspace=backend run migrate 2>&1 | tee "$COMMAND_LOG_DIR/backend-migrate.log"
+        env:
+          NODE_ENV: test
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_DB: bridge_watch_test
+          POSTGRES_USER: bridge_watch
+          POSTGRES_PASSWORD: test_password
 
       - name: Run backend tests
-        run: npm --workspace=backend run test -- --coverage
+        run: |
+          set -o pipefail
+          printf 'backend-tests\tnpm --workspace=backend run test -- --coverage\tbackend-test.log\n' >> "$COMMAND_LOG_DIR/COMMANDS.tsv"
+          npm --workspace=backend run test -- --coverage 2>&1 | tee "$COMMAND_LOG_DIR/backend-test.log"
         env:
           NODE_ENV: test
           POSTGRES_HOST: localhost
@@ -67,6 +123,25 @@ jobs:
           REDIS_HOST: localhost
           REDIS_PORT: 6379
 
+      - name: Save backend build and test caches
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            backend/dist
+            backend/coverage
+            backend/.eslintcache
+          key: ${{ steps.backend-cache-restore.outputs.cache-primary-key }}
+
+      - name: Backend cache report
+        if: always()
+        run: |
+          set -o pipefail
+          {
+            echo "backend_cache_hit=${{ steps.backend-cache-restore.outputs.cache-hit }}"
+            echo "command_log_archive_policy=30-day GitHub Actions artifact; see docs/infra/command-log-archive.md"
+          } 2>&1 | tee "$COMMAND_LOG_DIR/backend-cache-report.log" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload coverage reports
         uses: codecov/codecov-action@v4
         with:
@@ -75,41 +150,195 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
         continue-on-error: true
 
-  frontend:
-    name: Frontend Build
+      - name: Compress command logs
+        if: always()
+        id: archive-command-logs
+        run: bash scripts/archive-command-logs.sh
+
+      - name: Upload command log archive
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.COMMAND_LOG_ARCHIVE_NAME }}
+          path: ${{ env.COMMAND_LOG_ARCHIVE }}
+          retention-days: 30
+          if-no-files-found: warn
+
+  sdk:
+    name: SDK Build & Test
     runs-on: ubuntu-latest
+    env:
+      COMMAND_LOG_DIR: ${{ runner.temp }}/bridge-watch-command-logs/sdk
+      COMMAND_LOG_ARCHIVE_DIR: ${{ runner.temp }}/bridge-watch-command-log-archives
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: Initialize command log archive
+        run: |
+          mkdir -p "$COMMAND_LOG_DIR"
+          printf 'label\tcommand\tlog_file\n' > "$COMMAND_LOG_DIR/COMMANDS.tsv"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          set -o pipefail
+          printf 'install-dependencies\tnpm ci\tnpm-ci.log\n' >> "$COMMAND_LOG_DIR/COMMANDS.tsv"
+          npm ci 2>&1 | tee "$COMMAND_LOG_DIR/npm-ci.log"
+
+      - name: Build SDK
+        run: |
+          set -o pipefail
+          printf 'build-sdk\tnpm --workspace=sdk run build\tsdk-build.log\n' >> "$COMMAND_LOG_DIR/COMMANDS.tsv"
+          npm --workspace=sdk run build 2>&1 | tee "$COMMAND_LOG_DIR/sdk-build.log"
+
+      - name: Test SDK
+        run: |
+          set -o pipefail
+          printf 'test-sdk\tnpm --workspace=sdk run test\tsdk-test.log\n' >> "$COMMAND_LOG_DIR/COMMANDS.tsv"
+          npm --workspace=sdk run test 2>&1 | tee "$COMMAND_LOG_DIR/sdk-test.log"
+
+      - name: Compress command logs
+        if: always()
+        id: archive-command-logs
+        run: bash scripts/archive-command-logs.sh
+
+      - name: Upload command log archive
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.COMMAND_LOG_ARCHIVE_NAME }}
+          path: ${{ env.COMMAND_LOG_ARCHIVE }}
+          retention-days: 30
+          if-no-files-found: warn
+
+  frontend:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    env:
+      COMMAND_LOG_DIR: ${{ runner.temp }}/bridge-watch-command-logs/frontend
+      COMMAND_LOG_ARCHIVE_DIR: ${{ runner.temp }}/bridge-watch-command-log-archives
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize command log archive
+        run: |
+          mkdir -p "$COMMAND_LOG_DIR"
+          printf 'label\tcommand\tlog_file\n' > "$COMMAND_LOG_DIR/COMMANDS.tsv"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      - name: Restore frontend build and test caches
+        id: frontend-cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            frontend/dist
+            frontend/storybook-static
+            frontend/.eslintcache
+            frontend/.vite
+          key: ${{ runner.os }}-frontend-cache-${{ env.CACHE_VERSION }}-${{ hashFiles('package-lock.json', 'frontend/package.json', '.github/workflows/ci.yml', 'frontend/src/**', 'frontend/test/**') }}
+          restore-keys: |
+            ${{ runner.os }}-frontend-cache-${{ env.CACHE_VERSION }}-${{ hashFiles('package-lock.json', 'frontend/package.json', '.github/workflows/ci.yml') }}-
+            ${{ runner.os }}-frontend-cache-${{ env.CACHE_VERSION }}-
+
+      - name: Install dependencies
+        run: |
+          set -o pipefail
+          printf 'install-dependencies\tnpm ci\tnpm-ci.log\n' >> "$COMMAND_LOG_DIR/COMMANDS.tsv"
+          npm ci 2>&1 | tee "$COMMAND_LOG_DIR/npm-ci.log"
 
       - name: Lint
-        run: npm run lint
+        run: |
+          set -o pipefail
+          printf 'frontend-lint\tnpm --workspace=frontend run lint\tfrontend-lint.log\n' >> "$COMMAND_LOG_DIR/COMMANDS.tsv"
+          npm --workspace=frontend run lint 2>&1 | tee "$COMMAND_LOG_DIR/frontend-lint.log"
 
       - name: Build
-        run: npm run build
+        run: |
+          set -o pipefail
+          printf 'frontend-build\tnpm --workspace=frontend run build\tfrontend-build.log\n' >> "$COMMAND_LOG_DIR/COMMANDS.tsv"
+          npm --workspace=frontend run build 2>&1 | tee "$COMMAND_LOG_DIR/frontend-build.log"
+
+      - name: Storybook build
+        run: |
+          set -o pipefail
+          printf 'storybook-build\tnpm --workspace=frontend run build-storybook\tstorybook-build.log\n' >> "$COMMAND_LOG_DIR/COMMANDS.tsv"
+          npm --workspace=frontend run build-storybook 2>&1 | tee "$COMMAND_LOG_DIR/storybook-build.log"
 
       - name: Test
-        run: npm run test
+        run: |
+          set -o pipefail
+          printf 'frontend-test\tnpm --workspace=frontend run test\tfrontend-test.log\n' >> "$COMMAND_LOG_DIR/COMMANDS.tsv"
+          npm --workspace=frontend run test 2>&1 | tee "$COMMAND_LOG_DIR/frontend-test.log"
+
+      - name: Visual Regression Tests
+        run: |
+          set -o pipefail
+          printf 'visual-regression\tnpm --workspace=frontend run test:visual\tvisual-regression.log\n' >> "$COMMAND_LOG_DIR/COMMANDS.tsv"
+          npm --workspace=frontend run test:visual 2>&1 | tee "$COMMAND_LOG_DIR/visual-regression.log"
         continue-on-error: true
+
+      - name: Save frontend build and test caches
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            frontend/dist
+            frontend/storybook-static
+            frontend/.eslintcache
+            frontend/.vite
+          key: ${{ steps.frontend-cache-restore.outputs.cache-primary-key }}
+
+      - name: Frontend cache report
+        if: always()
+        run: |
+          set -o pipefail
+          echo "frontend_cache_hit=${{ steps.frontend-cache-restore.outputs.cache-hit }}" 2>&1 | tee "$COMMAND_LOG_DIR/frontend-cache-report.log" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Compress command logs
+        if: always()
+        id: archive-command-logs
+        run: bash scripts/archive-command-logs.sh
+
+      - name: Upload command log archive
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.COMMAND_LOG_ARCHIVE_NAME }}
+          path: ${{ env.COMMAND_LOG_ARCHIVE }}
+          retention-days: 30
+          if-no-files-found: warn
 
   # Rust Job for Smart Contracts
   rust-ci:
     runs-on: ubuntu-latest
+    env:
+      COMMAND_LOG_DIR: ${{ runner.temp }}/bridge-watch-command-logs/rust-ci
+      COMMAND_LOG_ARCHIVE_DIR: ${{ runner.temp }}/bridge-watch-command-log-archives
     defaults:
       run:
         working-directory: contracts
     steps:
       - uses: actions/checkout@v4
+
+      - name: Initialize command log archive
+        working-directory: .
+        run: |
+          mkdir -p "$COMMAND_LOG_DIR"
+          printf 'label\tcommand\tlog_file\n' > "$COMMAND_LOG_DIR/COMMANDS.tsv"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -128,17 +357,40 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('contracts/Cargo.lock') }}
 
       - name: Format Check
-        run: cargo fmt --all -- --check
-        continue-on-error: true
+        run: |
+          set -o pipefail
+          printf 'cargo-fmt\tcargo fmt --all -- --check\tcargo-fmt.log\n' >> "$COMMAND_LOG_DIR/COMMANDS.tsv"
+          cargo fmt --all -- --check 2>&1 | tee "$COMMAND_LOG_DIR/cargo-fmt.log"
 
       - name: Lint (Clippy)
-        run: cargo clippy -- -D warnings
-        continue-on-error: true
+        run: |
+          set -o pipefail
+          printf 'cargo-clippy\tcargo clippy -- -D warnings\tcargo-clippy.log\n' >> "$COMMAND_LOG_DIR/COMMANDS.tsv"
+          cargo clippy -- -D warnings 2>&1 | tee "$COMMAND_LOG_DIR/cargo-clippy.log"
 
       - name: Build
-        run: cargo build --verbose
-        continue-on-error: true
+        run: |
+          set -o pipefail
+          printf 'cargo-build\tcargo build --verbose\tcargo-build.log\n' >> "$COMMAND_LOG_DIR/COMMANDS.tsv"
+          cargo build --verbose 2>&1 | tee "$COMMAND_LOG_DIR/cargo-build.log"
 
       - name: Test
-        run: cargo test --verbose
-        continue-on-error: true
+        run: |
+          set -o pipefail
+          printf 'cargo-test\tcargo test --verbose\tcargo-test.log\n' >> "$COMMAND_LOG_DIR/COMMANDS.tsv"
+          cargo test --verbose 2>&1 | tee "$COMMAND_LOG_DIR/cargo-test.log"
+
+      - name: Compress command logs
+        if: always()
+        id: archive-command-logs
+        working-directory: .
+        run: bash scripts/archive-command-logs.sh
+
+      - name: Upload command log archive
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.COMMAND_LOG_ARCHIVE_NAME }}
+          path: ${{ env.COMMAND_LOG_ARCHIVE }}
+          retention-days: 30
+          if-no-files-found: warn

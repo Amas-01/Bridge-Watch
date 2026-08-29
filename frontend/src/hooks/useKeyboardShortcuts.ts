@@ -69,16 +69,6 @@ function isMac(): boolean {
   return typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
 }
 
-function matchesModifier(e: KeyboardEvent, def: ShortcutDefinition): boolean {
-  const modDown = isMac() ? e.metaKey : e.ctrlKey;
-  if (def.mod && !modDown) return false;
-  if (!def.mod && modDown) return false;
-  if (def.shift && !e.shiftKey) return false;
-  if (!def.shift && e.shiftKey && !def.mod) return false;
-  if (def.alt && !e.altKey) return false;
-  return true;
-}
-
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------

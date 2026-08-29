@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bridge-watch-config
+  namespace: bridge-watch
+  labels:
+    app.kubernetes.io/name: bridge-watch
+data:
+  NODE_ENV: "production"
+  PORT: "3001"
+  FRONTEND_PORT: "3000"
+  LOG_LEVEL: "info"
+
+  # Stellar network
+  STELLAR_NETWORK: "mainnet"
+  STELLAR_HORIZON_URL: "https://horizon.stellar.org"
+  SOROBAN_RPC_URL: "https://soroban-rpc.mainnet.stellar.gateway.fm"
+
+  # Redis (non-secret connection info)
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+
+  # PostgreSQL (non-secret connection info)
+  POSTGRES_HOST: "postgres-service"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "bridge_watch"
+
+  # Health checks
+  HEALTH_CHECK_TIMEOUT_MS: "5000"
+  HEALTH_CHECK_MEMORY_THRESHOLD: "85"
+  HEALTH_CHECK_EXTERNAL_APIS: "true"
+
+  # Rate limiting
+  RATE_LIMIT_MAX: "100"
+  RATE_LIMIT_TIME_WINDOW: "60000"
+
+  # CORS
+  CORS_ORIGIN: "https://bridge-watch.example.com"

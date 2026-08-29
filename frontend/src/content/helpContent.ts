@@ -103,6 +103,26 @@ export const helpArticles: HelpArticle[] = [
       "Check the connection indicator in the navbar. If disconnected, verify backend /health and Redis availability. Review API key limits, then inspect request tracing and metrics endpoints for bottlenecks.",
     related: ["article-refresh-controls", "article-api-alerting"],
   },
+  {
+    id: "article-merkle-proofs",
+    slug: "merkle-proofs",
+    title: "Verify Merkle proofs and reserve commitments",
+    category: "monitoring",
+    summary: "How to interpret proof depth, leaf hashes, and verification status for on-chain commitments.",
+    content:
+      "Bridge operators commit reserve balances on-chain via Merkle trees. Each commitment has a proof depth (tree height) and leaf count. To verify a specific leaf: use the leaf hash, proof path (sibling hashes), and leaf index against the published Merkle root. The Cross-Chain State Verification page shows proof validity and depth for each bridge. A valid proof means the reported reserve balances match the on-chain commitment. Challenged items appear in orange with a pulsing indicator and require manual inspection. The Reconciliation page displays the reserve commitment's verification status alongside the Merkle root, sequence number, and ledger position.",
+    related: ["article-refresh-controls", "article-stale-data"],
+  },
+  {
+    id: "article-operational-runbooks",
+    slug: "operational-runbooks",
+    title: "Operational runbooks and alert response",
+    category: "alerts",
+    summary: "Runbooks for critical alerts and incident response procedures.",
+    content:
+      "Operational runbooks provide step-by-step response procedures for triggered alerts. Access the monitoring runbooks for guidance on handling BackendDown, HighHTTPErrorRate, HighP95Latency, BridgeHealthLow, and other critical alerts. Each runbook includes diagnosis steps and mitigation strategies. See /monitoring/runbooks/ for the complete alert playbook library.",
+    related: ["article-alert-thresholds", "article-stale-data"],
+  },
 ];
 
 export const faqItems: FaqItem[] = [
@@ -135,5 +155,17 @@ export const faqItems: FaqItem[] = [
     question: "How do I report incorrect documentation?",
     answer: "Use the feedback form on the Help Center page and include the article title and expected behavior.",
     category: "troubleshooting",
+  },
+  {
+    id: "faq-6",
+    question: "What are Merkle proof lookup parameters?",
+    answer: "To verify a leaf in a reserve commitment Merkle tree you need: the leaf hash (the hash of the reserve entry), the proof path (ordered list of sibling hashes from leaf to root), the leaf index (the position of the leaf in the tree), and the Merkle root (the published commitment hash). These values are shown on the Cross-Chain State Verification page under each bridge's Reserve Commitment panel.",
+    category: "monitoring",
+  },
+  {
+    id: "faq-7",
+    question: "What does a challenged verification status mean?",
+    answer: "A challenged status indicates the Merkle proof did not validate against the on-chain commitment root. This could mean stale data, a mismatched leaf hash, or an incorrect proof path. Check the proof depth and leaf hash on the Cross-Chain State Verification page, then trigger a re-verify to refresh the state from both chains.",
+    category: "monitoring",
   },
 ];

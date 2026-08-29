@@ -2,6 +2,7 @@ import { useState } from "react";
 import StatCard from "./StatCard";
 import { computeStats } from "./statsUtils";
 import type { QuickStatsProps } from "./types";
+import { CollapsibleWidget } from "../dashboard/CollapsibleWidget";
 
 export default function QuickStatsWidget({ assets, bridges, isLoading }: QuickStatsProps) {
   const [expanded, setExpanded] = useState(false);
@@ -10,14 +11,28 @@ export default function QuickStatsWidget({ assets, bridges, isLoading }: QuickSt
   // Show first 4 stats collapsed, all when expanded
   const visibleStats = expanded ? stats : stats.slice(0, 4);
 
+  const headerActions = stats.length > 4 ? (
+    <button
+      type="button"
+      onClick={() => setExpanded((prev) => !prev)}
+      className="text-sm text-stellar-blue hover:underline focus:outline-none focus:ring-2 focus:ring-stellar-blue rounded-md px-2 py-1"
+      aria-expanded={expanded}
+      aria-controls="quick-stats-grid"
+    >
+      {expanded ? "Show less" : "Show more"}
+    </button>
+  ) : null;
+
   if (isLoading) {
     return (
-      <section aria-labelledby="quick-stats-heading" data-testid="quick-stats-widget">
-        <div className="flex items-center justify-between mb-4">
-          <h2 id="quick-stats-heading" className="text-xl font-semibold text-stellar-text-primary">
-            Quick Stats
-          </h2>
-        </div>
+      <CollapsibleWidget
+        id="quick-stats"
+        title="Quick Stats"
+        defaultCollapsed={false}
+        headerClassName="text-xl font-semibold text-stellar-text-primary"
+        data-testid="quick-stats-widget"
+        aria-labelledby="quick-stats-heading"
+      >
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
             <div
@@ -31,31 +46,24 @@ export default function QuickStatsWidget({ assets, bridges, isLoading }: QuickSt
             </div>
           ))}
         </div>
-      </section>
+      </CollapsibleWidget>
     );
   }
 
   return (
-    <section aria-labelledby="quick-stats-heading" data-testid="quick-stats-widget">
-      <div className="flex items-center justify-between mb-4">
-        <h2 id="quick-stats-heading" className="text-xl font-semibold text-stellar-text-primary">
-          Quick Stats
-        </h2>
-        {stats.length > 4 && (
-          <button
-            type="button"
-            onClick={() => setExpanded((prev) => !prev)}
-            className="text-sm text-stellar-blue hover:underline focus:outline-none focus:ring-2 focus:ring-stellar-blue rounded-md px-2 py-1"
-            aria-expanded={expanded}
-            aria-controls="quick-stats-grid"
-          >
-            {expanded ? "Show less" : "Show more"}
-          </button>
-        )}
-      </div>
+    <CollapsibleWidget
+      id="quick-stats"
+      title="Quick Stats"
+      headerActions={headerActions}
+      defaultCollapsed={false}
+      headerClassName="text-xl font-semibold text-stellar-text-primary"
+      className="bg-transparent"
+      data-testid="quick-stats-widget"
+      aria-labelledby="quick-stats-heading"
+    >
       <div
         id="quick-stats-grid"
-        className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4"
+        className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4 py-2"
         role="list"
       >
         {visibleStats.map((stat) => (
@@ -64,6 +72,6 @@ export default function QuickStatsWidget({ assets, bridges, isLoading }: QuickSt
           </div>
         ))}
       </div>
-    </section>
+    </CollapsibleWidget>
   );
 }

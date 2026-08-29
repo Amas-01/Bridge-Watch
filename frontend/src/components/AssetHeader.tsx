@@ -1,11 +1,12 @@
 import { Link } from "react-router-dom";
-import type { AssetInfo, HealthScore, HealthStatus } from "../types";
+import type { AssetInfo, HealthScore, HealthStatus, PriceSource } from "../types";
 
 interface AssetHeaderProps {
   symbol: string;
   assetInfo: AssetInfo | null | undefined;
   health: HealthScore | null | undefined;
   isLoading: boolean;
+  priceSources?: PriceSource[];
 }
 
 const ASSET_ICONS: Record<string, string> = {
@@ -63,11 +64,50 @@ function getTrendColor(trend: string | null): string {
   return "text-stellar-text-secondary";
 }
 
+type PriceDeviationStatus = "synced" | "warning" | "critical";
+
+function getPriceDeviationStatus(
+  priceSources: PriceSource[] | undefined
+): PriceDeviationStatus {
+  if (!priceSources || priceSources.length === 0) return "synced";
+
+  const activeSources = priceSources.filter((s) => s.status === "active");
+  if (activeSources.length === 0) return "critical";
+
+  const maxDeviation = Math.max(...activeSources.map((s) => Math.abs(s.deviation)));
+  if (maxDeviation > 0.05) return "critical";
+  if (maxDeviation > 0.02) return "warning";
+  return "synced";
+}
+
+function getDeviationStatusColor(status: PriceDeviationStatus): string {
+  switch (status) {
+    case "synced":
+      return "#22c55e";
+    case "warning":
+      return "#eab308";
+    case "critical":
+      return "#ef4444";
+  }
+}
+
+function getDeviationStatusLabel(status: PriceDeviationStatus): string {
+  switch (status) {
+    case "synced":
+      return "Synced";
+    case "warning":
+      return "Minor Deviation";
+    case "critical":
+      return "Deviation Detected";
+  }
+}
+
 export default function AssetHeader({
   symbol,
   assetInfo,
   health,
   isLoading,
+  priceSources,
 }: AssetHeaderProps) {
   if (isLoading) {
     return (
@@ -125,6 +165,18 @@ export default function AssetHeader({
                 {getStatusLabel(status)}
               </span>
             )}
+            {(() => {
+              const deviationStatus = getPriceDeviationStatus(priceSources);
+              const deviationColor = getDeviationStatusColor(deviationStatus);
+              return (
+                <span
+                  className="px-2.5 py-0.5 rounded-full text-xs font-medium"
+                  style={{ backgroundColor: `${deviationColor}20`, color: deviationColor }}
+                >
+                  {getDeviationStatusLabel(deviationStatus)}
+                </span>
+              );
+            })()}
           </div>
           {assetInfo && (
             <p className="text-sm text-stellar-text-secondary mt-1">

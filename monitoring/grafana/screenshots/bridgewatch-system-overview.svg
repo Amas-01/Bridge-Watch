@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <style>
+      .bg { fill: #0b1220; }
+      .card { fill: #111a2e; stroke: #22304d; stroke-width: 2; }
+      .title { fill: #e5e7eb; font: 700 34px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto; }
+      .sub { fill: #9ca3af; font: 500 18px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto; }
+      .label { fill: #cbd5e1; font: 600 16px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto; }
+      .muted { fill: #94a3b8; font: 500 14px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto; }
+      .ok { fill: #22c55e; }
+      .warn { fill: #f59e0b; }
+      .bad { fill: #ef4444; }
+      .line { stroke: #60a5fa; stroke-width: 3; fill: none; opacity: .9; }
+      .grid { stroke: #1f2a44; stroke-width: 1; opacity: .8; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1200" height="630"/>
+
+  <text class="title" x="40" y="72">Bridge Watch - System Overview (Template)</text>
+  <text class="sub" x="40" y="102">Example layout (SVG preview). Actual panels render in Grafana.</text>
+
+  <!-- Row 1 cards -->
+  <rect class="card" x="40" y="140" width="300" height="130" rx="14"/>
+  <text class="label" x="65" y="175">Availability</text>
+  <circle class="ok" cx="285" cy="195" r="10"/>
+  <text class="muted" x="65" y="210">avg(up) * 100</text>
+  <text class="title" x="65" y="252" font-size="40">99.98%</text>
+
+  <rect class="card" x="365" y="140" width="395" height="130" rx="14"/>
+  <text class="label" x="390" y="175">Request Rate</text>
+  <text class="muted" x="390" y="210">sum(rate(http_requests_total[5m]))</text>
+  <path class="grid" d="M390 250 H740"/>
+  <path class="line" d="M395 245 C430 240, 470 255, 510 240 C560 220, 610 265, 660 235 C700 210, 720 250, 745 238"/>
+
+  <rect class="card" x="785" y="140" width="375" height="130" rx="14"/>
+  <text class="label" x="810" y="175">5xx Error %</text>
+  <circle class="warn" cx="1120" cy="195" r="10"/>
+  <text class="muted" x="810" y="210">(5xx / all) * 100</text>
+  <text class="title" x="810" y="252" font-size="40">0.42%</text>
+
+  <!-- Row 2 charts -->
+  <rect class="card" x="40" y="290" width="560" height="160" rx="14"/>
+  <text class="label" x="65" y="325">Latency p50 / p95 (s)</text>
+  <text class="muted" x="65" y="350">histogram_quantile(... http_request_duration_seconds_bucket ...)</text>
+  <path class="grid" d="M65 415 H575"/>
+  <path class="line" d="M70 410 C140 405, 190 418, 260 406 C340 392, 410 428, 565 398"/>
+
+  <rect class="card" x="625" y="290" width="535" height="160" rx="14"/>
+  <text class="label" x="650" y="325">Node CPU / Memory (%)</text>
+  <text class="muted" x="650" y="350">node_cpu_seconds_total + node_memory_* </text>
+  <path class="grid" d="M650 415 H1135"/>
+  <path class="line" d="M655 410 C740 392, 820 430, 900 400 C980 370, 1040 440, 1130 398"/>
+
+  <!-- Row 3 charts -->
+  <rect class="card" x="40" y="470" width="560" height="130" rx="14"/>
+  <text class="label" x="65" y="505">DB Query Rate / Errors</text>
+  <text class="muted" x="65" y="530">rate(db_queries_total) + rate(db_query_errors_total)</text>
+  <path class="grid" d="M65 575 H575"/>
+  <path class="line" d="M70 570 C150 565, 220 585, 300 568 C390 548, 470 590, 565 560"/>
+
+  <rect class="card" x="625" y="470" width="535" height="130" rx="14"/>
+  <text class="label" x="650" y="505">Queue Completed / Failed</text>
+  <text class="muted" x="650" y="530">rate(queue_jobs_completed_total) + rate(queue_jobs_failed_total)</text>
+  <path class="grid" d="M650 575 H1135"/>
+  <path class="line" d="M655 570 C740 560, 820 585, 910 565 C1000 545, 1070 592, 1130 558"/>
+</svg>

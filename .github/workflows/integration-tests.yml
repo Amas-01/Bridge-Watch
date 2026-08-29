@@ -7,6 +7,21 @@ on:
     branches: [main, develop]
 
 jobs:
+  prometheus-alerts-check:
+    name: Validate Prometheus Alerts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install promtool
+        run: |
+          PROM_VERSION="2.51.0"
+          curl -sS -L "https://github.com/prometheus/prometheus/releases/download/v${PROM_VERSION}/prometheus-${PROM_VERSION}.linux-amd64.tar.gz" | tar xz
+          sudo mv "prometheus-${PROM_VERSION}.linux-amd64/promtool" /usr/local/bin/
+      - name: Validate Prometheus Alert Rules
+        run: |
+          promtool check rules monitoring/prometheus-alerts.yml
+          promtool check rules monitoring/alerts.yml
+
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
@@ -62,6 +77,8 @@ jobs:
         with:
           node-version: 20
       - run: npm ci
+      - name: Validate Prometheus Alert Rules
+        run: docker run --rm --entrypoint promtool -v ${{ github.workspace }}:/work prom/prometheus:v2.54.1 check rules /work/monitoring/prometheus-alerts.yml
       - name: Run integration tests
         run: npm --workspace=backend run test:integration
         continue-on-error: true

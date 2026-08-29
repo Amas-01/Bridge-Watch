@@ -2,6 +2,11 @@ import { useState, useMemo } from "react";
 import { useAssetsWithHealth } from "../hooks/useAssets";
 import { useBridges } from "../hooks/useBridges";
 import PrintButton from "../components/PrintButton";
+import ReportQuickActions from "../components/ReportQuickActions";
+import { TableFooterSummary } from "../components/TableFooterSummary";
+import { sumColumn, avgColumn, formatCompact } from "../utils/tableSummary";
+import { AssetStatusBadge } from "../components/AssetStatusBadge";
+import { bridgeStatusToAssetStatus, scoreToStatus } from "../utils/status";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -115,11 +120,16 @@ function OverviewReport({
   bridgesData: ReturnType<typeof useBridges>["data"];
 }) {
   const totalAssets = assetsData?.length ?? 0;
-  const healthy = assetsData?.filter((a) => (a.health?.overallScore ?? 0) >= 80).length ?? 0;
-  const warning = assetsData?.filter(
-    (a) => (a.health?.overallScore ?? 0) >= 50 && (a.health?.overallScore ?? 0) < 80
-  ).length ?? 0;
-  const critical = assetsData?.filter((a) => (a.health?.overallScore ?? 101) < 50).length ?? 0;
+  const healthy =
+    assetsData?.filter((a) => (a.health?.overallScore ?? 0) >= 80).length ?? 0;
+  const warning =
+    assetsData?.filter(
+      (a) =>
+        (a.health?.overallScore ?? 0) >= 50 &&
+        (a.health?.overallScore ?? 0) < 80,
+    ).length ?? 0;
+  const critical =
+    assetsData?.filter((a) => (a.health?.overallScore ?? 101) < 50).length ?? 0;
   const avgScore =
     totalAssets > 0
       ? (
@@ -142,7 +152,10 @@ function OverviewReport({
             { label: "Total Assets Tracked", value: totalAssets },
             { label: "Average Health Score", value: avgScore },
             { label: "Total Bridges", value: totalBridges },
-            { label: "Report Period", value: `${dateRange.from} — ${dateRange.to}` },
+            {
+              label: "Report Period",
+              value: `${dateRange.from} — ${dateRange.to}`,
+            },
           ].map((stat) => (
             <div
               key={stat.label}
@@ -159,19 +172,35 @@ function OverviewReport({
 
       {/* Status breakdown */}
       <section className="print-avoid-break">
-        <h2 className="text-lg font-semibold text-white mb-3">Asset Health Distribution</h2>
+        <h2 className="text-lg font-semibold text-white mb-3">
+          Asset Health Distribution
+        </h2>
         <div className="grid grid-cols-3 gap-4">
           {[
-            { label: "Healthy (≥ 80)", count: healthy, color: "text-green-400" },
-            { label: "Warning (50–79)", count: warning, color: "text-yellow-400" },
-            { label: "Critical (< 50)", count: critical, color: "text-red-400" },
+            {
+              label: "Healthy (≥ 80)",
+              count: healthy,
+              color: "text-green-400",
+            },
+            {
+              label: "Warning (50–79)",
+              count: warning,
+              color: "text-yellow-400",
+            },
+            {
+              label: "Critical (< 50)",
+              count: critical,
+              color: "text-red-400",
+            },
           ].map((row) => (
             <div
               key={row.label}
               className="bg-stellar-card border border-stellar-border rounded-lg p-4"
             >
               <p className="text-xs text-stellar-text-secondary">{row.label}</p>
-              <p className={`mt-1 text-3xl font-bold ${row.color}`}>{row.count}</p>
+              <p className={`mt-1 text-3xl font-bold ${row.color}`}>
+                {row.count}
+              </p>
             </div>
           ))}
         </div>
@@ -179,7 +208,9 @@ function OverviewReport({
 
       {/* All assets table */}
       <section className="print-avoid-break">
-        <h2 className="text-lg font-semibold text-white mb-3">Asset Health Table</h2>
+        <h2 className="text-lg font-semibold text-white mb-3">
+          Asset Health Table
+        </h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
@@ -197,13 +228,20 @@ function OverviewReport({
                   key={asset.symbol}
                   className="border-b border-stellar-border/50 text-white print-avoid-break"
                 >
-                  <td className="py-2 pr-4 font-mono font-semibold">{asset.symbol}</td>
-                  <td className="py-2 pr-4 text-stellar-text-secondary">{asset.name}</td>
-                  <td className={`py-2 pr-4 font-bold ${scoreColor(asset.health?.overallScore ?? null)}`}>
+                  <td className="py-2 pr-4 font-mono font-semibold">
+                    {asset.symbol}
+                  </td>
+                  <td className="py-2 pr-4 text-stellar-text-secondary">
+                    {asset.name}
+                  </td>
+                  <td className="py-2 pr-4 font-bold text-white">
                     {asset.health?.overallScore ?? "—"}
                   </td>
-                  <td className={`py-2 pr-4 ${scoreColor(asset.health?.overallScore ?? null)}`}>
-                    {scoreLabel(asset.health?.overallScore ?? null)}
+                  <td className="py-2 pr-4">
+                    <AssetStatusBadge
+                      status={scoreToStatus(asset.health?.overallScore)}
+                      size="sm"
+                    />
                   </td>
                   <td className="py-2 capitalize text-stellar-text-secondary">
                     {asset.health?.trend ?? "—"}
@@ -212,12 +250,38 @@ function OverviewReport({
               ))}
               {(assetsData ?? []).length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-6 text-center text-stellar-text-secondary">
+                  <td
+                    colSpan={5}
+                    className="py-6 text-center text-stellar-text-secondary"
+                  >
                     No asset data available
                   </td>
                 </tr>
               )}
             </tbody>
+            <TableFooterSummary
+              ariaLabel="Asset health table summary"
+              columns={[
+                {
+                  id: "symbol",
+                  value: `${(assetsData ?? []).length} assets`,
+                  ariaLabel: "Total assets",
+                },
+                { id: "name", value: "" },
+                {
+                  id: "score",
+                  value: avgScore !== "—" ? `Avg ${avgScore}` : "—",
+                  ariaLabel: "Average health score",
+                },
+                {
+                  id: "status",
+                  value: `${healthy} healthy · ${warning} warning · ${critical} critical`,
+                  ariaLabel: "Status distribution",
+                },
+                { id: "trend", value: "" },
+              ]}
+              summaryNote="Health scores range 0–100. Healthy ≥ 80, Warning 50–79, Critical < 50."
+            />
           </table>
         </div>
       </section>
@@ -236,7 +300,10 @@ function AssetsReport({
 }) {
   return (
     <div className="space-y-6">
-      <ReportHeader title="Asset Health Detailed Report" dateRange={dateRange} />
+      <ReportHeader
+        title="Asset Health Detailed Report"
+        dateRange={dateRange}
+      />
 
       {(assetsData ?? []).map((asset, idx) => (
         <section
@@ -248,19 +315,21 @@ function AssetsReport({
           <div className="flex items-start justify-between">
             <div>
               <h2 className="text-xl font-bold text-white">{asset.symbol}</h2>
-              <p className="text-sm text-stellar-text-secondary">{asset.name}</p>
+              <p className="text-sm text-stellar-text-secondary">
+                {asset.name}
+              </p>
             </div>
             <div className="text-right">
               <p
                 className={`text-3xl font-bold ${scoreColor(
-                  asset.health?.overallScore ?? null
+                  asset.health?.overallScore ?? null,
                 )}`}
               >
                 {asset.health?.overallScore ?? "—"}
               </p>
               <p
                 className={`text-sm font-medium ${scoreColor(
-                  asset.health?.overallScore ?? null
+                  asset.health?.overallScore ?? null,
                 )}`}
               >
                 {scoreLabel(asset.health?.overallScore ?? null)}
@@ -271,20 +340,40 @@ function AssetsReport({
           {asset.health && (
             <dl className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
               {[
-                { label: "Liquidity Depth", value: asset.health.factors.liquidityDepth },
-                { label: "Price Stability", value: asset.health.factors.priceStability },
-                { label: "Bridge Uptime", value: asset.health.factors.bridgeUptime },
-                { label: "Reserve Backing", value: asset.health.factors.reserveBacking },
-                { label: "Volume Trend", value: asset.health.factors.volumeTrend },
+                {
+                  label: "Liquidity Depth",
+                  value: asset.health.factors.liquidityDepth,
+                },
+                {
+                  label: "Price Stability",
+                  value: asset.health.factors.priceStability,
+                },
+                {
+                  label: "Bridge Uptime",
+                  value: asset.health.factors.bridgeUptime,
+                },
+                {
+                  label: "Reserve Backing",
+                  value: asset.health.factors.reserveBacking,
+                },
+                {
+                  label: "Volume Trend",
+                  value: asset.health.factors.volumeTrend,
+                },
                 { label: "Trend", value: asset.health.trend, isText: true },
               ].map((item) => (
-                <div key={item.label} className="bg-stellar-dark rounded-lg p-3">
+                <div
+                  key={item.label}
+                  className="bg-stellar-dark rounded-lg p-3"
+                >
                   <dt className="text-stellar-text-secondary">{item.label}</dt>
                   <dd
                     className={`mt-1 font-semibold ${
                       item.isText
                         ? "text-white capitalize"
-                        : scoreColor(typeof item.value === "number" ? item.value : null)
+                        : scoreColor(
+                            typeof item.value === "number" ? item.value : null,
+                          )
                     }`}
                   >
                     {item.value ?? "—"}
@@ -296,7 +385,9 @@ function AssetsReport({
 
           <p className="mt-3 text-xs text-stellar-text-secondary">
             Last updated:{" "}
-            {asset.health?.lastUpdated ? formatDate(asset.health.lastUpdated) : "No data"}
+            {asset.health?.lastUpdated
+              ? formatDate(asset.health.lastUpdated)
+              : "No data"}
           </p>
         </section>
       ))}
@@ -326,7 +417,9 @@ function BridgesReport({
       <ReportHeader title="Bridge Status Report" dateRange={dateRange} />
 
       <section className="print-avoid-break">
-        <h2 className="text-lg font-semibold text-white mb-3">Bridge Summary</h2>
+        <h2 className="text-lg font-semibold text-white mb-3">
+          Bridge Summary
+        </h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
             { label: "Total Bridges", value: bridges.length },
@@ -338,7 +431,10 @@ function BridgesReport({
               label: "Degraded",
               value: bridges.filter((b) => b.status === "degraded").length,
             },
-            { label: "Down", value: bridges.filter((b) => b.status === "down").length },
+            {
+              label: "Down",
+              value: bridges.filter((b) => b.status === "down").length,
+            },
           ].map((s) => (
             <div
               key={s.label}
@@ -369,23 +465,17 @@ function BridgesReport({
             </thead>
             <tbody>
               {bridges.map((bridge) => {
-                const statusColor =
-                  bridge.status === "healthy"
-                    ? "text-green-400"
-                    : bridge.status === "degraded"
-                    ? "text-yellow-400"
-                    : bridge.status === "down"
-                    ? "text-red-400"
-                    : "text-stellar-text-secondary";
-
                 return (
                   <tr
                     key={bridge.name}
                     className="border-b border-stellar-border/50 text-white print-avoid-break"
                   >
                     <td className="py-2 pr-4 font-semibold">{bridge.name}</td>
-                    <td className={`py-2 pr-4 capitalize font-medium ${statusColor}`}>
-                      {bridge.status}
+                    <td className="py-2 pr-4">
+                      <AssetStatusBadge
+                        status={bridgeStatusToAssetStatus(bridge.status)}
+                        size="sm"
+                      />
                     </td>
                     <td className="py-2 pr-4">
                       ${bridge.totalValueLocked.toLocaleString()}
@@ -401,8 +491,8 @@ function BridgesReport({
                         bridge.mismatchPercentage > 1
                           ? "text-red-400"
                           : bridge.mismatchPercentage > 0.1
-                          ? "text-yellow-400"
-                          : "text-green-400"
+                            ? "text-yellow-400"
+                            : "text-green-400"
                       }`}
                     >
                       {bridge.mismatchPercentage.toFixed(3)}%
@@ -412,12 +502,57 @@ function BridgesReport({
               })}
               {bridges.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-6 text-center text-stellar-text-secondary">
+                  <td
+                    colSpan={6}
+                    className="py-6 text-center text-stellar-text-secondary"
+                  >
                     No bridge data available
                   </td>
                 </tr>
               )}
             </tbody>
+            <TableFooterSummary
+              ariaLabel="Bridge status table summary"
+              columns={[
+                {
+                  id: "name",
+                  value: `${bridges.length} bridges`,
+                  ariaLabel: "Total bridges",
+                },
+                { id: "status", value: "" },
+                {
+                  id: "tvl",
+                  value: formatCompact(
+                    sumColumn(bridges.map((b) => b.totalValueLocked)),
+                  ),
+                  ariaLabel: "Total value locked",
+                  align: "right",
+                },
+                {
+                  id: "stellar",
+                  value: (
+                    sumColumn(bridges.map((b) => b.supplyOnStellar)) ?? 0
+                  ).toLocaleString(),
+                  ariaLabel: "Total supply on Stellar",
+                  align: "right",
+                },
+                {
+                  id: "source",
+                  value: (
+                    sumColumn(bridges.map((b) => b.supplyOnSource)) ?? 0
+                  ).toLocaleString(),
+                  ariaLabel: "Total supply on source chain",
+                  align: "right",
+                },
+                {
+                  id: "mismatch",
+                  value: `${(avgColumn(bridges.map((b) => b.mismatchPercentage)) ?? 0).toFixed(3)}%`,
+                  ariaLabel: "Average mismatch percentage",
+                  align: "right",
+                },
+              ]}
+              summaryNote="TVL and supply figures are approximate. Mismatch % is the average across all bridges."
+            />
           </table>
         </div>
       </section>
@@ -431,34 +566,46 @@ function BridgesReport({
 // Main Reports page
 // ---------------------------------------------------------------------------
 
-const TEMPLATES: { id: ReportTemplate; label: string; description: string }[] = [
-  {
-    id: "overview",
-    label: "Network Overview",
-    description: "High-level summary of all assets and bridges with status distribution.",
-  },
-  {
-    id: "assets",
-    label: "Asset Health Detail",
-    description: "Per-asset score breakdown including all health factor components.",
-  },
-  {
-    id: "bridges",
-    label: "Bridge Status",
-    description: "Bridge TVL, supply consistency, and mismatch analysis.",
-  },
-  {
-    id: "custom",
-    label: "Custom Report",
-    description: "Combine overview and bridge data with a custom date range.",
-  },
-];
+const TEMPLATES: { id: ReportTemplate; label: string; description: string }[] =
+  [
+    {
+      id: "overview",
+      label: "Network Overview",
+      description:
+        "High-level summary of all assets and bridges with status distribution.",
+    },
+    {
+      id: "assets",
+      label: "Asset Health Detail",
+      description:
+        "Per-asset score breakdown including all health factor components.",
+    },
+    {
+      id: "bridges",
+      label: "Bridge Status",
+      description: "Bridge TVL, supply consistency, and mismatch analysis.",
+    },
+    {
+      id: "custom",
+      label: "Custom Report",
+      description: "Combine overview and bridge data with a custom date range.",
+    },
+  ];
 
 export default function Reports() {
-  const { data: assetsData, isLoading: assetsLoading } = useAssetsWithHealth();
-  const { data: bridgesData, isLoading: bridgesLoading } = useBridges();
+  const {
+    data: assetsData,
+    isLoading: assetsLoading,
+    refetch: refetchAssets,
+  } = useAssetsWithHealth();
+  const {
+    data: bridgesData,
+    isLoading: bridgesLoading,
+    refetch: refetchBridges,
+  } = useBridges();
 
-  const [activeTemplate, setActiveTemplate] = useState<ReportTemplate>("overview");
+  const [activeTemplate, setActiveTemplate] =
+    useState<ReportTemplate>("overview");
   const [dateRange, setDateRange] = useState<DateRange>({
     from: thirtyDaysAgo(),
     to: nowIso(),
@@ -468,9 +615,47 @@ export default function Reports() {
 
   const generatedAt = useMemo(
     () =>
-      new Date().toLocaleString("en-US", { dateStyle: "long", timeStyle: "short" }),
-    []
+      new Date().toLocaleString("en-US", {
+        dateStyle: "long",
+        timeStyle: "short",
+      }),
+    [],
   );
+
+  const handleRefresh = async () => {
+    await Promise.all([refetchAssets(), refetchBridges()]);
+  };
+
+  const handleExportCsv = (): string | null => {
+    if (activeTemplate === "assets" || activeTemplate === "overview") {
+      const rows = (assetsData ?? []).map(
+        (a) =>
+          `${a.symbol},${a.name},${a.health?.overallScore ?? ""},${a.health?.trend ?? ""}`,
+      );
+      return ["Symbol,Name,Health Score,Trend", ...rows].join("\n");
+    }
+    if (activeTemplate === "bridges" || activeTemplate === "custom") {
+      const rows = (bridgesData?.bridges ?? []).map(
+        (b) =>
+          `${b.name},${b.status},${b.totalValueLocked},${b.supplyOnStellar},${b.supplyOnSource},${b.mismatchPercentage}`,
+      );
+      return [
+        "Bridge,Status,TVL,Supply (Stellar),Supply (Source),Mismatch %",
+        ...rows,
+      ].join("\n");
+    }
+    return null;
+  };
+
+  const handleExportJson = (): string | null => {
+    if (activeTemplate === "assets" || activeTemplate === "overview") {
+      return JSON.stringify(assetsData ?? [], null, 2);
+    }
+    if (activeTemplate === "bridges" || activeTemplate === "custom") {
+      return JSON.stringify(bridgesData?.bridges ?? [], null, 2);
+    }
+    return null;
+  };
 
   return (
     <div className="space-y-8">
@@ -478,14 +663,16 @@ export default function Reports() {
       <header className="no-print">
         <h1 className="text-3xl font-bold text-white">Reports</h1>
         <p className="mt-2 text-stellar-text-secondary">
-          Generate print-ready reports and export them as PDF using your browser's
-          built-in Save as PDF option.
+          Generate print-ready reports and export them as PDF using your
+          browser's built-in Save as PDF option.
         </p>
       </header>
 
       {/* Template selector */}
       <section className="no-print">
-        <h2 className="text-lg font-semibold text-white mb-3">Report Template</h2>
+        <h2 className="text-lg font-semibold text-white mb-3">
+          Report Template
+        </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {TEMPLATES.map((tpl) => (
             <button
@@ -552,6 +739,15 @@ export default function Reports() {
 
           <PrintButton label="Print / Export PDF" />
         </div>
+
+        <div className="mt-4">
+          <ReportQuickActions
+            onRefresh={handleRefresh}
+            onExportCsv={handleExportCsv}
+            onExportJson={handleExportJson}
+            disabled={isLoading}
+          />
+        </div>
       </section>
 
       {/* ── Report content (visible on screen + printed) ── */}
@@ -570,15 +766,18 @@ export default function Reports() {
               {TEMPLATES.find((t) => t.id === activeTemplate)?.label}
             </h2>
             <p className="text-sm text-stellar-text-secondary mt-1">
-              Period: {formatDate(dateRange.from)} – {formatDate(dateRange.to)} · Generated:{" "}
-              {generatedAt}
+              Period: {formatDate(dateRange.from)} – {formatDate(dateRange.to)}{" "}
+              · Generated: {generatedAt}
             </p>
           </div>
           <PrintButton label="Print this report" />
         </div>
 
         {isLoading ? (
-          <div className="py-16 text-center text-stellar-text-secondary" role="status">
+          <div
+            className="py-16 text-center text-stellar-text-secondary"
+            role="status"
+          >
             Loading report data…
           </div>
         ) : (

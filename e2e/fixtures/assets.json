@@ -1,0 +1,17 @@
+{
+  "assets": [
+    {
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "sourceChain": "Ethereum",
+      "issuerAddress": "GABCUSDC123"
+    },
+    {
+      "symbol": "EURC",
+      "name": "Euro Coin",
+      "sourceChain": "Ethereum",
+      "issuerAddress": "GABCEURC123"
+    }
+  ],
+  "total": 2
+}

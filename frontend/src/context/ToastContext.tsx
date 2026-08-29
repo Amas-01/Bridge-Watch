@@ -1,24 +1,12 @@
 import {
-  createContext,
   useCallback,
-  useContext,
   useId,
   useMemo,
   useState,
+  useRef,
   type ReactNode,
 } from "react";
-
-export type ToastVariant = "error" | "success" | "info";
-
-type ToastItem = { id: string; message: string; variant: ToastVariant };
-
-type ToastContextValue = {
-  showToast: (opts: { message: string; variant?: ToastVariant }) => void;
-  showError: (message: string) => void;
-  showSuccess: (message: string) => void;
-};
-
-const ToastContext = createContext<ToastContextValue | null>(null);
+import { ToastContext, ToastVariant, ToastItem } from "./ToastContextValue";
 
 function ToastViewport({
   toasts,
@@ -73,8 +61,13 @@ function ToastViewport({
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const titleId = useId();
+  const timersRef = useRef<Record<string, number>>({});
 
   const remove = useCallback((id: string) => {
+    if (timersRef.current[id]) {
+      window.clearTimeout(timersRef.current[id]);
+      delete timersRef.current[id];
+    }
     setToasts((prev) => prev.filter((x) => x.id !== id));
   }, []);
 
@@ -85,7 +78,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           ? crypto.randomUUID()
           : `toast-${Date.now()}-${Math.random()}`;
       setToasts((prev) => [...prev, { id, message, variant }]);
-      window.setTimeout(() => remove(id), 6000);
+      timersRef.current[id] = window.setTimeout(() => remove(id), 6000);
     },
     [remove]
   );
@@ -113,8 +106,4 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useToast() {
-  const ctx = useContext(ToastContext);
-  if (!ctx) throw new Error("useToast must be used within ToastProvider");
-  return ctx;
-}
+

@@ -16,7 +16,14 @@ export function usePrices(symbol: string, options?: QueryRefreshOptions) {
     select: (data) => ({
       ...data,
       sources: data?.sources ?? [],
-      history: [], // TODO: Fetch historical price data for charting
+      history:
+        data?.history && data.history.length > 0
+          ? data.history
+          : (data?.sources ?? []).map((source) => ({
+              source: source.source,
+              price: source.price,
+              timestamp: source.timestamp,
+            })),
     }),
   });
 }

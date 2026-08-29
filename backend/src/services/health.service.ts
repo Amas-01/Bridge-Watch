@@ -3,6 +3,7 @@ import { PriceService } from "./price.service.js";
 import { BridgeService } from "./bridge.service.js";
 import { LiquidityService } from "./liquidity.service.js";
 import { AlertService } from "./alert.service.js";
+import { scheduleAlertEvaluation } from "../workers/alertEvaluation.worker.js";
 import { HealthScoreModel, HealthScoreRecord } from "../database/models/healthScore.model.js";
 import { ScoreCalculator, ScoreComponents } from "../utils/scoreCalculator.js";
 import { SUPPORTED_ASSETS } from "../config/index.js";
@@ -92,8 +93,8 @@ export class HealthService {
           { symbol, previous: previous.overall_score, current: overall },
           "Significant health score drop detected"
         );
-        
-        await this.alertService.evaluateAsset({
+
+        await scheduleAlertEvaluation([{
           assetCode: symbol,
           metrics: {
             health_score: overall,
@@ -101,7 +102,7 @@ export class HealthService {
             liquidity_score: components.liquidityDepth,
             price_stability_score: components.priceStability,
           }
-        });
+        }]);
       }
 
       return {

@@ -1,0 +1,144 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "bridgewatch-historical-trends",
+    "title": "Bridge Watch - Historical Trends (Template)",
+    "tags": ["bridge-watch", "template", "trends"],
+    "timezone": "browser",
+    "schemaVersion": 39,
+    "version": 1,
+    "refresh": "5m",
+    "time": { "from": "now-30d", "to": "now" },
+    "templating": {
+      "list": [
+        {
+          "name": "datasource",
+          "type": "datasource",
+          "label": "Datasource",
+          "query": "prometheus",
+          "current": { "selected": false, "text": "Prometheus", "value": "Prometheus" }
+        },
+        {
+          "name": "bridge",
+          "type": "query",
+          "label": "Bridge",
+          "datasource": { "type": "prometheus", "uid": "$datasource" },
+          "query": { "query": "label_values(bridge_health_score, bridge_name)", "refId": "PromBridge" },
+          "refresh": 2,
+          "multi": true,
+          "includeAll": true,
+          "allValue": ".*"
+        },
+        {
+          "name": "asset",
+          "type": "query",
+          "label": "Asset",
+          "datasource": { "type": "prometheus", "uid": "$datasource" },
+          "query": { "query": "label_values(asset_price_usd, symbol)", "refId": "PromAsset" },
+          "refresh": 2,
+          "multi": true,
+          "includeAll": true,
+          "allValue": ".*"
+        },
+        {
+          "name": "dex",
+          "type": "query",
+          "label": "DEX",
+          "datasource": { "type": "prometheus", "uid": "$datasource" },
+          "query": { "query": "label_values(liquidity_tvl_usd, dex)", "refId": "PromDex" },
+          "refresh": 2,
+          "multi": true,
+          "includeAll": true,
+          "allValue": ".*"
+        }
+      ]
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Bridge Health Score (0-100)",
+        "type": "timeseries",
+        "gridPos": { "x": 0, "y": 0, "w": 12, "h": 7 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "avg by (bridge_name) (bridge_health_score{bridge_name=~\"$bridge\"})",
+            "legendFormat": "{{bridge_name}}"
+          }
+        ],
+        "fieldConfig": { "defaults": { "min": 0, "max": 100, "decimals": 0 } },
+        "options": { "legend": { "displayMode": "list", "placement": "right" } }
+      },
+      {
+        "id": 2,
+        "title": "Bridge Verification Success Rate (%)",
+        "type": "timeseries",
+        "gridPos": { "x": 12, "y": 0, "w": 12, "h": 7 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "(sum(rate(bridge_verification_success_total[1h])) / sum(rate(bridge_verifications_total[1h]))) * 100"
+          }
+        ],
+        "fieldConfig": { "defaults": { "unit": "percent", "decimals": 2 } }
+      },
+      {
+        "id": 3,
+        "title": "Asset Price (USD)",
+        "type": "timeseries",
+        "gridPos": { "x": 0, "y": 7, "w": 12, "h": 7 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "avg by (symbol, source) (asset_price_usd{symbol=~\"$asset\"})",
+            "legendFormat": "{{symbol}}/{{source}}"
+          }
+        ],
+        "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 4 } },
+        "options": { "legend": { "displayMode": "list", "placement": "right" } }
+      },
+      {
+        "id": 4,
+        "title": "Liquidity TVL (USD)",
+        "type": "timeseries",
+        "gridPos": { "x": 12, "y": 7, "w": 12, "h": 7 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "sum by (symbol, dex, chain) (liquidity_tvl_usd{symbol=~\"$asset\", dex=~\"$dex\"})",
+            "legendFormat": "{{symbol}}/{{dex}}/{{chain}}"
+          }
+        ],
+        "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 0 } },
+        "options": { "legend": { "displayMode": "list", "placement": "right" } }
+      },
+      {
+        "id": 5,
+        "title": "HTTP Requests (daily)",
+        "type": "timeseries",
+        "gridPos": { "x": 0, "y": 14, "w": 12, "h": 7 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "sum(increase(http_requests_total[1d]))"
+          }
+        ],
+        "fieldConfig": { "defaults": { "decimals": 0 } }
+      },
+      {
+        "id": 6,
+        "title": "Cache Hit Rate (%)",
+        "type": "timeseries",
+        "gridPos": { "x": 12, "y": 14, "w": 12, "h": 7 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "(sum(rate(cache_hits_total[5m])) / (sum(rate(cache_hits_total[5m])) + sum(rate(cache_misses_total[5m])))) * 100"
+          }
+        ],
+        "fieldConfig": { "defaults": { "unit": "percent", "decimals": 2 } }
+      }
+    ]
+  },
+  "overwrite": true
+}

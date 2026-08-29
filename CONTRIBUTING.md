@@ -301,6 +301,10 @@ Use the **Feature Request** template. Include:
 - **Your proposed solution** and any alternatives you considered
 - **Scope** — is this a small addition or a large redesign?
 
+### Change requests
+
+For changes that don't fit as a simple bug report or feature request — architecture decisions, refactoring proposals, dependency upgrades, or process changes — use the [Change Request Form](.github/ISSUE_TEMPLATE/change_request.yml). It provides a structured template for documenting the problem, scope, impact, and approval status.
+
 ### Security vulnerabilities
 
 **Do not open a public issue for security vulnerabilities.** Email **security@stellarbridgewatch.io** with details. We follow responsible disclosure — you'll receive a response within 48 hours and public credit once the fix is released (if you want it).
@@ -427,6 +431,8 @@ cd contracts && cargo test
   Use the test factories in `backend/tests/factories/` to build realistic fixtures.
 - **Integration tests** — use the helpers in `backend/tests/helpers/` to run
   migrations, truncate tables, and clean up after each test.
+- **Fixture reference** — see [`docs/FIXTURE_AUDIT_REPORT.md`](docs/FIXTURE_AUDIT_REPORT.md)
+  for the full inventory of shared fixtures, update process, and CI alignment.
 - **Test names** should read as sentences: `it("returns 404 when asset is not found")`.
 - Avoid testing implementation details — test observable behaviour.
 

@@ -1,44 +1,49 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { NotificationProvider } from "../context/NotificationContext";
-import { WebSocketProvider } from "../contexts/WebSocketContext";
-import ThemeProvider from "../theme/ThemeProvider";
+import { fireEvent, render, screen } from "../test/utils";
+import { WatchlistProvider } from "../hooks/useWatchlist";
 import Navbar from "./Navbar";
+import { useNotificationStore } from "../stores/notificationStore";
 
-const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: false } },
-});
+vi.mock("../hooks/useWebSocketEnhanced", () => ({
+  useWebSocket: vi.fn(() => ({
+    send: vi.fn(),
+    isConnected: true,
+    isSubscribed: true,
+  })),
+}));
+
+function resetNotifications() {
+  useNotificationStore.setState(useNotificationStore.getInitialState(), true);
+}
 
 describe("Navbar", () => {
-  it("opens and closes the mobile navigation drawer", () => {
+  beforeEach(() => {
+    resetNotifications();
+  });
+  it("toggles the mobile navigation panel", () => {
     render(
-      <MemoryRouter>
-        <QueryClientProvider client={queryClient}>
-          <ThemeProvider>
-            <WebSocketProvider>
-              <NotificationProvider>
-                <Navbar />
-              </NotificationProvider>
-            </WebSocketProvider>
-          </ThemeProvider>
-        </QueryClientProvider>
-      </MemoryRouter>
+      <WatchlistProvider>
+        <Navbar />
+      </WatchlistProvider>
     );
 
-    const openButton = screen.getByRole("button", {
-      name: /open navigation menu/i,
-    });
+    const trigger = screen.getByRole("button", { name: /open notifications/i });
+    fireEvent.click(trigger);
 
-    fireEvent.click(openButton);
-    expect(
-      screen.getByRole("dialog", { name: /mobile navigation/i })
-    ).toBeInTheDocument();
-    expect(screen.getByText(/control surface/i)).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
 
-    fireEvent.click(screen.getByRole("button", { name: /close mobile menu/i }));
-    expect(
-      screen.getByRole("button", { name: /open navigation menu/i })
-    ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Notifications" })).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("provides accessible aria-labels on icon navigation buttons", () => {
+    render(
+      <WatchlistProvider>
+        <Navbar />
+      </WatchlistProvider>
+    );
+
+    expect(screen.getByRole("button", { name: /open notifications/i })).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: /switch to (dark|light) theme/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /user settings/i })).toBeInTheDocument();
   });
 });

@@ -163,12 +163,10 @@ export function useNotifications() {
 
 // Hook for theme management
 export function useTheme() {
-  const { resolvedMode, toggleMode, setMode, applyTheme } = useThemeStore((state: ThemeState & ThemeActions) => ({
-    resolvedMode: state.resolvedMode,
-    toggleMode: state.toggleMode,
-    setMode: state.setMode,
-    applyTheme: state.applyTheme,
-  }));
+  const resolvedMode = useThemeStore((state: ThemeState & ThemeActions) => state.resolvedMode);
+  const toggleMode = useThemeStore((state: ThemeState & ThemeActions) => state.toggleMode);
+  const setMode = useThemeStore((state: ThemeState & ThemeActions) => state.setMode);
+  const applyTheme = useThemeStore((state: ThemeState & ThemeActions) => state.applyTheme);
 
   return {
     isDark: resolvedMode === "dark",

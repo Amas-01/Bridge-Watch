@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
 import { config } from "../config/index.js";
+import { formatEmailDate } from "../utils/email.js";
 import { logger } from "../utils/logger.js";
 
 type EmailTemplateType = "alert" | "digest";
@@ -88,7 +89,41 @@ const DEFAULT_RATE_LIMIT: RateLimitConfig = {
   windowMs: 60_000,
 };
 
+export interface EmailReportPayload {
+  htmlContent: string;
+  periodStart: Date;
+  periodEnd: Date;
+}
+
+// Add method to EmailNotificationService
+// Sends a simple HTML report email using a generic template
 export class EmailNotificationService {
+  // ... existing code unchanged up to line 141
+  // Insert after sendDigestEmail method definitions
+  async sendReportEmail(
+    recipient: EmailRecipient,
+    payload: EmailReportPayload,
+    context: EmailTemplateContext = {}
+  ): Promise<string> {
+    // Use a simple renderer that wraps htmlContent into a basic template
+    const renderer = (p: EmailReportPayload, ctx: EmailTemplateContext) => {
+      const subject = `Bridge Watch Report (${formatEmailDate(p.periodStart)} - ${formatEmailDate(p.periodEnd)})`;
+      const html = `
+      <html>
+        <body style="font-family: Arial, sans-serif; line-height: 1.5;">
+          <h2>${subject}</h2>
+          ${p.htmlContent}
+          <p><a href="${ctx.unsubscribeUrl ?? "#"}">Unsubscribe</a></p>
+        </body>
+      </html>`;
+      const text = `${subject}\n\nReport content omitted. Please view the email in HTML format.`;
+      return { subject, html, text };
+    };
+    // Register temporary renderer and send using generic enqueue
+    const tempType: EmailTemplateType = "digest" as EmailTemplateType; // reuse existing type slot
+    (this as any).registerTemplate(tempType, renderer);
+    return this.enqueue(tempType, recipient, payload as any, context);
+  }
   private transporter: Transporter | null = null;
   private readonly queue: EmailQueueItem[] = [];
   private readonly tracking = new Map<string, EmailQueueItem>();
@@ -445,7 +480,7 @@ export class EmailNotificationService {
       <li>
         <strong>${item.title}</strong><br />
         ${item.summary}<br />
-        <small>${item.timestamp}</small>
+        <small>${formatEmailDate(item.timestamp)}</small>
       </li>`
         )
         .join("");
@@ -453,7 +488,7 @@ export class EmailNotificationService {
       const itemsText = payload.items
         .map(
           (item) =>
-            `- ${item.title}\n  ${item.summary}\n  ${item.timestamp}`
+            `- ${item.title}\n  ${item.summary}\n  ${formatEmailDate(item.timestamp)}`
         )
         .join("\n");
 
@@ -462,7 +497,7 @@ export class EmailNotificationService {
   <body style="font-family: Arial, sans-serif; line-height: 1.5;">
     <h2>${subject}</h2>
     <p>Hello ${context.recipientName ?? "Subscriber"},</p>
-    <p>Digest generated at ${payload.generatedAt}.</p>
+    <p>Digest generated at ${formatEmailDate(payload.generatedAt)}.</p>
     <ul>${itemsHtml}</ul>
     <p><a href="${context.unsubscribeUrl ?? "#"}">Unsubscribe</a></p>
   </body>
@@ -472,7 +507,7 @@ export class EmailNotificationService {
         subject,
         "",
         `Hello ${context.recipientName ?? "Subscriber"},`,
-        `Digest generated at ${payload.generatedAt}.`,
+        `Digest generated at ${formatEmailDate(payload.generatedAt)}.`,
         "",
         itemsText || "No digest items.",
         "",

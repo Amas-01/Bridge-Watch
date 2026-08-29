@@ -18,9 +18,9 @@ export function AssetWatchlistButton({ symbol, className = "", size = "md" }: As
     if (!activeWatchlist) return;
 
     if (isTrailing) {
-      removeAsset.mutate({ watchlistId: activeWatchlist.id, symbol });
+      removeAsset(symbol, activeWatchlist.id);
     } else {
-      addAsset.mutate({ watchlistId: activeWatchlist.id, symbol });
+      addAsset(symbol, activeWatchlist.id);
     }
   };
 

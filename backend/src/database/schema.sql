@@ -14,16 +14,18 @@ CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
 -- assets
 -- Monitored Stellar assets (native + bridged).
 CREATE TABLE assets (
-  id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  symbol        TEXT        NOT NULL UNIQUE,
-  name          TEXT        NOT NULL,
-  issuer        TEXT,                                          -- NULL for native XLM
-  asset_type    TEXT        NOT NULL,                         -- native | credit_alphanum4 | credit_alphanum12
-  bridge_provider TEXT,                                       -- Circle, Wormhole, PayPal, etc.
-  source_chain  TEXT,                                         -- Ethereum, etc.
-  is_active     BOOLEAN     NOT NULL DEFAULT TRUE,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  symbol              TEXT        NOT NULL UNIQUE,
+  name                TEXT        NOT NULL,
+  issuer              TEXT,                                          -- NULL for native XLM
+  asset_type          TEXT        NOT NULL,                         -- native | credit_alphanum4 | credit_alphanum12
+  bridge_provider     TEXT,                                          -- Circle, Wormhole, PayPal, etc.
+  source_chain        TEXT,                                          -- Ethereum, etc.
+  is_active           BOOLEAN     NOT NULL DEFAULT TRUE,
+  deactivation_reason TEXT,
+  deactivation_date   TIMESTAMPTZ,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- bridges
@@ -224,7 +226,9 @@ CREATE TABLE health_scores (
   price_stability_score   SMALLINT    NOT NULL,
   bridge_uptime_score     SMALLINT    NOT NULL,
   reserve_backing_score   SMALLINT    NOT NULL,
-  volume_trend_score      SMALLINT    NOT NULL
+  volume_trend_score      SMALLINT    NOT NULL,
+  confidence_score        SMALLINT,
+  confidence_band         TEXT
 );
 CREATE INDEX health_scores_symbol_time_idx ON health_scores (symbol, time DESC);
 SELECT create_hypertable('health_scores', 'time', if_not_exists => TRUE);
@@ -290,11 +294,17 @@ CREATE TABLE webhook_endpoints (
   filter_event_types      JSONB       NOT NULL DEFAULT '[]',
   is_batch_delivery_enabled BOOLEAN   NOT NULL DEFAULT FALSE,
   batch_window_ms         INTEGER     NOT NULL DEFAULT 5000,
+  consecutive_failures    INTEGER     NOT NULL DEFAULT 0,
+  circuit_breaker_status  TEXT        NOT NULL DEFAULT 'closed',  -- closed | open | half_open
+  circuit_breaker_tripped_at TIMESTAMPTZ,
+  circuit_breaker_reset_at   TIMESTAMPTZ,
   created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX webhook_endpoints_owner_idx       ON webhook_endpoints (owner_address);
 CREATE INDEX webhook_endpoints_active_idx      ON webhook_endpoints (is_active);
+CREATE INDEX idx_webhook_endpoints_cb_status   ON webhook_endpoints (circuit_breaker_status)
+  WHERE circuit_breaker_status != 'closed';
 
 -- webhook_deliveries
 -- Individual webhook delivery attempts.
@@ -353,3 +363,20 @@ CREATE INDEX verification_results_bridge_time_idx     ON verification_results (b
 CREATE INDEX verification_results_bridge_sequence_idx ON verification_results (bridge_id, sequence);
 SELECT create_hypertable('verification_results', 'verified_at', if_not_exists => TRUE);
 SELECT add_retention_policy('verification_results', INTERVAL '90 days', if_not_exists => TRUE);
+
+-- =============================================================================
+-- ASSET LIFECYCLE TABLES
+-- =============================================================================
+
+-- asset_lifecycle_events
+-- Audit log for asset deactivation/reactivation events.
+CREATE TABLE asset_lifecycle_events (
+  id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  asset_symbol    TEXT        NOT NULL REFERENCES assets(symbol) ON DELETE CASCADE,
+  event_type      TEXT        NOT NULL,                           -- deactivated | reactivated
+  reason          TEXT,
+  performed_by    TEXT        NOT NULL,
+  timestamp       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX asset_lifecycle_events_symbol_time_idx ON asset_lifecycle_events (asset_symbol, timestamp DESC);
+CREATE INDEX asset_lifecycle_events_type_idx        ON asset_lifecycle_events (event_type);

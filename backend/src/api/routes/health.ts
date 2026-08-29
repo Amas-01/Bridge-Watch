@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { getOutboxSystem } from "../../outbox/index.js";
 import { HealthCheckService } from "../../services/healthCheck.service.js";
 
 const healthService = new HealthCheckService();
@@ -201,6 +202,39 @@ export async function healthRoutes(server: FastifyInstance) {
         return {
           error: "Failed to generate metrics",
           timestamp: new Date().toISOString(),
+        };
+      }
+    }
+  );
+
+  // Outbox-specific health check
+  server.get(
+    "/outbox",
+    async (_request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const outboxSystem = getOutboxSystem();
+        const health = await outboxSystem.healthCheck();
+
+        reply.code(health.status === "unhealthy" ? 503 : 200);
+        return {
+          status: health.status,
+          details: health.details,
+          timestamp: new Date().toISOString(),
+        };
+      } catch (error) {
+        server.log.error({ error }, "Outbox health check failed");
+        reply.code(503);
+        return {
+          status: "unhealthy",
+          details: {
+            initialized: false,
+            dispatcherRunning: false,
+            pendingEvents: 0,
+            failedEvents: 0,
+            deadLetterEvents: 0,
+          },
+          timestamp: new Date().toISOString(),
+          error: error instanceof Error ? error.message : "Unknown error",
         };
       }
     }

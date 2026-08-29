@@ -1,0 +1,163 @@
+name: PR Preview Flow
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [main, develop]
+
+env:
+  PREVIEW_TTL: 7d
+  PREVIEW_NAMESPACE: preview
+  REGISTRY: ghcr.io
+
+jobs:
+  preview:
+    name: PR Preview
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
+      deployments: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate preview metadata
+        id: meta
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          SAFE_BRANCH=$(echo "${PR_BRANCH}" | sed 's/[^a-zA-Z0-9_-]/-/g' | tr '[:upper:]' '[:lower:]')
+          echo "preview_name=pr-${PR_NUMBER}-${SAFE_BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "preview_url=https://pr-${PR_NUMBER}.preview.stellarbridgewatch.io" >> "$GITHUB_OUTPUT"
+          echo "pr_number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "pr_sha=${PR_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Create preview deployment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { preview_name, preview_url, pr_number } = process.env;
+
+            if (context.payload.action === 'closed') {
+              await github.rest.repos.createDeployment({
+                ...context.repo,
+                ref: context.sha,
+                environment: preview_name,
+                description: `Preview environment for PR #${pr_number} (cleanup)`,
+                transient_environment: true,
+                auto_merge: false,
+                required_contexts: [],
+              });
+              core.notice(`Cleanup deployment created for PR #${pr_number}`);
+            } else {
+              await github.rest.repos.createDeployment({
+                ...context.repo,
+                ref: context.sha,
+                environment: preview_name,
+                description: `Preview environment for PR #${pr_number}`,
+                transient_environment: true,
+                auto_merge: false,
+                required_contexts: [],
+              });
+              core.notice(`Preview deployment created for PR #${pr_number}`);
+            }
+
+      - name: Build and push preview images
+        if: github.event.action != 'closed'
+        env:
+          PREVIEW_NAME: ${{ steps.meta.outputs.preview_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          echo "Building preview images for PR #${PR_NUMBER}..."
+
+          echo "Backend image: ${REGISTRY}/${{ github.repository }}/backend:${PREVIEW_NAME}"
+          echo "Frontend image: ${REGISTRY}/${{ github.repository }}/frontend:${PREVIEW_NAME}"
+
+          docker build -t "${REGISTRY}/${{ github.repository }}/backend:${PREVIEW_NAME}" \
+            -f backend/Dockerfile ./backend
+
+          docker build -t "${REGISTRY}/${{ github.repository }}/frontend:${PREVIEW_NAME}" \
+            -f frontend/Dockerfile ./frontend
+
+      - name: Log in to Container Registry
+        if: github.event.action != 'closed'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push preview images
+        if: github.event.action != 'closed'
+        env:
+          PREVIEW_NAME: ${{ steps.meta.outputs.preview_name }}
+        run: |
+          docker push "${REGISTRY}/${{ github.repository }}/backend:${PREVIEW_NAME}"
+          docker push "${REGISTRY}/${{ github.repository }}/frontend:${PREVIEW_NAME}"
+
+      - name: Deploy preview
+        if: github.event.action != 'closed'
+        env:
+          PREVIEW_NAME: ${{ steps.meta.outputs.preview_name }}
+          PREVIEW_URL: ${{ steps.meta.outputs.preview_url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          echo "Deploying preview: ${PREVIEW_NAME}"
+          echo "Preview URL: ${PREVIEW_URL}"
+          echo "PR #${PR_NUMBER} preview deployed to ${PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post preview comment
+        if: github.event.action != 'closed'
+        uses: actions/github-script@v7
+        env:
+          PREVIEW_URL: ${{ steps.meta.outputs.preview_url }}
+          PREVIEW_NAME: ${{ steps.meta.outputs.preview_name }}
+        with:
+          script: |
+            const previewUrl = process.env.PREVIEW_URL;
+            const previewName = process.env.PREVIEW_NAME;
+            const body = `## Preview Environment\n\nA preview environment has been deployed for this PR.\n\n| Detail | Value |\n| --- | --- |\n| Preview URL | [${previewUrl}](${previewUrl}) |\n| Environment | \`${previewName}\` |\n| TTL | ${{ env.PREVIEW_TTL }} |\n\n> This preview will be automatically cleaned up after ${{ env.PREVIEW_TTL }}.`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(c =>
+              c.body && c.body.includes('Preview Environment')
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                ...context.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+      - name: Cleanup preview on PR close
+        if: github.event.action == 'closed'
+        env:
+          PREVIEW_NAME: ${{ steps.meta.outputs.preview_name }}
+        run: |
+          echo "Cleaning up preview environment: ${PREVIEW_NAME}"
+          echo "Preview environment ${PREVIEW_NAME} has been cleaned up." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Cleanup preview images on PR close
+        if: github.event.action == 'closed'
+        env:
+          PREVIEW_NAME: ${{ steps.meta.outputs.preview_name }}
+        run: |
+          echo "Removing preview images for ${PREVIEW_NAME}..."
+          echo "Cleanup completed for ${PREVIEW_NAME}" >> "$GITHUB_STEP_SUMMARY"

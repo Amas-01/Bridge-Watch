@@ -1,5 +1,6 @@
 import { redis } from "./redis.js";
 import { logger } from "./logger.js";
+import { getTenantContext } from "../multi-tenant/tenantContext.js";
 
 // Global cache statistics in memory
 export const cacheStats = {
@@ -54,9 +55,12 @@ function deserialize<T>(data: string): T {
 export class CacheService {
   /**
    * Helper for standardized cache key naming.
+   * Automatically namespaces keys by tenant when a tenant context is active.
    */
   static generateKey(namespace: string, id: string): string {
-    return `cache:${namespace}:${id}`;
+    const ctx = getTenantContext();
+    const tenantPrefix = ctx && !ctx.bypass ? ctx.tenantId : "global";
+    return `cache:${tenantPrefix}:${namespace}:${id}`;
   }
 
   /**

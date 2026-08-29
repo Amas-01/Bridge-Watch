@@ -4,10 +4,11 @@ import { useWatchlist } from "../hooks/useWatchlist";
 export function WatchlistManager() {
   const {
     watchlists,
+    activeListId,
     createWatchlist,
     renameWatchlist,
     deleteWatchlist,
-    setDefaultWatchlist,
+    setActiveWatchlist,
     importWatchlists,
   } = useWatchlist();
 
@@ -16,17 +17,17 @@ export function WatchlistManager() {
   const [editName, setEditName] = useState("");
   const [importText, setImportText] = useState("");
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (newName.trim()) {
-      await createWatchlist.mutateAsync({ name: newName.trim(), isDefault: watchlists.length === 0 });
+      createWatchlist(newName.trim());
       setNewName("");
     }
   };
 
-  const handleRename = async (id: string) => {
+  const handleRename = (id: string) => {
     if (editName.trim()) {
-      await renameWatchlist.mutateAsync({ id, name: editName.trim() });
+      renameWatchlist(id, editName.trim());
       setEditingId(null);
     }
   };
@@ -44,14 +45,14 @@ export function WatchlistManager() {
     URL.revokeObjectURL(url);
   };
 
-  const handleImport = async (e: React.FormEvent) => {
+  const handleImport = (e: React.FormEvent) => {
     e.preventDefault();
     if (importText.trim()) {
-      try {
-        await importWatchlists.mutateAsync(importText);
+      const success = importWatchlists(importText);
+      if (success) {
         setImportText("");
         alert("Watchlists imported successfully!");
-      } catch (err) {
+      } else {
         alert("Failed to import: Invalid JSON format");
       }
     }
@@ -60,7 +61,7 @@ export function WatchlistManager() {
   const generateShareLink = (id: string) => {
     const list = watchlists.find(w => w.id === id);
     if (!list) return;
-    
+
     const singleExport = JSON.stringify([list]);
     const base64 = btoa(singleExport);
     const url = `${window.location.origin}/watchlist?import=${encodeURIComponent(base64)}`;
@@ -73,7 +74,7 @@ export function WatchlistManager() {
     <div className="space-y-8 bg-stellar-card p-6 rounded-lg border border-stellar-border shadow-lg">
       <div>
         <h2 className="text-xl font-bold text-white mb-4">Your Watchlists</h2>
-        
+
         <form onSubmit={handleCreate} className="flex gap-2 mb-6">
           <input
             type="text"
@@ -84,7 +85,7 @@ export function WatchlistManager() {
           />
           <button
             type="submit"
-            disabled={!newName.trim() || createWatchlist.isPending}
+            disabled={!newName.trim()}
             className="px-4 py-2 bg-stellar-blue text-white rounded font-medium hover:bg-opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Create
@@ -121,9 +122,9 @@ export function WatchlistManager() {
                   <>
                     <h3 className="font-bold text-white flex items-center gap-2">
                       {list.name}
-                      {list.isDefault && (
+                      {list.id === activeListId && (
                         <span className="bg-stellar-blue text-xs px-2 py-0.5 rounded-full font-normal">
-                          Default
+                          Active
                         </span>
                       )}
                     </h3>
@@ -133,12 +134,12 @@ export function WatchlistManager() {
               </div>
 
               <div className="flex items-center gap-3">
-                {!list.isDefault && (
+                {list.id !== activeListId && (
                   <button
-                    onClick={() => setDefaultWatchlist.mutate(list.id)}
+                    onClick={() => setActiveWatchlist(list.id)}
                     className="text-sm text-gray-400 hover:text-white transition-colors"
                   >
-                    Set Default
+                    Set Active
                   </button>
                 )}
                 <button
@@ -159,7 +160,7 @@ export function WatchlistManager() {
                 </button>
                 {watchlists.length > 1 && (
                   <button
-                    onClick={() => deleteWatchlist.mutate(list.id)}
+                    onClick={() => deleteWatchlist(list.id)}
                     className="text-sm text-red-500 hover:text-red-400 transition-colors"
                   >
                     Delete
@@ -196,7 +197,7 @@ export function WatchlistManager() {
             />
             <button
               type="submit"
-              disabled={!importText.trim() || importWatchlists.isPending}
+              disabled={!importText.trim()}
               className="px-4 py-2 bg-stellar-border text-white rounded font-medium hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Import JSON

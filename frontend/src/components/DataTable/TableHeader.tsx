@@ -52,6 +52,10 @@ function SortableHeaderCell<TData>({
 
   const ariaSort: "ascending" | "descending" | "none" =
     sort === "asc" ? "ascending" : sort === "desc" ? "descending" : "none";
+  const headerLabel =
+    typeof header.column.columnDef.header === "string"
+      ? header.column.columnDef.header
+      : header.column.id;
 
   return (
     <th
@@ -73,8 +77,13 @@ function SortableHeaderCell<TData>({
               header.column.toggleSorting(undefined, e.shiftKey);
             }
           }}
-          aria-label={canSort ? `Sort by ${id}` : undefined}
+          aria-label={
+            canSort
+              ? `Sort by ${headerLabel}${sort ? `, currently ${ariaSort}` : ""}`
+              : undefined
+          }
           aria-describedby={canSort ? `${header.id}-sort-hint` : undefined}
+          title={canSort ? "Click to sort. Shift-click to add to the sort order." : undefined}
         >
           <div className="flex items-center gap-2 text-stellar-text-secondary">
             <span

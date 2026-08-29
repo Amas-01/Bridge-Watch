@@ -139,6 +139,7 @@ VITE_WS_URL=wss://api.bridgewatch.dev/ws
 - Use environment-specific `.env` files that are `.gitignore`'d.
 - Rotate secrets regularly, especially database and API credentials.
 - Use the principle of least privilege for all service accounts.
+- Run the quarterly [secrets audit checklist](../secrets-audit-checklist.md).
 
 ### Docker Compose Secrets
 

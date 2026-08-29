@@ -1,0 +1,20 @@
+{
+  "bridges": [
+    {
+      "name": "Allbridge",
+      "status": "healthy",
+      "totalValueLocked": 1525000,
+      "supplyOnStellar": 1200000,
+      "supplyOnSource": 1201500,
+      "mismatchPercentage": 0.124
+    },
+    {
+      "name": "Wormhole",
+      "status": "degraded",
+      "totalValueLocked": 934000,
+      "supplyOnStellar": 910000,
+      "supplyOnSource": 918800,
+      "mismatchPercentage": 0.958
+    }
+  ]
+}

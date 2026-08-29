@@ -116,6 +116,8 @@ Fastify's built-in schema validation is used for all routes. Request schemas are
 
 - Path parameters (`:symbol`, `:bridge`)
 - Query parameters (pagination, filters, time ranges)
+
+See [pagination-guide.md](../pagination-guide.md) for list-endpoint pagination models and examples.
 - Request bodies (alert rules, preferences, API key creation)
 
 Invalid requests receive a `400` response with structured error details.
@@ -159,3 +161,4 @@ OpenAPI/Swagger documentation is auto-generated:
 - **Spec file:** `backend/docs/openapi.json`
 - **Generation:** `npm run docs:generate` in the backend directory
 - **Swagger UI:** Available at `/docs` when enabled
+- **Authentication guide:** [../api-authentication-guide.md](../api-authentication-guide.md)

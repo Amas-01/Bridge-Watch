@@ -1,0 +1,120 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bridge-watch-backend
+  namespace: bridge-watch
+  labels:
+    app.kubernetes.io/name: bridge-watch
+    app.kubernetes.io/component: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: bridge-watch-backend
+  template:
+    metadata:
+      labels:
+        app: bridge-watch-backend
+        app.kubernetes.io/component: backend
+    spec:
+      serviceAccountName: bridge-watch
+      containers:
+        - name: backend
+          image: ghcr.io/stellabridge/bridge-watch-backend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3001
+              name: http
+          envFrom:
+            - configMapRef:
+                name: bridge-watch-config
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: bridge-watch-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bridge-watch-secrets
+                  key: POSTGRES_PASSWORD
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bridge-watch-secrets
+                  key: REDIS_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: bridge-watch-secrets
+                  key: JWT_SECRET
+            - name: API_KEY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: bridge-watch-secrets
+                  key: API_KEY_SECRET
+            - name: CIRCLE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bridge-watch-secrets
+                  key: CIRCLE_API_KEY
+            - name: COINBASE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bridge-watch-secrets
+                  key: COINBASE_API_KEY
+            - name: COINBASE_API_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: bridge-watch-secrets
+                  key: COINBASE_API_SECRET
+            - name: SMTP_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: bridge-watch-secrets
+                  key: SMTP_HOST
+            - name: SMTP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: bridge-watch-secrets
+                  key: SMTP_USER
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bridge-watch-secrets
+                  key: SMTP_PASSWORD
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 3001
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 3001
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: 3001
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 30
+            successThreshold: 1
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"

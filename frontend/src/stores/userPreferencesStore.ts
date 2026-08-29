@@ -11,6 +11,11 @@ export interface UserPreferences {
   sidebarCollapsed: boolean;
   dashboardLayout: "grid" | "list";
   favoriteAssets: string[];
+  favoriteBridges: string[];
+  /** Narrow lists to starred items when set to favorites */
+  favoritesFilterMode: "all" | "favorites";
+  /** Sort key for dashboard asset discovery */
+  assetSort: "symbol" | "health";
   alertThresholds: {
     priceDeviation: number;
     supplyMismatch: number;
@@ -27,6 +32,9 @@ const defaultPreferences: UserPreferences = {
   sidebarCollapsed: false,
   dashboardLayout: "grid",
   favoriteAssets: [],
+  favoriteBridges: [],
+  favoritesFilterMode: "all",
+  assetSort: "symbol",
   alertThresholds: {
     priceDeviation: 0.02,
     supplyMismatch: 0.1,
@@ -43,6 +51,8 @@ interface UserPreferencesState extends UserPreferences {
   resetPreferences: () => void;
   addFavoriteAsset: (asset: string) => void;
   removeFavoriteAsset: (asset: string) => void;
+  toggleFavoriteBridge: (bridgeName: string) => void;
+  setFavoritesFilterMode: (mode: UserPreferences["favoritesFilterMode"]) => void;
   toggleSidebar: () => void;
   setAlertThreshold: (
     type: keyof UserPreferences["alertThresholds"],
@@ -89,6 +99,29 @@ export const useUserPreferencesStore = create<UserPreferencesState>()(
           );
         },
 
+        toggleFavoriteBridge: (bridgeName) => {
+          const current = get().favoriteBridges;
+          if (current.includes(bridgeName)) {
+            set(
+              {
+                favoriteBridges: current.filter((b) => b !== bridgeName),
+              },
+              false,
+              "toggleFavoriteBridge/remove"
+            );
+          } else {
+            set(
+              { favoriteBridges: [...current, bridgeName] },
+              false,
+              "toggleFavoriteBridge/add"
+            );
+          }
+        },
+
+        setFavoritesFilterMode: (mode) => {
+          set({ favoritesFilterMode: mode }, false, "setFavoritesFilterMode");
+        },
+
         toggleSidebar: () => {
           set(
             { sidebarCollapsed: !get().sidebarCollapsed },
@@ -113,7 +146,20 @@ export const useUserPreferencesStore = create<UserPreferencesState>()(
       {
         name: "bridge-watch-user-preferences",
         storage: createJSONStorage(() => localStorage),
-        version: 1,
+        version: 2,
+        migrate: (persisted: unknown, version: number) => {
+          const p = persisted as Partial<UserPreferences>;
+          if (version < 2) {
+            return {
+              ...defaultPreferences,
+              ...p,
+              favoriteBridges: p.favoriteBridges ?? [],
+              favoritesFilterMode: p.favoritesFilterMode ?? "all",
+              assetSort: p.assetSort ?? "symbol",
+            };
+          }
+          return { ...defaultPreferences, ...p };
+        },
       }
     ),
     { name: "UserPreferencesStore" }
@@ -129,6 +175,9 @@ export const selectUserPreferences = (state: UserPreferencesState) => ({
   sidebarCollapsed: state.sidebarCollapsed,
   dashboardLayout: state.dashboardLayout,
   favoriteAssets: state.favoriteAssets,
+  favoriteBridges: state.favoriteBridges,
+  favoritesFilterMode: state.favoritesFilterMode,
+  assetSort: state.assetSort,
   alertThresholds: state.alertThresholds,
 });
 

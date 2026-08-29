@@ -1,4 +1,5 @@
 import "fastify";
+import type { TenantContext } from "../multi-tenant/tenantContext.js";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -9,6 +10,13 @@ declare module "fastify" {
       rateLimitPerMinute: number;
       source: "api-key" | "bootstrap";
     };
+    /**
+     * Set by requestSamplingMiddleware (#1058).
+     * true = request is included in the current sample (default when no rule matches).
+     * false = request is excluded from sampling and should skip expensive telemetry.
+     */
+    samplingDecision?: boolean;
+    tenantContext?: TenantContext;
   }
 
   interface FastifySchema {
@@ -26,5 +34,13 @@ declare module "fastify" {
 
   interface RouteShorthandOptions {
     websocket?: boolean;
+  }
+
+  interface FastifyContextConfig {
+    rateLimit?: {
+      max?: number;
+      timeWindow?: string | number;
+      skip?: (request: FastifyRequest) => boolean | Promise<boolean>;
+    };
   }
 }

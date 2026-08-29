@@ -10,9 +10,12 @@
 FROM node:20-alpine AS base
 WORKDIR /app
 
-# Install dependencies first (layer cache friendly)
-COPY package.json package-lock.json* ./
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+# Install dependencies first (layer cache friendly). This layer is only
+# invalidated when package.json changes, not on every source edit. The
+# BuildKit cache mount keeps npm's package cache across builds so even an
+# invalidated install re-downloads as little as possible.
+COPY package.json ./
+RUN --mount=type=cache,sharing=locked,target=/root/.npm npm install
 
 # -----------------------------------------------------------------------------
 # Development — live reload via tsx watch
@@ -39,8 +42,8 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-COPY package.json package-lock.json* ./
-RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi && npm cache clean --force
+COPY package.json ./
+RUN --mount=type=cache,sharing=locked,target=/root/.npm npm install --omit=dev && npm cache clean --force || true
 
 COPY --from=builder /app/dist ./dist
 

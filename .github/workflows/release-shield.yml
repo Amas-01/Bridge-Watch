@@ -1,0 +1,298 @@
+name: Release Shield
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Release version being evaluated
+        required: true
+        type: string
+      health_urls:
+        description: Comma-separated readiness endpoints
+        required: false
+        default: ""
+        type: string
+      required_workflows:
+        description: Comma-separated workflow names that must have succeeded for the release SHA
+        required: false
+        default: "CI,Code Quality,Security Scanning"
+        type: string
+      enforce_external_gates:
+        description: Require health endpoints and completed workflow evidence
+        required: false
+        default: true
+        type: boolean
+      report_only:
+        description: Report gate status without blocking the caller
+        required: false
+        default: false
+        type: boolean
+      override:
+        description: Allow an authorized maintainer to bypass failed gates
+        required: false
+        default: false
+        type: boolean
+      override_reason:
+        description: Audit reason for a manual override
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  shield:
+    name: Release Shield
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate release metadata
+        id: metadata
+        continue-on-error: true
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release version: $VERSION"
+            exit 1
+          fi
+
+          if [ "${{ github.event_name }}" = "push" ] && [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            echo "Automatic releases must originate from a tag."
+            exit 1
+          fi
+
+          echo "Release metadata is valid for $VERSION at $GITHUB_SHA."
+
+      - name: Check deployment health
+        id: health
+        continue-on-error: true
+        env:
+          HEALTH_URLS: ${{ inputs.health_urls }}
+          ENFORCE_EXTERNAL_GATES: ${{ inputs.enforce_external_gates }}
+        run: |
+          if [ "$ENFORCE_EXTERNAL_GATES" != "true" ]; then
+            echo "Health evidence is not required for this dry run."
+            exit 0
+          fi
+
+          if [ -z "${HEALTH_URLS// }" ]; then
+            echo "No health endpoints configured. Set the RELEASE_HEALTH_URLS repository variable."
+            exit 1
+          fi
+
+          failed=0
+          IFS=',' read -ra urls <<< "$HEALTH_URLS"
+          for raw_url in "${urls[@]}"; do
+            url="$(echo "$raw_url" | xargs)"
+            [ -z "$url" ] && continue
+            if curl --fail --silent --show-error --location \
+              --retry 3 --retry-all-errors --connect-timeout 5 --max-time 20 \
+              "$url" >/dev/null; then
+              echo "Healthy: $url"
+            else
+              echo "Unhealthy: $url"
+              failed=1
+            fi
+          done
+          exit "$failed"
+
+      - name: Verify test evidence for release commit
+        id: tests
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          REQUIRED_WORKFLOWS: ${{ inputs.required_workflows }}
+          ENFORCE_EXTERNAL_GATES: ${{ inputs.enforce_external_gates }}
+        with:
+          script: |
+            if (process.env.ENFORCE_EXTERNAL_GATES !== 'true') {
+              core.info('External workflow evidence is not required for this dry run.');
+              return;
+            }
+
+            const required = process.env.REQUIRED_WORKFLOWS
+              .split(',')
+              .map((name) => name.trim())
+              .filter(Boolean);
+
+            if (required.length === 0) {
+              core.setFailed('No required workflows configured.');
+              return;
+            }
+
+            const { data } = await github.rest.actions.listWorkflowRunsForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head_sha: context.sha,
+              status: 'completed',
+              per_page: 100,
+            });
+
+            const failures = [];
+            for (const name of required) {
+              const runs = data.workflow_runs
+                .filter((run) => run.name === name)
+                .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+              const run = runs[0];
+              if (!run) {
+                failures.push(`${name}: no completed run for ${context.sha}`);
+              } else if (run.conclusion !== 'success') {
+                failures.push(`${name}: ${run.conclusion} (${run.html_url})`);
+              } else {
+                core.info(`${name}: success (${run.html_url})`);
+              }
+            }
+
+            if (failures.length > 0) {
+              core.setFailed(failures.join('\n'));
+            }
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install locked dependencies
+        id: dependencies
+        continue-on-error: true
+        run: npm ci
+
+      - name: Build backend artifact
+        id: backend
+        continue-on-error: true
+        run: |
+          npm --workspace=backend run build
+          test -f backend/dist/index.js
+
+      - name: Build frontend artifact
+        id: frontend
+        continue-on-error: true
+        run: |
+          npm --workspace=frontend run build
+          test -f frontend/dist/index.html
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Build contract artifacts
+        id: contracts
+        continue-on-error: true
+        working-directory: contracts
+        run: |
+          cargo build --workspace --target wasm32-unknown-unknown --release
+          find target/wasm32-unknown-unknown/release -maxdepth 1 -name '*.wasm' -print -quit | grep -q .
+
+      - name: Authorize manual override
+        id: override
+        if: always()
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          OVERRIDE_REQUESTED: ${{ inputs.override }}
+          OVERRIDE_REASON: ${{ inputs.override_reason }}
+        with:
+          script: |
+            core.setOutput('authorized', 'false');
+            if (process.env.OVERRIDE_REQUESTED !== 'true') return;
+
+            if (context.eventName !== 'workflow_dispatch') {
+              core.setFailed('Overrides are only allowed for manually dispatched releases.');
+              return;
+            }
+            if (process.env.OVERRIDE_REASON.trim().length < 10) {
+              core.setFailed('Override reason must contain at least 10 characters.');
+              return;
+            }
+
+            const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: context.actor,
+            });
+            if (!['admin', 'maintain'].includes(data.permission)) {
+              core.setFailed(`@${context.actor} does not have maintain or admin permission.`);
+              return;
+            }
+            core.setOutput('authorized', 'true');
+
+      - name: Publish shield report and enforce decision
+        if: always()
+        env:
+          VERSION: ${{ inputs.version }}
+          OVERRIDE_REQUESTED: ${{ inputs.override }}
+          OVERRIDE_REASON: ${{ inputs.override_reason }}
+          OVERRIDE_AUTHORIZED: ${{ steps.override.outputs.authorized }}
+          ENFORCE_EXTERNAL_GATES: ${{ inputs.enforce_external_gates }}
+          METADATA_RESULT: ${{ steps.metadata.outcome }}
+          HEALTH_RESULT: ${{ steps.health.outcome }}
+          TEST_RESULT: ${{ steps.tests.outcome }}
+          DEPENDENCIES_RESULT: ${{ steps.dependencies.outcome }}
+          BACKEND_RESULT: ${{ steps.backend.outcome }}
+          FRONTEND_RESULT: ${{ steps.frontend.outcome }}
+          CONTRACTS_RESULT: ${{ steps.contracts.outcome }}
+        run: |
+          {
+            echo "## Release Shield"
+            echo
+            echo "| Gate | Result |"
+            echo "| --- | --- |"
+            echo "| Release metadata | $METADATA_RESULT |"
+            echo "| Deployment health | $HEALTH_RESULT |"
+            echo "| Test evidence | $TEST_RESULT |"
+            echo "| Locked dependency install | $DEPENDENCIES_RESULT |"
+            echo "| Backend artifact | $BACKEND_RESULT |"
+            echo "| Frontend artifact | $FRONTEND_RESULT |"
+            echo "| Contract artifacts | $CONTRACTS_RESULT |"
+            echo
+            echo "- Version: \`$VERSION\`"
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Actor: \`$GITHUB_ACTOR\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          failed=0
+          
+          # For dry-runs with enforce_external_gates=false, only check metadata
+          if [ "$ENFORCE_EXTERNAL_GATES" != "true" ]; then
+            echo "Running in dry-run mode with relaxed validation" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$METADATA_RESULT" != "success" ]; then
+              failed=1
+            fi
+          else
+            # Full validation for actual releases
+            for result in \
+              "$METADATA_RESULT" "$HEALTH_RESULT" "$TEST_RESULT" "$DEPENDENCIES_RESULT" \
+              "$BACKEND_RESULT" "$FRONTEND_RESULT" "$CONTRACTS_RESULT"; do
+              [ "$result" = "success" ] || failed=1
+            done
+          fi
+
+          if [ "$failed" -eq 0 ]; then
+            echo "Decision: **PROMOTION APPROVED**" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "$REPORT_ONLY" = "true" ]; then
+            echo "Decision: **PROMOTION WOULD BE BLOCKED (REPORT ONLY)**" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "$OVERRIDE_REQUESTED" = "true" ] && [ "$OVERRIDE_AUTHORIZED" = "true" ]; then
+            {
+              echo "Decision: **PROMOTION APPROVED BY MANUAL OVERRIDE**"
+              echo
+              echo "Override reason: $OVERRIDE_REASON"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "Decision: **PROMOTION BLOCKED**" >> "$GITHUB_STEP_SUMMARY"
+          exit 1

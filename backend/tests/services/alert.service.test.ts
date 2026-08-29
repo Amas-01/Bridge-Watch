@@ -4,6 +4,28 @@ import {
   type AlertCondition,
   type MetricSnapshot,
 } from "../../src/services/alert.service.js";
+import { alertRoutingService } from "../../src/services/alertRouting.service.js";
+import { duplicateAlertCheckService } from "../../src/services/duplicateAlertCheck.service.js";
+
+vi.mock("../../src/services/alertRouting.service.js", () => ({
+  alertRoutingService: {
+    routeAlert: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
+vi.mock("../../src/workers/circuitBreaker.worker.js", () => ({
+  circuitBreakerQueue: {
+    add: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
+const suppressionServiceMock = {
+  shouldSuppress: vi.fn().mockResolvedValue({
+    suppressed: false,
+    matchedRule: null,
+    reason: null,
+  }),
+};
 
 vi.mock("../../src/database/connection.js", () => {
   const store: Record<string, unknown>[] = [];
@@ -28,7 +50,7 @@ vi.mock("../../src/database/connection.js", () => {
   };
 });
 
-function makeRule(overrides: Partial<ReturnType<AlertService["mapRule" & any]>> = {}) {
+function makeRule(overrides: Record<string, unknown> = {}) {
   return {
     id: "rule-1",
     ownerAddress: "GABC",
@@ -59,7 +81,13 @@ describe("AlertService — evaluateConditions (via evaluateAsset)", () => {
   let service: AlertService;
 
   beforeEach(() => {
-    service = new AlertService();
+    vi.spyOn(duplicateAlertCheckService, "check").mockReturnValue({ isDuplicate: false, action: "allow" });
+    suppressionServiceMock.shouldSuppress.mockResolvedValue({
+      suppressed: false,
+      matchedRule: null,
+      reason: null,
+    });
+    service = new AlertService(suppressionServiceMock as any);
   });
 
   it("fires when GT condition is exceeded", async () => {
@@ -317,9 +345,9 @@ describe("AlertService — evaluateConditions (via evaluateAsset)", () => {
     vi.spyOn(service, "getActiveRulesForAsset").mockResolvedValue([rule]);
     vi.spyOn(service as any, "persistEvent").mockResolvedValue(undefined);
     vi.spyOn(service as any, "markRuleTriggered").mockResolvedValue(undefined);
-    const webhookSpy = vi
-      .spyOn(service, "dispatchWebhook")
-      .mockResolvedValue(undefined);
+    const routeSpy = vi
+      .spyOn(alertRoutingService, "routeAlert")
+      .mockResolvedValue(undefined as any);
 
     const snapshot: MetricSnapshot = {
       assetCode: "USDC",
@@ -327,16 +355,20 @@ describe("AlertService — evaluateConditions (via evaluateAsset)", () => {
     };
 
     await service.evaluateAsset(snapshot);
-    expect(webhookSpy).toHaveBeenCalledOnce();
+    expect(routeSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        webhookUrl: "https://hooks.example.com/alert",
+      })
+    );
   });
 
   it("does not dispatch webhook when not configured", async () => {
     vi.spyOn(service, "getActiveRulesForAsset").mockResolvedValue([makeRule()]);
     vi.spyOn(service as any, "persistEvent").mockResolvedValue(undefined);
     vi.spyOn(service as any, "markRuleTriggered").mockResolvedValue(undefined);
-    const webhookSpy = vi
-      .spyOn(service, "dispatchWebhook")
-      .mockResolvedValue(undefined);
+    const routeSpy = vi
+      .spyOn(alertRoutingService, "routeAlert")
+      .mockResolvedValue(undefined as any);
 
     const snapshot: MetricSnapshot = {
       assetCode: "USDC",
@@ -344,7 +376,11 @@ describe("AlertService — evaluateConditions (via evaluateAsset)", () => {
     };
 
     await service.evaluateAsset(snapshot);
-    expect(webhookSpy).not.toHaveBeenCalled();
+    expect(routeSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        webhookUrl: null,
+      })
+    );
   });
 
   it("returns events for all assets in batchEvaluate", async () => {
@@ -384,6 +420,26 @@ describe("AlertService — evaluateConditions (via evaluateAsset)", () => {
     expect(types).toContain("supply_mismatch");
   });
 
+  it("does not emit an event when suppression matches", async () => {
+    vi.spyOn(service, "getActiveRulesForAsset").mockResolvedValue([makeRule()]);
+    vi.spyOn(service as any, "persistEvent").mockResolvedValue(undefined);
+    vi.spyOn(service as any, "markRuleTriggered").mockResolvedValue(undefined);
+    suppressionServiceMock.shouldSuppress.mockResolvedValue({
+      suppressed: true,
+      matchedRule: { id: "sup-1", name: "Night mute", maintenanceMode: false, expiresAt: null },
+      reason: "Suppression rule matched",
+    });
+
+    const snapshot: MetricSnapshot = {
+      assetCode: "USDC",
+      metrics: { price_deviation_bps: 300 },
+    };
+
+    const events = await service.evaluateAsset(snapshot);
+    expect(events).toHaveLength(0);
+    expect((service as any).persistEvent).not.toHaveBeenCalled();
+  });
+
   it("handles all six alert types", async () => {
     const alertTypes = [
       { metric: "price_deviation_bps", alertType: "price_deviation" },
@@ -405,9 +461,9 @@ describe("AlertService — evaluateConditions (via evaluateAsset)", () => {
           } as AlertCondition,
         ],
       });
-      vi.spyOn(service, "getActiveRulesForAsset").mockResolvedValue([rule]);
-      vi.spyOn(service as any, "persistEvent").mockResolvedValue(undefined);
-      vi.spyOn(service as any, "markRuleTriggered").mockResolvedValue(undefined);
+      const rulesSpy = vi.spyOn(service, "getActiveRulesForAsset").mockResolvedValue([rule]);
+      const persistSpy = vi.spyOn(service as any, "persistEvent").mockResolvedValue(undefined);
+      const markSpy = vi.spyOn(service as any, "markRuleTriggered").mockResolvedValue(undefined);
 
       const snapshot: MetricSnapshot = {
         assetCode: "USDC",
@@ -418,8 +474,15 @@ describe("AlertService — evaluateConditions (via evaluateAsset)", () => {
       expect(events).toHaveLength(1);
       expect(events[0].alertType).toBe(alertType);
 
-      vi.restoreAllMocks();
-      service = new AlertService();
+      rulesSpy.mockRestore();
+      persistSpy.mockRestore();
+      markSpy.mockRestore();
+      suppressionServiceMock.shouldSuppress.mockResolvedValue({
+        suppressed: false,
+        matchedRule: null,
+        reason: null,
+      });
+      service = new AlertService(suppressionServiceMock as any);
     }
   });
 

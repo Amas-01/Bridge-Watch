@@ -10,9 +10,12 @@
 FROM node:20-alpine AS base
 WORKDIR /app
 
-# Install dependencies first (layer cache friendly)
-COPY package.json package-lock.json* ./
-RUN npm ci
+# Install dependencies first (layer cache friendly). This layer is only
+# invalidated when package.json changes, not on every source edit. The
+# BuildKit cache mount keeps npm's package cache across builds so even an
+# invalidated install re-downloads as little as possible.
+COPY package.json ./
+RUN --mount=type=cache,sharing=locked,target=/root/.npm npm install
 
 # -----------------------------------------------------------------------------
 # Development — Vite dev server with hot module replacement

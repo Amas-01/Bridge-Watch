@@ -21,7 +21,7 @@ describe("Form Primitives", () => {
 
         it("applies correct htmlFor attribute", () => {
             render(<FormLabel htmlFor="test-input">Label</FormLabel>);
-            expect(screen.getByText("Label")).toHaveAttribute("for", "test-input");
+            expect(screen.getByText("Label").closest("label")).toHaveAttribute("for", "test-input");
         });
     });
 

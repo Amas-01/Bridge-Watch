@@ -1,8 +1,10 @@
+import { v4 as uuidv4 } from "uuid";
 import { Queue, Worker, Job } from "bullmq";
 import { config } from "../config/index.js";
 import { logger } from "../utils/logger.js";
 import { getDatabase } from "../database/connection.js";
 import { getCircuitBreakerService, PauseScope, PauseLevel } from "../services/circuitBreaker.service.js";
+import { circuitBreakerActionEngine } from "../services/circuitBreakerActionEngine.service.js";
 
 interface CircuitBreakerTriggerData {
   alertId: string;
@@ -130,8 +132,10 @@ export const circuitBreakerWorker = isTestEnv
       // For now, log the trigger for manual intervention
 
       // Store the trigger in database for audit
+      const triggerId = uuidv4();
       const db = getDatabase();
       await db("circuit_breaker_triggers").insert({
+        id: triggerId,
         alert_id: alertId,
         alert_type: alertType,
         asset_code: assetCode,
@@ -146,7 +150,20 @@ export const circuitBreakerWorker = isTestEnv
         status: "triggered",
       });
 
-      logger.info({ alertId }, "Circuit breaker trigger processed successfully");
+      // Execute custom remediation script / webhook / contract pause actions
+      await circuitBreakerActionEngine.executeActionsForTrigger({
+        triggerId,
+        alertId,
+        alertType,
+        assetCode,
+        bridgeId,
+        severity,
+        value,
+        threshold,
+        reason,
+      });
+
+      logger.info({ alertId, triggerId }, "Circuit breaker trigger and remediation actions processed successfully");
 
     } catch (error) {
       logger.error({ err: error }, "Circuit breaker trigger failed");

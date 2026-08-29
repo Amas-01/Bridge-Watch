@@ -175,6 +175,8 @@ export class BalanceService {
     issuerBalance: number;
     reserveBalance: number;
     custodyBalance: number;
+    lockedStakes: number;
+    activeLiquidReserve: number;
     delta: number;
   }> {
     const rows = await this.db("tracked_balances")
@@ -187,13 +189,22 @@ export class BalanceService {
     const issuerBalance = byType.get("issuer") ?? 0;
     const reserveBalance = byType.get("reserve") ?? 0;
     const custodyBalance = byType.get("custody") ?? 0;
-    const delta = issuerBalance - (reserveBalance + custodyBalance);
+
+    const stakeResult = await this.db("bridge_operators")
+      .sum({ total_stake: "stake" })
+      .where({ asset_code: assetCode, is_active: true })
+      .first();
+    const lockedStakes = Number(stakeResult?.total_stake ?? 0);
+    const activeLiquidReserve = reserveBalance - lockedStakes;
+    const delta = issuerBalance - (activeLiquidReserve + custodyBalance);
 
     return {
       assetCode,
       issuerBalance,
       reserveBalance,
       custodyBalance,
+      lockedStakes,
+      activeLiquidReserve,
       delta,
     };
   }

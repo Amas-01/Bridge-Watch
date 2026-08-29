@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bridge-watch
+  labels:
+    app.kubernetes.io/name: bridge-watch
+    app.kubernetes.io/managed-by: kubectl
