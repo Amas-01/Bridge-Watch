@@ -105,7 +105,7 @@ export async function mmrVerificationRoutes(
           localPeakPos,
         };
 
-        const { valid, reconstructedRoot } = svc.verifyProof(proof, expectedRoot);
+        const { valid, reconstructedRoot } = svc.verifyProof(proof as any, expectedRoot);
 
         logger.info(
           { leafIndex, valid, expectedRoot, reconstructedRoot },
@@ -197,7 +197,7 @@ export async function mmrVerificationRoutes(
       }
 
       try {
-        const proof = simulationAccumulator.generateProof(parsed.data.leafIndex);
+        const proof = simulationAccumulator.generateProof(parsed.data.leafIndex as number);
         return reply.code(200).send({
           proof,
           root: simulationAccumulator.getRoot(),

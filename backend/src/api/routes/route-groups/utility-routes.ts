@@ -13,7 +13,6 @@ import { externalDependenciesRoutes } from "../externalDependencies.routes.js";
 import { eventReplayRoutes } from "../eventReplay.routes.js";
 import { eventFederationRoutes } from "../eventFederation.routes.js";
 import jobsRoutes from "../jobs.js";
-import { jobsRoutes } from "../jobs.js";
 import { platformContractsRoutes } from "../platformContracts.routes.js";
 import { liquidityRouteSimulationRoutes } from "../liquidityRouteSimulation.routes.js";
 import { operatorCapacityMetricsRoutes } from "../operatorCapacityMetrics.routes.js";

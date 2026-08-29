@@ -55,7 +55,7 @@ export async function operatorHandoffRoutes(
       }
 
       try {
-        const handoff = await service.createHandoff(parsed.data);
+        const handoff = await service.createHandoff(parsed.data as any);
         return reply.code(201).send({ handoff });
       } catch (error) {
         logger.error({ error }, "Failed to create operator handoff");
@@ -113,7 +113,7 @@ export async function operatorHandoffRoutes(
       }
 
       try {
-        const handoff = await service.updateHandoff(id, parsed.data.operator, parsed.data);
+        const handoff = await service.updateHandoff(id, parsed.data.operator, parsed.data as any);
         return { handoff };
       } catch (error) {
         logger.error({ error, id }, "Failed to update operator handoff");

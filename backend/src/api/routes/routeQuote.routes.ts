@@ -50,7 +50,7 @@ export async function routeQuoteRoutes(server: FastifyInstance) {
       }
 
       try {
-        const quote = await routeQuoteService.createQuote(parsed.data);
+        const quote = await routeQuoteService.createQuote(parsed.data as any);
         return reply.status(201).send({ quote });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Quote failed";
