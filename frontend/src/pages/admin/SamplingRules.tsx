@@ -585,7 +585,7 @@ export default function SamplingRules() {
         )}
         {evalResult && (
           <pre className="mt-4 overflow-x-auto rounded-2xl border border-stellar-border bg-stellar-dark p-4 text-xs text-white">
-            {JSON.stringify(evalResult, null, 2)}
+            {JSON.stringify(evalResult as Record<string, unknown>, null, 2)}
           </pre>
         )}
       </section>

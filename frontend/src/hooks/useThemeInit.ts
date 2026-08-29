@@ -10,7 +10,7 @@ export function useThemeInit() {
   const { resolvedMode, applyTheme, setResolvedMode, mode, setMode } = useThemeStore();
   const theme = useTheme();
   
-  const displayMode = useUserPreferencesStore((s) => s.displayMode);
+  const displayMode = useUserPreferencesStore((s: any) => s.displayMode);
   const setPreference = useUserPreferencesStore((s) => s.setPreference);
   const initialized = useRef(false);
 

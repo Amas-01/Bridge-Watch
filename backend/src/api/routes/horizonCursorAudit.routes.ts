@@ -202,7 +202,7 @@ export async function horizonCursorAuditRoutes(server: FastifyInstance) {
       const result = await horizonCursorAuditService.getAuditLog(cursorKey, limitNum, offset);
 
       return reply.send(
-        formatPaginatedResponse(result.logs, result.pagination.total, page, limitNum),
+        formatPaginatedResponse(result.logs, Number(result.pagination.total), page, limitNum),
       );
     },
   );
