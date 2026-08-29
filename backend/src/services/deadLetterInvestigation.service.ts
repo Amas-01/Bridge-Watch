@@ -186,7 +186,7 @@ export class DeadLetterInvestigationService {
       if (!current) return { ok: false as const, reason: "investigation not found" };
 
       const check = validateTransition(current.status, input.to);
-      if (!check.ok) return { ok: false as const, reason: check.reason };
+      if (!check.ok) return { ok: false as const, reason: (check as { ok: false; reason: string }).reason };
 
       const closing = isTerminal(input.to);
       if (closing) {
@@ -194,7 +194,7 @@ export class DeadLetterInvestigationService {
           return { ok: false as const, reason: `a resolution is required to close as ${input.to}` };
         }
         const noteCheck = validateResolution(input.resolution, input.note ?? null);
-        if (!noteCheck.ok) return { ok: false as const, reason: noteCheck.reason };
+        if (!noteCheck.ok) return { ok: false as const, reason: (noteCheck as { ok: false; reason: string }).reason };
       }
 
       const [row] = await tx("dead_letter_investigations")

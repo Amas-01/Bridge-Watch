@@ -1,4 +1,4 @@
-import { database } from "../database/index.js";
+import { getDatabase } from "../database/connection.js";
 import { logger } from "../utils/logger.js";
 
 export interface CursorPosition {
@@ -30,7 +30,8 @@ export interface RollbackInfo {
 
 export class HorizonCursorAuditService {
   async initializeCursor(cursorPosition: CursorPosition) {
-    logger.info("Initializing Horizon cursor", { cursorKey: cursorPosition.cursorKey });
+    const database = getDatabase();
+    logger.info({ cursorKey: cursorPosition.cursorKey }, "Initializing Horizon cursor");
 
     try {
       const [cursor] = await database("horizon_cursor_positions")
@@ -44,7 +45,6 @@ export class HorizonCursorAuditService {
         })
         .returning("*");
 
-      // Create audit log entry
       await database("horizon_cursor_audit_logs").insert({
         cursor_id: cursor.id,
         action: "initialize",
@@ -55,13 +55,14 @@ export class HorizonCursorAuditService {
 
       return cursor;
     } catch (error) {
-      logger.error("Failed to initialize cursor", { error });
+      logger.error({ error }, "Failed to initialize cursor");
       throw error;
     }
   }
 
   async advanceCursor(cursorKey: string, newPosition: string, eventsInBatch: number, reasonCode?: string) {
-    logger.info("Advancing Horizon cursor", { cursorKey, newPosition, eventsInBatch });
+    const database = getDatabase();
+    logger.info({ cursorKey, newPosition, eventsInBatch }, "Advancing Horizon cursor");
 
     try {
       const cursor = await database("horizon_cursor_positions").where("cursor_key", cursorKey).first();
@@ -72,7 +73,6 @@ export class HorizonCursorAuditService {
 
       const previousPosition = cursor.current_position;
 
-      // Update cursor
       await database("horizon_cursor_positions")
         .where("id", cursor.id)
         .update({
@@ -81,7 +81,6 @@ export class HorizonCursorAuditService {
           total_events_processed: cursor.total_events_processed + eventsInBatch,
         });
 
-      // Create audit log
       await database("horizon_cursor_audit_logs").insert({
         cursor_id: cursor.id,
         action: "advance",
@@ -95,17 +94,21 @@ export class HorizonCursorAuditService {
 
       return { success: true, previousPosition, newPosition };
     } catch (error) {
-      logger.error("Failed to advance cursor", { error });
+      logger.error({ error }, "Failed to advance cursor");
       throw error;
     }
   }
 
   async createRollback(rollbackInfo: RollbackInfo) {
-    logger.info("Creating cursor rollback", {
-      cursorId: rollbackInfo.cursorId,
-      fromPosition: rollbackInfo.fromPosition,
-      toPosition: rollbackInfo.toPosition,
-    });
+    const database = getDatabase();
+    logger.info(
+      {
+        cursorId: rollbackInfo.cursorId,
+        fromPosition: rollbackInfo.fromPosition,
+        toPosition: rollbackInfo.toPosition,
+      },
+      "Creating cursor rollback"
+    );
 
     try {
       const [rollback] = await database("horizon_cursor_rollbacks")
@@ -122,9 +125,6 @@ export class HorizonCursorAuditService {
         })
         .returning("*");
 
-      // Log the rollback in audit
-      const cursor = await database("horizon_cursor_positions").where("id", rollbackInfo.cursorId).first();
-
       await database("horizon_cursor_audit_logs").insert({
         cursor_id: rollbackInfo.cursorId,
         action: "reset",
@@ -140,13 +140,14 @@ export class HorizonCursorAuditService {
 
       return rollback;
     } catch (error) {
-      logger.error("Failed to create rollback", { error });
+      logger.error({ error }, "Failed to create rollback");
       throw error;
     }
   }
 
   async completeRollback(rollbackId: string) {
-    logger.info("Completing cursor rollback", { rollbackId });
+    const database = getDatabase();
+    logger.info({ rollbackId }, "Completing cursor rollback");
 
     await database("horizon_cursor_rollbacks").where("id", rollbackId).update({
       status: "completed",
@@ -155,7 +156,8 @@ export class HorizonCursorAuditService {
   }
 
   async reconcileCursorPosition(cursorId: string, horizonPosition: string) {
-    logger.info("Reconciling cursor position", { cursorId, horizonPosition });
+    const database = getDatabase();
+    logger.info({ cursorId, horizonPosition }, "Reconciling cursor position");
 
     const cursor = await database("horizon_cursor_positions").where("id", cursorId).first();
 
@@ -201,6 +203,7 @@ export class HorizonCursorAuditService {
   }
 
   async getAuditLog(cursorKey: string, limit = 100, offset = 0) {
+    const database = getDatabase();
     const cursor = await database("horizon_cursor_positions").where("cursor_key", cursorKey).first();
 
     if (!cursor) {
@@ -226,6 +229,7 @@ export class HorizonCursorAuditService {
   }
 
   async getRollbackHistory(cursorKey: string, limit = 50) {
+    const database = getDatabase();
     const cursor = await database("horizon_cursor_positions").where("cursor_key", cursorKey).first();
 
     if (!cursor) {
@@ -241,6 +245,7 @@ export class HorizonCursorAuditService {
   }
 
   async getReconciliationHistory(cursorKey: string, limit = 50) {
+    const database = getDatabase();
     const cursor = await database("horizon_cursor_positions").where("cursor_key", cursorKey).first();
 
     if (!cursor) {
@@ -256,6 +261,7 @@ export class HorizonCursorAuditService {
   }
 
   async getDiscrepancies(limit = 50) {
+    const database = getDatabase();
     const discrepancies = await database("horizon_cursor_reconciliations")
       .where("positions_match", false)
       .orderBy("checked_at", "desc")
@@ -265,7 +271,8 @@ export class HorizonCursorAuditService {
   }
 
   async pauseCursor(cursorKey: string) {
-    logger.info("Pausing cursor", { cursorKey });
+    const database = getDatabase();
+    logger.info({ cursorKey }, "Pausing cursor");
 
     const cursor = await database("horizon_cursor_positions").where("cursor_key", cursorKey).first();
 
@@ -287,7 +294,8 @@ export class HorizonCursorAuditService {
   }
 
   async resumeCursor(cursorKey: string) {
-    logger.info("Resuming cursor", { cursorKey });
+    const database = getDatabase();
+    logger.info({ cursorKey }, "Resuming cursor");
 
     const cursor = await database("horizon_cursor_positions").where("cursor_key", cursorKey).first();
 

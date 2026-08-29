@@ -5,6 +5,8 @@ import { poolRoutes } from "../pools.routes.js";
 import { crossChainVerificationRoutes } from "../crossChainVerification.routes.js";
 import { transferSLARoutes } from "../transferSLA.routes.js";
 import { sorobanBatchPlannerRoutes } from "../sorobanBatchPlanner.routes.js";
+// #1149 — Bridge Comparison Report
+import { bridgeComparisonReportRoutes } from "../bridgeComparisonReport.routes.js";
 
 export async function registerBridgeRoutes(server: FastifyInstance): Promise<void> {
   server.register(bridgesRoutes, { prefix: "/api/v1/bridges" });
@@ -16,5 +18,10 @@ export async function registerBridgeRoutes(server: FastifyInstance): Promise<voi
   server.register(transferSLARoutes, { prefix: "/api/v1/transfer-sla" });
   server.register(sorobanBatchPlannerRoutes, {
     prefix: "/api/v1/soroban/batch-planner",
+  });
+
+  // #1149 — Bridge Comparison Report
+  server.register(bridgeComparisonReportRoutes, {
+    prefix: "/api/v1/bridge-comparison-report",
   });
 }

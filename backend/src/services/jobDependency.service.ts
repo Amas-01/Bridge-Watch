@@ -3,7 +3,7 @@ import {
   JobDependencyModel,
   JobExecution,
 } from "../database/models/JobDependency.js";
-import logger from "../utils/logger.js";
+import { logger } from "../utils/logger.js";
 
 export class JobDependencyService {
   private model: JobDependencyModel;

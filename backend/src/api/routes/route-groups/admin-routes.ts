@@ -27,6 +27,24 @@ import { allowlistChangeReviewRoutes } from "../allowlistChangeReview.routes.js"
 import { tokenDecimalAlertsRoutes } from "../tokenDecimalAlerts.routes.js";
 // #1055 — User-Scoped Export Quotas
 import { exportQuotaRoutes } from "../exportQuota.routes.js";
+// #1170 — Import Validation Preview
+import { importValidationPreviewRoutes } from "../importValidationPreview.routes.js";
+// #1172 — API Key Scope Templates
+import { apiKeyScopeTemplateRoutes } from "../apiKeyScopeTemplate.routes.js";
+// #1168 — Failed Parse Quarantine Queue
+import { parseQuarantineQueueRoutes } from "../parseQuarantineQueue.routes.js";
+// #1175 — Admin Impersonation Safeguards
+import { adminImpersonationRoutes } from "../adminImpersonation.routes.js";
+// #1176 — Permission Change Notifications
+import { permissionChangeNotificationRoutes } from "../permissionChangeNotification.routes.js";
+// #1177 — Security Event Correlation View
+import { securityEventCorrelationRoutes } from "../securityEventCorrelation.routes.js";
+// #1178 — Webhook IP Allowlist Management
+import { webhookIpAllowlistRoutes } from "../webhookIpAllowlist.routes.js";
+// #1179 — Signed Request Verification Middleware
+import { signedRequestVerificationRoutes } from "../signedRequestVerification.routes.js";
+// #1180 — Sensitive Field Access Reports
+import { sensitiveFieldAccessRoutes } from "../sensitiveFieldAccess.routes.js";
 
 export async function registerAdminRoutes(server: FastifyInstance): Promise<void> {
   server.register(apiKeysRoutes, { prefix: "/api/v1/admin/api-keys" });
@@ -100,5 +118,55 @@ export async function registerAdminRoutes(server: FastifyInstance): Promise<void
   server.register(exportQuotaRoutes, {
     prefix: "/api/v1/export-quotas",
   });
-}
 
+  // #1170 — Import Validation Preview
+  server.register(importValidationPreviewRoutes, {
+    prefix: "/api/v1/admin/imports",
+  });
+
+  // #1172 — API Key Scope Templates
+  server.register(apiKeyScopeTemplateRoutes, {
+    prefix: "/api/v1/admin/api-key-templates",
+  });
+
+  // #1168 — Failed Parse Quarantine Queue
+  server.register(parseQuarantineQueueRoutes, {
+    prefix: "/api/v1/admin/quarantine",
+  });
+
+  // #1175 — Admin Impersonation Safeguards
+  server.register(adminImpersonationRoutes, {
+    prefix: "/api/v1/admin/impersonation",
+  });
+
+  // #1176 — Permission Change Notifications
+  server.register(permissionChangeNotificationRoutes, {
+    prefix: "/api/v1/notifications/permission-changes",
+  });
+
+  // #1177 — Security Event Correlation View
+  server.register(securityEventCorrelationRoutes, {
+    prefix: "/api/v1/security-correlations",
+  });
+
+  // #1178 — Webhook IP Allowlist Management
+  server.register(webhookIpAllowlistRoutes, {
+    prefix: "/api/v1/admin/webhooks/ip-allowlist",
+  });
+
+  // #1179 — Signed Request Verification Middleware
+  server.register(signedRequestVerificationRoutes, {
+    prefix: "/api/v1/admin/signed-requests",
+  });
+
+  // #1180 — Sensitive Field Access Reports
+  server.register(sensitiveFieldAccessRoutes, {
+    prefix: "/api/v1/admin/sensitive-fields",
+  });
+
+  // #1187 — Graceful Shutdown Drain Protocol
+  const { drainProtocolRoutes } = await import("../drainProtocol.routes.js");
+  server.register(drainProtocolRoutes, {
+    prefix: "/api/v1/admin/shutdown/drain",
+  });
+}

@@ -13,11 +13,11 @@ import { externalDependenciesRoutes } from "../externalDependencies.routes.js";
 import { eventReplayRoutes } from "../eventReplay.routes.js";
 import { eventFederationRoutes } from "../eventFederation.routes.js";
 import jobsRoutes from "../jobs.js";
-import { jobsRoutes } from "../jobs.js";
 import { platformContractsRoutes } from "../platformContracts.routes.js";
 import { liquidityRouteSimulationRoutes } from "../liquidityRouteSimulation.routes.js";
 import { operatorCapacityMetricsRoutes } from "../operatorCapacityMetrics.routes.js";
 import { ingestionWatermarkRoutes } from "../ingestionWatermarks.routes.js";
+import { sessionDeviceRoutes } from "../sessionDevice.routes.js";
 
 export async function registerUtilityRoutes(server: FastifyInstance): Promise<void> {
   server.register(exportsRoutes, { prefix: "/api/v1/exports" });
@@ -46,4 +46,5 @@ export async function registerUtilityRoutes(server: FastifyInstance): Promise<vo
     prefix: "/api/v1/operators/capacity",
   });
   server.register(ingestionWatermarkRoutes, { prefix: "/api/v1/ingestion-watermarks" });
+  server.register(sessionDeviceRoutes, { prefix: "/api/v1/user/devices" });
 }

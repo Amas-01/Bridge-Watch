@@ -115,7 +115,7 @@ export async function reserveAttestationsRoutes(server: FastifyInstance) {
     ) => {
       try {
         const body = registerBodySchema.parse(request.body);
-        const attestation = await reserveAttestationExpiryService.registerAttestation(body);
+        const attestation = await reserveAttestationExpiryService.registerAttestation(body as any);
         reply.code(201);
         return { success: true, attestation };
       } catch (error) {

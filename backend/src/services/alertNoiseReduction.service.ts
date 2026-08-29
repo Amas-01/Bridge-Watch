@@ -1,4 +1,4 @@
-import { database } from "../database/index.js";
+import { getDatabase } from "../database/connection.js";
 import { logger } from "../utils/logger.js";
 
 export interface AlertNoiseAnalysisParams {
@@ -22,12 +22,12 @@ export interface NoiseRecommendation {
 
 export class AlertNoiseReductionService {
   async analyzeAlertNoise(params: AlertNoiseAnalysisParams) {
+    const database = getDatabase();
     const { accountId, alertRuleId, windowStart, windowEnd, sampleSize = 100 } = params;
 
-    logger.info("Starting alert noise analysis", { accountId, alertRuleId, windowStart, windowEnd });
+    logger.info({ accountId, alertRuleId, windowStart, windowEnd }, "Starting alert noise analysis");
 
     try {
-      // Create analysis record
       const [analysis] = await database("alert_noise_reduction_analyses")
         .insert({
           account_id: accountId,
@@ -39,13 +39,10 @@ export class AlertNoiseReductionService {
         })
         .returning("*");
 
-      // Calculate metrics
       const metrics = await this.calculateNoiseMetrics(alertRuleId, windowStart, windowEnd);
 
-      // Generate recommendations
       const recommendations = await this.generateRecommendations(analysis.id, metrics);
 
-      // Update analysis status
       await database("alert_noise_reduction_analyses")
         .where("id", analysis.id)
         .update({
@@ -62,7 +59,7 @@ export class AlertNoiseReductionService {
         recommendations,
       };
     } catch (error) {
-      logger.error("Alert noise analysis failed", { accountId, alertRuleId, error });
+      logger.error({ accountId, alertRuleId, error }, "Alert noise analysis failed");
       throw error;
     }
   }
@@ -72,6 +69,7 @@ export class AlertNoiseReductionService {
     windowStart: Date,
     windowEnd: Date,
   ) {
+    const database = getDatabase();
     const alertEvents = await database("alert_events")
       .where("alert_rule_id", alertRuleId)
       .whereBetween("created_at", [windowStart, windowEnd])
@@ -84,8 +82,8 @@ export class AlertNoiseReductionService {
       .count("id as count")
       .first();
 
-    const totalAlerts = alertEvents?.count || 0;
-    const incidents = confirmedIncidents?.count || 0;
+    const totalAlerts = Number(alertEvents?.count || 0);
+    const incidents = Number(confirmedIncidents?.count || 0);
     const falsePositiveRate = totalAlerts > 0 ? (totalAlerts - incidents) / totalAlerts : 0;
     const fatigueScore = Math.min(totalAlerts / 100, 100);
 
@@ -98,12 +96,12 @@ export class AlertNoiseReductionService {
   }
 
   private async generateRecommendations(analysisId: string, metrics: Record<string, unknown>) {
+    const database = getDatabase();
     const recommendations: NoiseRecommendation[] = [];
 
     const falsePositiveRate = metrics.falsePositiveRate as number;
     const fatigueScore = metrics.fatigueScore as number;
 
-    // High false positive rate
     if (falsePositiveRate > 0.5) {
       recommendations.push({
         analysisId,
@@ -116,7 +114,6 @@ export class AlertNoiseReductionService {
       });
     }
 
-    // High alert fatigue
     if (fatigueScore > 70) {
       recommendations.push({
         analysisId,
@@ -129,7 +126,6 @@ export class AlertNoiseReductionService {
       });
     }
 
-    // Correlation filtering
     recommendations.push({
       analysisId,
       recommendationType: "correlation_filter",
@@ -140,7 +136,6 @@ export class AlertNoiseReductionService {
       status: "pending",
     });
 
-    // Batch insert recommendations
     if (recommendations.length > 0) {
       await database("alert_noise_recommendations").insert(
         recommendations.map((rec) => ({
@@ -159,6 +154,7 @@ export class AlertNoiseReductionService {
   }
 
   async getAnalysis(analysisId: string) {
+    const database = getDatabase();
     const analysis = await database("alert_noise_reduction_analyses").where("id", analysisId).first();
     if (!analysis) {
       throw new Error(`Analysis not found: ${analysisId}`);
@@ -170,7 +166,8 @@ export class AlertNoiseReductionService {
   }
 
   async applyRecommendation(recommendationId: string) {
-    logger.info("Applying alert noise recommendation", { recommendationId });
+    const database = getDatabase();
+    logger.info({ recommendationId }, "Applying alert noise recommendation");
 
     const recommendation = await database("alert_noise_recommendations")
       .where("id", recommendationId)
@@ -191,6 +188,7 @@ export class AlertNoiseReductionService {
   }
 
   async listAnalyses(accountId: string, limit = 50, offset = 0) {
+    const database = getDatabase();
     const analyses = await database("alert_noise_reduction_analyses")
       .where("account_id", accountId)
       .orderBy("created_at", "desc")

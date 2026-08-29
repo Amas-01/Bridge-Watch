@@ -34,16 +34,18 @@ export class CorrelationAnalysisService {
   ): Promise<CorrelationSnapshot> {
     const db = getDatabase();
 
+    const intervalStr = period === "1h" ? "1 hour" : period === "4h" ? "4 hours" : period === "1d" ? "1 day" : "7 days";
+
     // Fetch price series for both assets
     const pricesA = await db("prices")
       .where("asset_code", assetA)
-      .where("time", ">=", db.raw(`now() - interval '1 ${period === "1h" ? "hour" : period === "4h" ? "4 hours" : period === "1d" ? "day" : "7 days'}'`))
+      .where("time", ">=", db.raw(`now() - interval '${intervalStr}'`))
       .orderBy("time", "asc")
       .select("price");
 
     const pricesB = await db("prices")
       .where("asset_code", assetB)
-      .where("time", ">=", db.raw(`now() - interval '1 ${period === "1h" ? "hour" : period === "4h" ? "4 hours" : period === "1d" ? "day" : "7 days'}'`))
+      .where("time", ">=", db.raw(`now() - interval '${intervalStr}'`))
       .orderBy("time", "asc")
       .select("price");
 

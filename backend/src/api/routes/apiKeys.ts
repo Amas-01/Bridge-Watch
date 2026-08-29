@@ -1,10 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import { authMiddleware } from "../middleware/auth.js";
 import { ApiKeyService } from "../../services/apiKey.service.js";
+import { apiKeyScopeTemplateService } from "../../services/apiKeyScopeTemplate.service.js";
 
 interface CreateApiKeyBody {
   name: string;
   scopes?: string[];
+  template?: string;
   rateLimitPerMinute?: number;
   expiresInDays?: number;
   enableOAuth?: boolean;
@@ -27,12 +29,31 @@ export async function apiKeysRoutes(server: FastifyInstance) {
     "/",
     { preHandler: requireAdmin },
     async (request, reply) => {
-      const { name, scopes = [], rateLimitPerMinute, expiresInDays, enableOAuth } = request.body;
+      const { name, scopes = [], rateLimitPerMinute, expiresInDays, enableOAuth, template } = request.body;
       if (!name?.trim()) {
         return reply.code(400).send({
           error: "Bad Request",
           message: "API key name is required.",
         });
+      }
+
+      // Resolve scopes/rate limit from a named template when provided.
+      let resolvedScopes = scopes;
+      let resolvedRateLimit = rateLimitPerMinute;
+      if (template?.trim()) {
+        const tpl = await apiKeyScopeTemplateService.getTemplateByName(template.trim());
+        if (!tpl || !tpl.isActive) {
+          return reply.code(400).send({
+            error: "Bad Request",
+            message: `Unknown or inactive API key scope template: ${template}`,
+          });
+        }
+        if (!scopes || scopes.length === 0) {
+          resolvedScopes = tpl.scopes;
+        }
+        if (resolvedRateLimit == null && tpl.rateLimitPerMinute != null) {
+          resolvedRateLimit = tpl.rateLimitPerMinute;
+        }
       }
 
       const expiresAt =
@@ -42,8 +63,8 @@ export async function apiKeysRoutes(server: FastifyInstance) {
 
       const result = await apiKeyService.createKey({
         name,
-        scopes,
-        rateLimitPerMinute,
+        scopes: resolvedScopes,
+        rateLimitPerMinute: resolvedRateLimit,
         expiresAt,
         createdBy: request.apiKeyAuth?.name ?? "admin",
         enableOAuth,

@@ -381,6 +381,8 @@ export interface CreateApiKeyRequest {
   rateLimitPerMinute?: number;
   expiresInDays?: number;
   enableOAuth?: boolean;
+  /** #1172 — Apply a saved scope template by name to populate scopes/rateLimit. */
+  template?: string;
 }
 
 export interface CreateApiKeyResponse {
@@ -665,4 +667,223 @@ export interface ServiceAnnotationAuditEntry {
   actor: string;
   changes: string;
   created_at: string;
+}
+
+// #1171 — Dataset Column Lineage
+export type LineageNodeKind = "dataset" | "column" | "transform";
+
+export interface ColumnLineageNode {
+  id: string;
+  kind: LineageNodeKind;
+  name: string;
+  datasetId: string | null;
+  dataType: string | null;
+  transformKind: string | null;
+}
+
+export interface ColumnLineageEdge {
+  from: string;
+  to: string;
+  transformKind: string;
+  transformOrder: number;
+}
+
+export interface ColumnLineageView {
+  datasetId: string;
+  datasetName: string;
+  columnId: string;
+  columnName: string;
+  nodes: ColumnLineageNode[];
+  edges: ColumnLineageEdge[];
+  generatedAt: string;
+}
+
+export interface DatasetSummary {
+  id: string;
+  name: string;
+  displayName: string;
+  description: string | null;
+  category: string;
+  columnCount: number;
+  isActive: boolean;
+}
+
+export interface DatasetColumn {
+  id: string;
+  datasetId: string;
+  name: string;
+  dataType: string | null;
+  description: string | null;
+  isPrimaryKey: boolean;
+  position: number;
+}
+
+// #1170 — Import Validation Preview
+export interface ImportValidationPreview {
+  id: string;
+  dataType: string;
+  rowCount: number;
+  validCount: number;
+  invalidCount: number;
+  warningCount: number;
+  dataQualityScore: number;
+  errors: Array<Record<string, unknown>>;
+  warnings: Array<Record<string, unknown>>;
+  summary: Record<string, unknown>;
+  createdBy: string | null;
+  applied: boolean;
+  createdAt: string;
+}
+
+// #1172 — API Key Scope Templates
+export interface ApiKeyScopeTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  scopes: string[];
+  rateLimitPerMinute: number | null;
+  isActive: boolean;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// #1168 — Failed Parse Quarantine Queue
+export type QuarantineStatus =
+  | "quarantined"
+  | "in_review"
+  | "resolved"
+  | "disposed"
+  | "failed";
+
+export interface QuarantineRecord {
+  id: string;
+  source: string;
+  dataType: string;
+  rawPayload: Record<string, unknown>;
+  parseError: string;
+  errorCode: string | null;
+  status: QuarantineStatus;
+  retryCount: number;
+  retryHistory: Array<Record<string, unknown>>;
+  priority: number;
+  reviewedBy: string | null;
+  resolutionNote: string | null;
+  quarantinedAt: string;
+  reviewedAt: string | null;
+  resolvedAt: string | null;
+}
+
+export interface QuarantineStats {
+  total: number;
+  byStatus: Record<QuarantineStatus, number>;
+  bySource: Record<string, number>;
+}
+
+// #1040 — Asset Lifecycle State Timeline
+export type AssetState =
+  | "INITIALIZED"
+  | "PROVISIONED"
+  | "ACTIVE"
+  | "PAUSED"
+  | "DEPRECATED"
+  | "RETIRED";
+
+export interface AssetLifecycleRecord {
+  id: string;
+  assetId: string;
+  assetSymbol: string;
+  state: AssetState;
+  previousState: AssetState | null;
+  reason: string | null;
+  triggeredBy: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssetLifecycleStats {
+  totalTransitions: number;
+  byState: Record<AssetState, number>;
+  activeAssets: number;
+}
+
+// #1176 — Permission Change Notifications
+export type PermissionAction =
+  | "ROLE_ASSIGNED"
+  | "ROLE_REVOKED"
+  | "PERMISSION_GRANTED"
+  | "PERMISSION_REVOKED";
+
+export type NotificationChannel = "IN_APP" | "EMAIL" | "SLACK";
+export type NotificationStatus = "PENDING" | "SENT" | "FAILED";
+
+export interface PermissionChangeNotificationRecord {
+  id: string;
+  targetUserId: string;
+  actorId: string;
+  action: PermissionAction;
+  permissionOrRole: string;
+  channels: NotificationChannel[];
+  status: NotificationStatus;
+  details: Record<string, unknown>;
+  readAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PermissionNotificationStats {
+  total: number;
+  byStatus: Record<NotificationStatus, number>;
+  byAction: Record<PermissionAction, number>;
+}
+
+// #1173 — Session Device Management
+export type DeviceType = "DESKTOP" | "MOBILE" | "TABLET" | "OTHER";
+
+export interface SessionDeviceRecord {
+  id: string;
+  userId: string;
+  deviceFingerprint: string;
+  deviceName: string;
+  deviceType: DeviceType;
+  ipAddress: string;
+  location: string | null;
+  userAgent: string | null;
+  isActive: boolean;
+  isTrusted: boolean;
+  lastActiveAt: string;
+  revokedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// #1175 — Admin Impersonation Safeguards
+export type ImpersonationStatus = "ACTIVE" | "ENDED" | "REVOKED" | "EXPIRED";
+
+export interface AdminImpersonationSession {
+  id: string;
+  adminId: string;
+  impersonatedUserId: string;
+  reason: string;
+  approvalTicketId: string | null;
+  status: ImpersonationStatus;
+  tokenHash: string;
+  maxDurationMinutes: number;
+  expiresAt: string;
+  endedAt: string | null;
+  ipAddress: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ImpersonationAuditLog {
+  id: string;
+  impersonationSessionId: string;
+  adminId: string;
+  impersonatedUserId: string;
+  actionPerformed: string;
+  requestPath: string;
+  requestMethod: string;
+  timestamp: string;
 }

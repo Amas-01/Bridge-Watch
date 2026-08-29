@@ -1,9 +1,9 @@
 import { FastifyInstance } from "fastify";
 import { JobDependencyService } from "../../services/jobDependency.service.js";
-import { getDb } from "../../database/connection.js";
+import { getDatabase } from "../../database/connection.js";
 
 export async function jobsRoutes(fastify: FastifyInstance) {
-  const db = getDb();
+  const db = getDatabase();
   const service = new JobDependencyService(db);
 
   fastify.post("/jobs/:executionId/cancel", async (request, reply) => {

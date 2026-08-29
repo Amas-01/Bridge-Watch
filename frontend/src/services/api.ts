@@ -33,6 +33,14 @@ import type {
   CreateServiceAnnotationInput,
   UpdateServiceAnnotationInput,
   ServiceAnnotationAuditEntry,
+  ApiKeyScopeTemplate,
+  DatasetSummary,
+  DatasetColumn,
+  ColumnLineageView,
+  ImportValidationPreview,
+  QuarantineRecord,
+  QuarantineStats,
+  QuarantineStatus,
 } from "../types";
 import type { LiquidityConcentrationData } from "../types/liquidity";
 const API_BASE_URL = "/api/v1";
@@ -636,6 +644,176 @@ export function extendApiKey(apiKey: string, id: string, extraDays: number) {
       method: "POST",
       body: JSON.stringify({ extraDays }),
     },
+    apiKey
+  );
+}
+
+// #1172 — API Key Scope Templates
+export function listApiKeyTemplates(apiKey: string, includeInactive = false) {
+  const suffix = includeInactive ? "?includeInactive=true" : "";
+  return fetchApi<{ templates: ApiKeyScopeTemplate[] }>(
+    `/admin/api-key-templates${suffix}`,
+    undefined,
+    apiKey
+  );
+}
+
+export function createApiKeyTemplate(
+  apiKey: string,
+  payload: { name: string; description?: string; scopes: string[]; rateLimitPerMinute?: number }
+) {
+  return fetchApi<{ template: ApiKeyScopeTemplate }>(
+    "/admin/api-key-templates",
+    { method: "POST", body: JSON.stringify(payload) },
+    apiKey
+  );
+}
+
+export function updateApiKeyTemplate(
+  apiKey: string,
+  id: string,
+  payload: Partial<{ name: string; description: string | null; scopes: string[]; rateLimitPerMinute: number | null; isActive: boolean }>
+) {
+  return fetchApi<{ template: ApiKeyScopeTemplate }>(
+    `/admin/api-key-templates/${id}`,
+    { method: "PATCH", body: JSON.stringify(payload) },
+    apiKey
+  );
+}
+
+// #1171 — Dataset Column Lineage
+export function listDatasets(apiKey: string, category?: string) {
+  const suffix = category ? `?category=${encodeURIComponent(category)}` : "";
+  return fetchApi<{ datasets: DatasetSummary[] }>(
+    `/datasets/lineage/datasets${suffix}`,
+    undefined,
+    apiKey
+  );
+}
+
+export function getDatasetColumns(apiKey: string, datasetId: string) {
+  return fetchApi<{ dataset: DatasetSummary; columns: DatasetColumn[] }>(
+    `/datasets/lineage/datasets/${datasetId}/columns`,
+    undefined,
+    apiKey
+  );
+}
+
+export function getColumnLineage(apiKey: string, datasetId: string, columnId: string) {
+  return fetchApi<ColumnLineageView>(
+    `/datasets/lineage/datasets/${datasetId}/columns/${columnId}`,
+    undefined,
+    apiKey
+  );
+}
+
+export function createDataset(
+  apiKey: string,
+  payload: {
+    name: string;
+    displayName: string;
+    description?: string;
+    category?: string;
+    sourceDatasetId?: string;
+    columns?: Array<{ name: string; dataType?: string; description?: string; isPrimaryKey?: boolean }>;
+  }
+) {
+  return fetchApi<{ dataset: DatasetSummary }>(
+    "/datasets/lineage/datasets",
+    { method: "POST", body: JSON.stringify(payload) },
+    apiKey
+  );
+}
+
+// #1170 — Import Validation Preview
+export function createValidationPreview(
+  apiKey: string,
+  payload: { dataType: string; rows: Array<Record<string, unknown>>; batchSize?: number }
+) {
+  return fetchApi<{ preview: ImportValidationPreview }>(
+    "/admin/imports/preview",
+    { method: "POST", body: JSON.stringify(payload) },
+    apiKey
+  );
+}
+
+export function listValidationPreviews(apiKey: string) {
+  return fetchApi<{ previews: ImportValidationPreview[] }>(
+    "/admin/imports/preview",
+    undefined,
+    apiKey
+  );
+}
+
+export function getValidationPreview(apiKey: string, id: string) {
+  return fetchApi<{ preview: ImportValidationPreview }>(
+    `/admin/imports/preview/${id}`,
+    undefined,
+    apiKey
+  );
+}
+
+export function getValidationPreviewStatus(apiKey: string) {
+  return fetchApi<{ counts: Record<string, number> }>(
+    "/admin/imports/preview/status",
+    undefined,
+    apiKey
+  );
+}
+
+// #1168 — Failed Parse Quarantine Queue
+export function listQuarantineRecords(
+  apiKey: string,
+  filters?: { status?: QuarantineStatus; source?: string; dataType?: string; limit?: number }
+) {
+  const params = new URLSearchParams();
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.source) params.set("source", filters.source);
+  if (filters?.dataType) params.set("dataType", filters.dataType);
+  if (filters?.limit) params.set("limit", String(filters.limit));
+  const qs = params.toString();
+  return fetchApi<{ records: QuarantineRecord[] }>(
+    `/admin/quarantine${qs ? `?${qs}` : ""}`,
+    undefined,
+    apiKey
+  );
+}
+
+export function getQuarantineStats(apiKey: string) {
+  return fetchApi<{ stats: QuarantineStats }>("/admin/quarantine/stats", undefined, apiKey);
+}
+
+export function enqueueQuarantineRecord(
+  apiKey: string,
+  payload: { source: string; dataType: string; rawPayload: Record<string, unknown>; parseError: string; errorCode?: string; priority?: number }
+) {
+  return fetchApi<{ record: QuarantineRecord }>(
+    "/admin/quarantine",
+    { method: "POST", body: JSON.stringify(payload) },
+    apiKey
+  );
+}
+
+export function resolveQuarantineRecord(apiKey: string, id: string, note?: string) {
+  return fetchApi<{ record: QuarantineRecord }>(
+    `/admin/quarantine/${id}/resolve`,
+    { method: "POST", body: JSON.stringify({ note }) },
+    apiKey
+  );
+}
+
+export function disposeQuarantineRecord(apiKey: string, id: string, note?: string) {
+  return fetchApi<{ record: QuarantineRecord }>(
+    `/admin/quarantine/${id}/dispose`,
+    { method: "POST", body: JSON.stringify({ note }) },
+    apiKey
+  );
+}
+
+export function retryQuarantineRecord(apiKey: string, id: string) {
+  return fetchApi<{ record: QuarantineRecord }>(
+    `/admin/quarantine/${id}/retry`,
+    { method: "POST" },
     apiKey
   );
 }
@@ -1342,4 +1520,157 @@ export function getServiceAnnotationAudit(
   id: string
 ): Promise<ServiceAnnotationAuditEntry[]> {
   return fetchApi<ServiceAnnotationAuditEntry[]>(`/service-annotations/${id}/audit`);
+}
+
+// #1040 — Asset Lifecycle State Timeline
+export function getAssetLifecycleTimeline(assetId?: string, state?: string) {
+  const params = new URLSearchParams();
+  if (assetId) params.set("assetId", assetId);
+  if (state) params.set("state", state);
+  const qs = params.toString();
+  return fetchApi<{ records: import("../types").AssetLifecycleRecord[] }>(
+    `/assets/lifecycle-timeline${qs ? `?${qs}` : ""}`
+  );
+}
+
+export function getAssetLifecycleStats() {
+  return fetchApi<{ stats: import("../types").AssetLifecycleStats }>(
+    "/assets/lifecycle-timeline/stats"
+  );
+}
+
+export function recordAssetLifecycleTransition(payload: {
+  assetId: string;
+  assetSymbol: string;
+  state: import("../types").AssetState;
+  previousState?: import("../types").AssetState;
+  reason?: string;
+  triggeredBy?: string;
+}) {
+  return fetchApi<{ record: import("../types").AssetLifecycleRecord }>(
+    "/assets/lifecycle-timeline",
+    { method: "POST", body: JSON.stringify(payload) }
+  );
+}
+
+// #1176 — Permission Change Notifications
+export function listPermissionNotifications(targetUserId?: string, unreadOnly?: boolean) {
+  const params = new URLSearchParams();
+  if (targetUserId) params.set("targetUserId", targetUserId);
+  if (unreadOnly) params.set("unreadOnly", "true");
+  const qs = params.toString();
+  return fetchApi<{ notifications: import("../types").PermissionChangeNotificationRecord[] }>(
+    `/notifications/permission-changes${qs ? `?${qs}` : ""}`
+  );
+}
+
+export function markPermissionNotificationRead(id: string, targetUserId?: string) {
+  return fetchApi<{ notification: import("../types").PermissionChangeNotificationRecord }>(
+    `/notifications/permission-changes/${id}/read`,
+    { method: "PATCH", body: JSON.stringify({ targetUserId }) }
+  );
+}
+
+export function getPermissionNotificationStats() {
+  return fetchApi<{ stats: import("../types").PermissionNotificationStats }>(
+    "/notifications/permission-changes/stats"
+  );
+}
+
+export function createPermissionNotification(payload: {
+  targetUserId: string;
+  actorId?: string;
+  action: import("../types").PermissionAction;
+  permissionOrRole: string;
+  channels?: import("../types").NotificationChannel[];
+}) {
+  return fetchApi<{ notification: import("../types").PermissionChangeNotificationRecord }>(
+    "/notifications/permission-changes",
+    { method: "POST", body: JSON.stringify(payload) }
+  );
+}
+
+// #1173 — Session Device Management
+export function listSessionDevices(userId?: string) {
+  const qs = userId ? `?userId=${encodeURIComponent(userId)}` : "";
+  return fetchApi<{ devices: import("../types").SessionDeviceRecord[] }>(
+    `/user/devices${qs}`
+  );
+}
+
+export function registerSessionDevice(payload: {
+  deviceFingerprint: string;
+  deviceName: string;
+  deviceType?: import("../types").DeviceType;
+  ipAddress?: string;
+}) {
+  return fetchApi<{ device: import("../types").SessionDeviceRecord }>(
+    "/user/devices/register",
+    { method: "POST", body: JSON.stringify(payload) }
+  );
+}
+
+export function revokeSessionDevice(deviceId: string, userId?: string) {
+  const qs = userId ? `?userId=${encodeURIComponent(userId)}` : "";
+  return fetchApi<{ device: import("../types").SessionDeviceRecord }>(
+    `/user/devices/${deviceId}${qs}`,
+    { method: "DELETE" }
+  );
+}
+
+export function revokeOtherSessionDevices(currentDeviceId: string, userId?: string) {
+  return fetchApi<{ revokedCount: number }>(
+    "/user/devices/revoke-others",
+    { method: "POST", body: JSON.stringify({ currentDeviceId, userId }) }
+  );
+}
+
+export function setSessionDeviceTrust(deviceId: string, isTrusted: boolean) {
+  return fetchApi<{ device: import("../types").SessionDeviceRecord }>(
+    `/user/devices/${deviceId}/trust`,
+    { method: "PATCH", body: JSON.stringify({ isTrusted }) }
+  );
+}
+
+// #1175 — Admin Impersonation Safeguards
+export function startAdminImpersonation(
+  apiKey: string,
+  payload: {
+    adminId?: string;
+    impersonatedUserId: string;
+    reason: string;
+    approvalTicketId?: string;
+    durationMinutes?: number;
+  }
+) {
+  return fetchApi<{ session: import("../types").AdminImpersonationSession; token: string }>(
+    "/admin/impersonation/start",
+    { method: "POST", body: JSON.stringify(payload) },
+    apiKey
+  );
+}
+
+export function stopAdminImpersonation(apiKey: string, sessionId: string) {
+  return fetchApi<{ session: import("../types").AdminImpersonationSession }>(
+    "/admin/impersonation/stop",
+    { method: "POST", body: JSON.stringify({ sessionId }) },
+    apiKey
+  );
+}
+
+export function listAdminImpersonationSessions(apiKey: string, status?: string) {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  return fetchApi<{ sessions: import("../types").AdminImpersonationSession[] }>(
+    `/admin/impersonation/sessions${qs}`,
+    undefined,
+    apiKey
+  );
+}
+
+export function getAdminImpersonationAuditLogs(apiKey: string, sessionId: string) {
+  return fetchApi<{ auditLogs: import("../types").ImpersonationAuditLog[] }>(
+    `/admin/impersonation/audit-logs?sessionId=${encodeURIComponent(sessionId)}`,
+    undefined,
+    apiKey
+  );
 }
