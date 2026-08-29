@@ -33,7 +33,7 @@ export function useThemeInit() {
       return;
     }
     if (mode && mode !== displayMode) {
-      setPreference("displayMode", mode);
+      setPreference("displayMode" as any, mode);
     }
   }, [mode]);
 
