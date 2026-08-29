@@ -135,8 +135,6 @@ function App() {
                   <ComponentErrorBoundary
                     severity="medium"
                     context="relationship-explorer"
-                    title="Relationship Explorer Error"
-                    message="Unable to load the asset relationship graph. Please check your data and try again."
                   >
                     <RelationshipExplorer />
                   </ComponentErrorBoundary>

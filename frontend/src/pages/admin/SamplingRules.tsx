@@ -583,11 +583,11 @@ export default function SamplingRules() {
         {evalError && (
           <p className="mt-3 text-sm text-red-300">{evalError}</p>
         )}
-        {evalResult && (
+        {evalResult != null ? (
           <pre className="mt-4 overflow-x-auto rounded-2xl border border-stellar-border bg-stellar-dark p-4 text-xs text-white">
-            {JSON.stringify(evalResult as Record<string, unknown>, null, 2)}
+            {JSON.stringify(evalResult, null, 2)}
           </pre>
-        )}
+        ) : null}
       </section>
     </div>
   );
