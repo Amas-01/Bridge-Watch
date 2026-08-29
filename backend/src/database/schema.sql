@@ -226,7 +226,9 @@ CREATE TABLE health_scores (
   price_stability_score   SMALLINT    NOT NULL,
   bridge_uptime_score     SMALLINT    NOT NULL,
   reserve_backing_score   SMALLINT    NOT NULL,
-  volume_trend_score      SMALLINT    NOT NULL
+  volume_trend_score      SMALLINT    NOT NULL,
+  confidence_score        SMALLINT,
+  confidence_band         TEXT
 );
 CREATE INDEX health_scores_symbol_time_idx ON health_scores (symbol, time DESC);
 SELECT create_hypertable('health_scores', 'time', if_not_exists => TRUE);

@@ -19,6 +19,8 @@ import { registerCompatibilityRoutes } from "./route-groups/compatibility-routes
 import { registerOperationalRoutes } from "./route-groups/operational-routes.js";
 import { registerOperationalMonitoringRoutes } from "./route-groups/operational-monitoring-routes.js";
 import { registerLiquidityRoutes } from "./route-groups/liquidity-routes.js";
+import { sorobanEventsRoutes } from "./sorobanEvents.routes.js";
+import { backfillRoutes } from "./backfill.routes.js";
 
 export async function registerRoutes(server: FastifyInstance): Promise<void> {
   // Core routes: health, websocket, config, preferences, caching
@@ -80,4 +82,7 @@ export async function registerRoutes(server: FastifyInstance): Promise<void> {
 
   // Operational routes: query baseline, rollback readiness, canary metrics, promotion gates, risk clustering
   await registerOperationalRoutes(server);
+
+  server.register(sorobanEventsRoutes, { prefix: "/api/v1/soroban-events" });
+  server.register(backfillRoutes, { prefix: "/api/v1/backfill" });
 }
