@@ -100,7 +100,7 @@ export async function alertNoiseReductionRoutes(server: FastifyInstance) {
       const result = await alertNoiseReductionService.listAnalyses(accountId, limit, offset);
 
       return reply.send(
-        formatPaginatedResponse(result.analyses, result.pagination.total, page, limit),
+        formatPaginatedResponse(result.analyses, result.pagination.total, page, Number(limit)),
       );
     },
   );

@@ -114,7 +114,7 @@ export async function horizonCursorAuditRoutes(server: FastifyInstance) {
       },
     },
     async (request: FastifyRequest<{ Body: any }>, reply: FastifyReply) => {
-      const rollback = await horizonCursorAuditService.createRollback(request.body);
+      const rollback = await horizonCursorAuditService.createRollback(request.body as any);
       return reply.status(201).send(rollback);
     },
   );
@@ -202,7 +202,7 @@ export async function horizonCursorAuditRoutes(server: FastifyInstance) {
       const result = await horizonCursorAuditService.getAuditLog(cursorKey, limit, offset);
 
       return reply.send(
-        formatPaginatedResponse(result.logs, result.pagination.total, page, limit),
+        formatPaginatedResponse(result.logs, result.pagination.total, page, Number(limit)),
       );
     },
   );
