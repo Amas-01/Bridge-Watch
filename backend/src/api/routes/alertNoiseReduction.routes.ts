@@ -6,7 +6,7 @@ import { getPaginationParams, formatPaginatedResponse } from "../../utils/pagina
 export async function alertNoiseReductionRoutes(server: FastifyInstance) {
   server.addHook("preHandler", authMiddleware());
 
-  server.post<{ Body: { accountId: string; alertRuleId: string; windowStart: string; windowEnd: string } }>(
+  server.post<{ Body: { accountId: string; alertRuleId: string; windowStart: string; windowEnd: string; sampleSize?: number } }>(
     "/analyses",
     {
       schema: {
@@ -36,7 +36,7 @@ export async function alertNoiseReductionRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request: FastifyRequest<{ Body: { accountId: string; alertRuleId: string; windowStart: string; windowEnd: string; sampleSize?: number } }>, reply) => {
       const { accountId, alertRuleId, windowStart, windowEnd, sampleSize } = request.body;
 
       const result = await alertNoiseReductionService.analyzeAlertNoise({
@@ -65,14 +65,14 @@ export async function alertNoiseReductionRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request: FastifyRequest<{ Params: { analysisId: string } }>, reply) => {
       const { analysisId } = request.params;
       const result = await alertNoiseReductionService.getAnalysis(analysisId);
       return reply.send(result);
     },
   );
 
-  server.get<{ Querystring: { limit?: string; offset?: string } }>(
+  server.get<{ Params: { accountId: string }; Querystring: { limit?: string; offset?: string } }>(
     "/accounts/:accountId/analyses",
     {
       schema: {
@@ -93,18 +93,14 @@ export async function alertNoiseReductionRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request: FastifyRequest<{ Params: { accountId: string }; Querystring: { limit?: string; offset?: string } }>, reply) => {
       const { accountId } = request.params;
-      const { limit, offset } = getPaginationParams(request.query as Record<string, string>);
+      const { limit: limitNum, offset, page } = getPaginationParams(request.query as any);
 
-      const result = await alertNoiseReductionService.listAnalyses(accountId, limit, offset);
+      const result = await alertNoiseReductionService.listAnalyses(accountId, limitNum, offset);
 
       return reply.send(
-        formatPaginatedResponse(result.analyses, {
-          total: result.pagination.total,
-          limit,
-          offset,
-        }),
+        formatPaginatedResponse(result.analyses, Number(result.pagination.total), page, limitNum),
       );
     },
   );
@@ -123,7 +119,7 @@ export async function alertNoiseReductionRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request: FastifyRequest<{ Params: { recommendationId: string } }>, reply) => {
       const { recommendationId } = request.params;
 
       const result = await alertNoiseReductionService.applyRecommendation(recommendationId);

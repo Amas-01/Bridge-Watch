@@ -77,6 +77,10 @@ export const navGroups: NavGroup[] = [
       { to: "/circuit-breaker-actions", label: "Circuit Breaker Remediation", description: "Manage automated circuit breaker remediation actions and execution logs" },
       { to: "/export-scheduler", label: "Export Scheduler", description: "Schedule recurring report exports" },
       { to: "/metrics-sidebar", label: "Pinned Metrics", description: "Pin and manage frequently viewed metrics" },
+      { to: "/assets/lifecycle-timeline", label: "Lifecycle Timeline", description: "Asset lifecycle state transitions and audit timeline" },
+      { to: "/notifications/permission-changes", label: "Permission Notifications", description: "Permission change alerts and user dispatches" },
+      { to: "/user/devices", label: "Session Devices", description: "Manage active session devices and security revocations" },
+      { to: "/admin/impersonation-safeguards", label: "Impersonation Safeguards", description: "Admin impersonation controls and audit logs" },
     ],
   },
 ];

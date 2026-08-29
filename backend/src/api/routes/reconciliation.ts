@@ -250,7 +250,7 @@ export async function reconciliationRoutes(
       }
 
       try {
-        const proofPayload = zkSvc.generateReserveProof(parsed.data);
+        const proofPayload = zkSvc.generateReserveProof(parsed.data as any);
         return { proofPayload };
       } catch (error) {
         logger.error({ error }, "Failed to generate ZK reserve proof");

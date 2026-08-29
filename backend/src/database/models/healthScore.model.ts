@@ -9,6 +9,8 @@ export interface HealthScoreRecord {
   bridge_uptime_score: number;
   reserve_backing_score: number;
   volume_trend_score: number;
+  confidence_score?: number;
+  confidence_band?: string;
 }
 
 export class HealthScoreModel {

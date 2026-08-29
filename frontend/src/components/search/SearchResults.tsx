@@ -64,10 +64,10 @@ const FACET_LABELS: Record<keyof AssetSearchFacets, string> = {
 };
 
 function AssetFacetCounts({ facets }: { facets: AssetSearchFacets }) {
-  const groups: Array<{ key: keyof AssetSearchFacets; label: string }> = [
-    { key: "bridgeProvider", label: FACET_LABELS.bridgeProvider },
-    { key: "sourceChain", label: FACET_LABELS.sourceChain },
-  ].filter((group) => facets[group.key].length > 0);
+  const keys: Array<keyof AssetSearchFacets> = ["bridgeProvider", "sourceChain"];
+  const groups = keys
+    .map((key) => ({ key, label: FACET_LABELS[key] }))
+    .filter((group) => (facets[group.key] ?? []).length > 0);
 
   if (groups.length === 0) return null;
 

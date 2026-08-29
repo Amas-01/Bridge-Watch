@@ -62,7 +62,7 @@ export async function sorobanInvocationCostRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const record = request.body;
 
       const invocation = await sorobanInvocationCostService.recordInvocation({
@@ -108,7 +108,7 @@ export async function sorobanInvocationCostRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const { contractId, functionName } = request.params;
       const { granularity } = request.query as Record<string, string>;
 
@@ -145,7 +145,7 @@ export async function sorobanInvocationCostRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const { contractId, functionName } = request.params;
       const { granularity } = request.query as Record<string, string>;
 
@@ -182,7 +182,7 @@ export async function sorobanInvocationCostRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const { contractId, functionName } = request.params;
       const { status } = request.query as Record<string, string>;
 
@@ -206,7 +206,7 @@ export async function sorobanInvocationCostRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const { anomalyId } = request.params;
 
       await sorobanInvocationCostService.resolveAnomaly(anomalyId);

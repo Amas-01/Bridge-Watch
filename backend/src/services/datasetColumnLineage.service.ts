@@ -259,7 +259,7 @@ export class DatasetColumnLineageService {
       const sourceDatasetId = String(edge.source_dataset_id);
 
       if (sourceColumn) {
-        nodes.set(sourceColumn.id, {
+        nodes.set(String(sourceColumn.id), {
           id: String(sourceColumn.id),
           kind: "column",
           name: String(sourceColumn.name),

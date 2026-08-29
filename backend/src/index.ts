@@ -25,6 +25,8 @@ import { registerRequestLoggingMiddleware } from "./api/middleware/logging.middl
 import { registerTracing } from "./api/middleware/tracing.js";
 import { getTelegramBotService } from "./services/telegram.bot.service.js";
 import { registerCompatibilityMiddleware } from "./api/compatibility/middleware.js";
+import { registerDrainProtectionMiddleware } from "./api/middleware/drainProtection.middleware.js";
+import { drainProtocolService } from "./services/drainProtocol.service.js";
 
 export async function buildServer() {
   const server = Fastify({
@@ -74,6 +76,9 @@ export async function buildServer() {
 
   // Register metrics middleware (to capture all requests)
   await registerMetrics(server as any);
+
+  // Register graceful shutdown drain protection middleware
+  await registerDrainProtectionMiddleware(server as any);
 
   // Register plugins
   await server.register(cors, {
@@ -181,7 +186,8 @@ async function start() {
 
   // ─── Graceful shutdown ──────────────────────────────────────────────────────
   const shutdown = async (signal: string) => {
-    logger.info({ signal }, "Shutdown signal received");
+    logger.info({ signal }, "Shutdown signal received; initiating drain protocol");
+    await drainProtocolService.startDrain({ reason: `Received signal ${signal}`, initiatedBy: "system" });
 
     // Stop Telegram bot service
     const telegramService = getTelegramBotService();

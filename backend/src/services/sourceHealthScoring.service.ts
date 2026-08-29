@@ -54,6 +54,8 @@ export interface SourceHealthScore {
   contributingFactors: SourceContributingFactors;
   thresholdViolations: SourceThresholdViolation[];
   sampleCount: number;
+  confidenceScore: number;
+  confidenceBand: string;
   computedAt: string;
   updatedAt: string;
 }
@@ -69,6 +71,8 @@ export interface SourceHealthHistoryEntry {
   grade: string;
   alertState: string;
   sampleCount: number;
+  confidenceScore: number;
+  confidenceBand: string;
   computedAt: string;
 }
 
@@ -315,6 +319,9 @@ export class SourceHealthScoringService {
 
       const now = new Date();
 
+      const confidenceScore = Math.min(100, Math.round((totalChecks / 144) * 100)); // Assuming 10m intervals over 24h
+      const confidenceBand = confidenceScore >= 80 ? "HIGH" : confidenceScore >= 50 ? "MEDIUM" : "LOW";
+
       const [row] = await this.db("source_health_scores")
         .insert({
           source_key: sourceKey,
@@ -330,6 +337,8 @@ export class SourceHealthScoringService {
           contributing_factors: JSON.stringify(factors),
           threshold_violations: JSON.stringify(violations),
           sample_count: totalChecks,
+          confidence_score: confidenceScore,
+          confidence_band: confidenceBand,
           computed_at: now,
           updated_at: now,
         })
@@ -347,6 +356,8 @@ export class SourceHealthScoringService {
           "contributing_factors",
           "threshold_violations",
           "sample_count",
+          "confidence_score",
+          "confidence_band",
           "computed_at",
           "updated_at",
         ])
@@ -362,6 +373,8 @@ export class SourceHealthScoringService {
         grade,
         alert_state: alertState,
         sample_count: totalChecks,
+        confidence_score: confidenceScore,
+        confidence_band: confidenceBand,
         computed_at: now,
       });
 
@@ -475,6 +488,8 @@ export class SourceHealthScoringService {
       }),
       thresholdViolations: parseJson<SourceThresholdViolation[]>(row.threshold_violations, []),
       sampleCount: Number(row.sample_count ?? 0),
+      confidenceScore: Number(row.confidence_score ?? 0),
+      confidenceBand: String(row.confidence_band ?? "LOW"),
       computedAt: isoTimestamp(row.computed_at),
       updatedAt: isoTimestamp(row.updated_at),
     };
@@ -492,6 +507,8 @@ export class SourceHealthScoringService {
       grade: String(row.grade),
       alertState: String(row.alert_state),
       sampleCount: Number(row.sample_count ?? 0),
+      confidenceScore: Number(row.confidence_score ?? 0),
+      confidenceBand: String(row.confidence_band ?? "LOW"),
       computedAt: isoTimestamp(row.computed_at),
     };
   }

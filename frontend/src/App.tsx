@@ -89,6 +89,14 @@ const DexPoolDiscovery = lazy(() => import("./pages/liquidity/DexPoolDiscovery")
 const PoolQualityRanking = lazy(() => import("./pages/liquidity/PoolQualityRanking"));
 const MarketImpactPresets = lazy(() => import("./pages/liquidity/MarketImpactPresets"));
 const RouteQuotes = lazy(() => import("./pages/liquidity/RouteQuotes"));
+// #1040 — Asset Lifecycle State Timeline
+const AssetLifecycleTimeline = lazy(() => import("./pages/AssetLifecycleTimeline"));
+// #1176 — Permission Change Notifications
+const PermissionChangeNotifications = lazy(() => import("./pages/PermissionChangeNotifications"));
+// #1173 — Session Device Management
+const SessionDeviceManagement = lazy(() => import("./pages/SessionDeviceManagement"));
+// #1175 — Admin Impersonation Safeguards
+const AdminImpersonationSafeguards = lazy(() => import("./pages/admin/AdminImpersonationSafeguards"));
 
 function NotificationInitializer() {
   useNotifications();
@@ -135,8 +143,6 @@ function App() {
                   <ComponentErrorBoundary
                     severity="medium"
                     context="relationship-explorer"
-                    title="Relationship Explorer Error"
-                    message="Unable to load the asset relationship graph. Please check your data and try again."
                   >
                     <RelationshipExplorer />
                   </ComponentErrorBoundary>
@@ -203,6 +209,14 @@ function App() {
               <Route path="/liquidity/market-impact-presets" element={<MarketImpactPresets />} />
               {/* #1160 — Route Quote Expiration Handling */}
               <Route path="/liquidity/route-quotes" element={<RouteQuotes />} />
+              {/* #1040 — Asset Lifecycle State Timeline */}
+              <Route path="/assets/lifecycle-timeline" element={<AssetLifecycleTimeline />} />
+              {/* #1176 — Permission Change Notifications */}
+              <Route path="/notifications/permission-changes" element={<PermissionChangeNotifications />} />
+              {/* #1173 — Session Device Management */}
+              <Route path="/user/devices" element={<SessionDeviceManagement />} />
+              {/* #1175 — Admin Impersonation Safeguards */}
+              <Route path="/admin/impersonation-safeguards" element={<AdminImpersonationSafeguards />} />
             </Route>
           </Routes>
         </Suspense>

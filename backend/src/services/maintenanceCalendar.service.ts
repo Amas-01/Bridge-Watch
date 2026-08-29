@@ -3,7 +3,7 @@ import {
   MaintenanceCalendarModel,
   MaintenanceWindow,
 } from "../database/models/MaintenanceCalendar.js";
-import logger from "../utils/logger.js";
+import { logger } from "../utils/logger.js";
 
 export class MaintenanceCalendarService {
   private model: MaintenanceCalendarModel;

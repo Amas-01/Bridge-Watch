@@ -779,3 +779,111 @@ export interface QuarantineStats {
   byStatus: Record<QuarantineStatus, number>;
   bySource: Record<string, number>;
 }
+
+// #1040 — Asset Lifecycle State Timeline
+export type AssetState =
+  | "INITIALIZED"
+  | "PROVISIONED"
+  | "ACTIVE"
+  | "PAUSED"
+  | "DEPRECATED"
+  | "RETIRED";
+
+export interface AssetLifecycleRecord {
+  id: string;
+  assetId: string;
+  assetSymbol: string;
+  state: AssetState;
+  previousState: AssetState | null;
+  reason: string | null;
+  triggeredBy: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssetLifecycleStats {
+  totalTransitions: number;
+  byState: Record<AssetState, number>;
+  activeAssets: number;
+}
+
+// #1176 — Permission Change Notifications
+export type PermissionAction =
+  | "ROLE_ASSIGNED"
+  | "ROLE_REVOKED"
+  | "PERMISSION_GRANTED"
+  | "PERMISSION_REVOKED";
+
+export type NotificationChannel = "IN_APP" | "EMAIL" | "SLACK";
+export type NotificationStatus = "PENDING" | "SENT" | "FAILED";
+
+export interface PermissionChangeNotificationRecord {
+  id: string;
+  targetUserId: string;
+  actorId: string;
+  action: PermissionAction;
+  permissionOrRole: string;
+  channels: NotificationChannel[];
+  status: NotificationStatus;
+  details: Record<string, unknown>;
+  readAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PermissionNotificationStats {
+  total: number;
+  byStatus: Record<NotificationStatus, number>;
+  byAction: Record<PermissionAction, number>;
+}
+
+// #1173 — Session Device Management
+export type DeviceType = "DESKTOP" | "MOBILE" | "TABLET" | "OTHER";
+
+export interface SessionDeviceRecord {
+  id: string;
+  userId: string;
+  deviceFingerprint: string;
+  deviceName: string;
+  deviceType: DeviceType;
+  ipAddress: string;
+  location: string | null;
+  userAgent: string | null;
+  isActive: boolean;
+  isTrusted: boolean;
+  lastActiveAt: string;
+  revokedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// #1175 — Admin Impersonation Safeguards
+export type ImpersonationStatus = "ACTIVE" | "ENDED" | "REVOKED" | "EXPIRED";
+
+export interface AdminImpersonationSession {
+  id: string;
+  adminId: string;
+  impersonatedUserId: string;
+  reason: string;
+  approvalTicketId: string | null;
+  status: ImpersonationStatus;
+  tokenHash: string;
+  maxDurationMinutes: number;
+  expiresAt: string;
+  endedAt: string | null;
+  ipAddress: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ImpersonationAuditLog {
+  id: string;
+  impersonationSessionId: string;
+  adminId: string;
+  impersonatedUserId: string;
+  actionPerformed: string;
+  requestPath: string;
+  requestMethod: string;
+  timestamp: string;
+}

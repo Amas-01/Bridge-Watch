@@ -180,22 +180,32 @@ export class ImportValidationPreviewService {
       invalidCount: Number(row.invalid_count),
       warningCount: Number(row.warning_count),
       dataQualityScore: Number(row.data_quality_score),
-      errors: this.parseJson(row.errors),
-      warnings: this.parseJson(row.warnings),
-      summary: this.parseJson(row.summary),
+      errors: this.parseArray(row.errors),
+      warnings: this.parseArray(row.warnings),
+      summary: this.parseObject(row.summary),
       createdBy: row.created_by ? String(row.created_by) : null,
       applied: Boolean(row.applied),
       createdAt: String(row.created_at),
     };
   }
 
-  private parseJson(value: unknown): any[] {
+  private parseArray(value: unknown): Array<Record<string, unknown>> {
     if (!value) return [];
-    if (Array.isArray(value)) return value;
+    if (Array.isArray(value)) return value as Array<Record<string, unknown>>;
     try {
       return JSON.parse(String(value));
     } catch {
       return [];
+    }
+  }
+
+  private parseObject(value: unknown): Record<string, unknown> {
+    if (!value) return {};
+    if (typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+    try {
+      return JSON.parse(String(value));
+    } catch {
+      return {};
     }
   }
 }

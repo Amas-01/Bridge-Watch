@@ -34,7 +34,7 @@ export async function operatorAvailabilityRoutes(
       }
 
       try {
-        const entry = await operatorAvailabilityService.createAvailability(parsed.data);
+        const entry = await operatorAvailabilityService.createAvailability(parsed.data as any);
         return reply.code(201).send({ availability: entry });
       } catch (error) {
         logger.error({ error }, "Failed to create operator availability entry");
