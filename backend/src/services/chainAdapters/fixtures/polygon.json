@@ -1,0 +1,34 @@
+{
+  "chainId": "polygon",
+  "contractIdentity": "0x40ec5B33f54e0E8A33A975908C5BA1c14e5BbbDf",
+  "contractAlias": "polygon-pos-erc20-predicate",
+  "epoch": 1,
+  "registryVersion": "polygon:0x40ec5b33f54e0e8a33a975908c5ba1c14e5bbbdf:1",
+  "decimals": 6,
+  "deploymentFromBlock": 20000000,
+  "abi": [
+    "event Transfer(address indexed from, address indexed to, uint256 value)"
+  ],
+  "samples": [
+    {
+      "description": "USDC Transfer",
+      "blockNumber": 25000000,
+      "rawLog": {
+        "topics": [
+          "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+          "0x0000000000000000000000001111111111111111111111111111111111111111",
+          "0x0000000000000000000000002222222222222222222222222222222222222222"
+        ],
+        "data": "0x000000000000000000000000000000000000000000000000000000000ee6b280"
+      },
+      "expected": {
+        "eventName": "Transfer",
+        "args": {
+          "from": "0x1111111111111111111111111111111111111111",
+          "to": "0x2222222222222222222222222222222222222222",
+          "value": "250000000"
+        }
+      }
+    }
+  ]
+}
