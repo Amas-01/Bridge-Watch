@@ -121,5 +121,11 @@ export async function registerAdminRoutes(server: FastifyInstance): Promise<void
   server.register(parseQuarantineQueueRoutes, {
     prefix: "/api/v1/admin/quarantine",
   });
+
+  // #1187 — Graceful Shutdown Drain Protocol
+  const { drainProtocolRoutes } = await import("../drainProtocol.routes.js");
+  server.register(drainProtocolRoutes, {
+    prefix: "/api/v1/admin/shutdown/drain",
+  });
 }
 
