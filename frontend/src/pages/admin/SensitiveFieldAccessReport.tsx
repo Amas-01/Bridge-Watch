@@ -59,7 +59,7 @@ export default function SensitiveFieldAccessReport() {
     },
   ]);
 
-  const [logs, setLogs] = useState<AccessLog[]>([
+  const [logs] = useState<AccessLog[]>([
     {
       id: "log-101",
       resourceName: "api_keys",

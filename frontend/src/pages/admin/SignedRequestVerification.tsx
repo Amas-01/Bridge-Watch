@@ -47,7 +47,7 @@ export default function SignedRequestVerification() {
     },
   ]);
 
-  const [logs, setLogs] = useState<SignedLog[]>([
+  const [logs] = useState<SignedLog[]>([
     {
       id: "log-1",
       keyId: "key_live_9f8a7b6c5d4e",

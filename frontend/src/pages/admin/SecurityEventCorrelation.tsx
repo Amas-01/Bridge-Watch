@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 
 interface CorrelationView {
   id: string;
@@ -53,7 +53,7 @@ export default function SecurityEventCorrelation() {
   ]);
 
   const [selectedCorrelation, setSelectedCorrelation] = useState<CorrelationView | null>(null);
-  const [rawEvents, setRawEvents] = useState<SecurityEvent[]>([
+  const [rawEvents] = useState<SecurityEvent[]>([
     {
       id: "ev-1",
       eventType: "invalid_signature",
