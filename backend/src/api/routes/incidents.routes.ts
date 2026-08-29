@@ -211,6 +211,51 @@ export async function incidentRoutes(server: FastifyInstance) {
     }
   );
 
+  server.get<{
+    Querystring: {
+      sourceType?: string;
+      status?: string;
+      incidentId?: string;
+      startDate?: string;
+      endDate?: string;
+      limit?: number;
+      offset?: number;
+    }
+  }>(
+    "/ingestion/search",
+    {
+      schema: {
+        tags: ["Incidents"],
+        summary: "Search incident ingestion history",
+        querystring: {
+          type: "object",
+          properties: {
+            sourceType: { type: "string" },
+            status: { type: "string" },
+            incidentId: { type: "string" },
+            startDate: { type: "string", format: "date-time" },
+            endDate: { type: "string", format: "date-time" },
+            limit: { type: "integer", minimum: 1, maximum: 500 },
+            offset: { type: "integer", minimum: 0 },
+          }
+        },
+        response: { 200: { type: "object", additionalProperties: true } }
+      }
+    },
+    async (request) => {
+      const q = request.query;
+      return incidentIngestionService.searchIngestionHistory({
+        sourceType: q.sourceType,
+        status: q.status,
+        incidentId: q.incidentId,
+        startDate: q.startDate ? new Date(q.startDate) : undefined,
+        endDate: q.endDate ? new Date(q.endDate) : undefined,
+        limit: q.limit,
+        offset: q.offset
+      });
+    }
+  );
+
   // POST /api/v1/incidents/webhook — webhook-friendly alias for external integrations
   server.post<{ Body: RawIncidentPayload }>(
     "/webhook",

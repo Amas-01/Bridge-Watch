@@ -255,6 +255,34 @@ export class IncidentIngestionService {
       .select("*");
   }
 
+  async searchIngestionHistory(filters: {
+    sourceType?: string;
+    status?: string;
+    incidentId?: string;
+    startDate?: Date;
+    endDate?: Date;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ data: any[]; total: number }> {
+    let query = this.db("bridge_incident_ingestion_history");
+
+    if (filters.sourceType) query = query.where("source_type", filters.sourceType);
+    if (filters.status) query = query.where("status", filters.status);
+    if (filters.incidentId) query = query.where("incident_id", filters.incidentId);
+    if (filters.startDate) query = query.where("created_at", ">=", filters.startDate);
+    if (filters.endDate) query = query.where("created_at", "<=", filters.endDate);
+
+    const countRow = await query.clone().count("id as count").first();
+    const total = Number((countRow as any)?.count ?? 0);
+
+    const data = await query
+      .orderBy("created_at", "desc")
+      .limit(filters.limit ?? 100)
+      .offset(filters.offset ?? 0);
+
+    return { data, total };
+  }
+
   private async findDuplicate(normalized: NormalizedIncident): Promise<Record<string, unknown> | null> {
     const byFingerprint = await this.db("bridge_incidents")
       .where("normalized_fingerprint", normalized.normalizedFingerprint)
