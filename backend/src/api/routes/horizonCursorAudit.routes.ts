@@ -32,7 +32,7 @@ export async function horizonCursorAuditRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request, reply) => {
+    async (request: FastifyRequest<{ Body: { cursorKey: string; cursorType: string; sourceName: string; currentPosition: string } }>, reply: FastifyReply) => {
       const cursor = await horizonCursorAuditService.initializeCursor(request.body);
       return reply.status(201).send(cursor);
     },
@@ -68,7 +68,7 @@ export async function horizonCursorAuditRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request, reply) => {
+    async (request: FastifyRequest<{ Params: { cursorKey: string }; Body: { newPosition: string; eventsInBatch: number; reasonCode?: string } }>, reply: FastifyReply) => {
       const { cursorKey } = request.params;
       const { newPosition, eventsInBatch, reasonCode } = request.body;
 
@@ -113,7 +113,7 @@ export async function horizonCursorAuditRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request, reply) => {
+    async (request: FastifyRequest<{ Body: any }>, reply: FastifyReply) => {
       const rollback = await horizonCursorAuditService.createRollback(request.body);
       return reply.status(201).send(rollback);
     },
@@ -133,7 +133,7 @@ export async function horizonCursorAuditRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request, reply) => {
+    async (request: FastifyRequest<{ Params: { rollbackId: string } }>, reply: FastifyReply) => {
       const { rollbackId } = request.params;
 
       await horizonCursorAuditService.completeRollback(rollbackId);
@@ -164,7 +164,7 @@ export async function horizonCursorAuditRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request, reply) => {
+    async (request: FastifyRequest<{ Params: { cursorId: string }; Body: { horizonPosition: string } }>, reply: FastifyReply) => {
       const { cursorId } = request.params;
       const { horizonPosition } = request.body;
 
@@ -195,18 +195,14 @@ export async function horizonCursorAuditRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request, reply) => {
+    async (request: FastifyRequest<{ Params: { cursorKey: string }; Querystring: { limit?: string; offset?: string } }>, reply: FastifyReply) => {
       const { cursorKey } = request.params;
-      const { limit, offset } = getPaginationParams(request.query as Record<string, string>);
+      const { limit, offset, page } = getPaginationParams(request.query as Record<string, string>);
 
       const result = await horizonCursorAuditService.getAuditLog(cursorKey, limit, offset);
 
       return reply.send(
-        formatPaginatedResponse(result.logs, {
-          total: result.pagination.total,
-          limit,
-          offset,
-        }),
+        formatPaginatedResponse(result.logs, result.pagination.total, page, limit),
       );
     },
   );
@@ -229,7 +225,7 @@ export async function horizonCursorAuditRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request: FastifyRequest<{ Params: { cursorKey: string }; Querystring: { limit?: string } }>, reply: FastifyReply) => {
       const { cursorKey } = request.params;
       const { limit } = request.query as Record<string, string>;
 
@@ -257,7 +253,7 @@ export async function horizonCursorAuditRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request: FastifyRequest<{ Params: { cursorKey: string }; Querystring: { limit?: string } }>, reply: FastifyReply) => {
       const { cursorKey } = request.params;
       const { limit } = request.query as Record<string, string>;
 
@@ -280,7 +276,7 @@ export async function horizonCursorAuditRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request: FastifyRequest<{ Querystring: { limit?: string } }>, reply: FastifyReply) => {
       const { limit } = request.query as Record<string, string>;
 
       const discrepancies = await horizonCursorAuditService.getDiscrepancies(parseInt(limit, 10) || 50);
@@ -303,7 +299,7 @@ export async function horizonCursorAuditRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request: FastifyRequest<{ Params: { cursorKey: string } }>, reply: FastifyReply) => {
       const { cursorKey } = request.params;
 
       await horizonCursorAuditService.pauseCursor(cursorKey);
@@ -326,7 +322,7 @@ export async function horizonCursorAuditRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request: FastifyRequest<{ Params: { cursorKey: string } }>, reply: FastifyReply) => {
       const { cursorKey } = request.params;
 
       await horizonCursorAuditService.resumeCursor(cursorKey);
