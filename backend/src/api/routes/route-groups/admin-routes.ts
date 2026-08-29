@@ -163,13 +163,6 @@ export async function registerAdminRoutes(server: FastifyInstance): Promise<void
   server.register(sensitiveFieldAccessRoutes, {
     prefix: "/api/v1/admin/sensitive-fields",
   });
-    prefix: "/api/v1/admin/impersonation",
-  });
-
-  // #1176 — Permission Change Notifications
-  server.register(permissionChangeNotificationRoutes, {
-    prefix: "/api/v1/notifications/permission-changes",
-  });
 
   // #1187 — Graceful Shutdown Drain Protocol
   const { drainProtocolRoutes } = await import("../drainProtocol.routes.js");
