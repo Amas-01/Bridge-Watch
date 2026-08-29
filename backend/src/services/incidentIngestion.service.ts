@@ -4,7 +4,7 @@ import {
   ThirdPartyIncident,
   IncidentIngestionSource,
 } from "../database/models/IncidentIngestion.js";
-import logger from "../utils/logger.js";
+import { logger } from "../utils/logger.js";
 
 export class IncidentIngestionService {
   private model: IncidentIngestionModel;
