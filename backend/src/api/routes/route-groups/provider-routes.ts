@@ -21,5 +21,11 @@ export async function registerProviderRoutes(server: FastifyInstance): Promise<v
   server.register(providerLatencyRoutes, {
     prefix: "/api/v1/provider-latency",
   });
+
+  // #1014 — Independent RPC Evidence Quorum for Chain State Reads
+  const { rpcEvidenceQuorumRoutes } = await import("../rpcEvidenceQuorum.routes.js");
+  server.register(rpcEvidenceQuorumRoutes, {
+    prefix: "/api/v1/rpc-quorum",
+  });
 }
 
