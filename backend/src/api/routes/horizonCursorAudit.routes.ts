@@ -32,7 +32,7 @@ export async function horizonCursorAuditRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const cursor = await horizonCursorAuditService.initializeCursor(request.body);
       return reply.status(201).send(cursor);
     },
@@ -68,7 +68,7 @@ export async function horizonCursorAuditRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const { cursorKey } = request.params;
       const { newPosition, eventsInBatch, reasonCode } = request.body;
 
@@ -113,7 +113,7 @@ export async function horizonCursorAuditRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const rollback = await horizonCursorAuditService.createRollback(request.body);
       return reply.status(201).send(rollback);
     },
@@ -133,7 +133,7 @@ export async function horizonCursorAuditRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const { rollbackId } = request.params;
 
       await horizonCursorAuditService.completeRollback(rollbackId);
@@ -164,7 +164,7 @@ export async function horizonCursorAuditRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const { cursorId } = request.params;
       const { horizonPosition } = request.body;
 
@@ -195,7 +195,7 @@ export async function horizonCursorAuditRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const { cursorKey } = request.params;
       const { limit, offset } = getPaginationParams(request.query as Record<string, string>);
 
@@ -206,7 +206,6 @@ export async function horizonCursorAuditRoutes(server: FastifyInstance) {
           total: result.pagination.total,
           limit,
           offset,
-          cursor: result.cursor,
         }),
       );
     },

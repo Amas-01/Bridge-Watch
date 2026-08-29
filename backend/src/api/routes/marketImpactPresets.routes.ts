@@ -61,7 +61,7 @@ export async function marketImpactPresetsRoutes(server: FastifyInstance) {
         const preset = await marketImpactPresetsService.createPreset({
           ...parsed.data,
           createdBy: (request as { apiKeyAuth?: { id?: string } }).apiKeyAuth?.id ?? null,
-        });
+        } as any);
         return reply.status(201).send({ preset });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Create failed";

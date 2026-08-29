@@ -27,7 +27,7 @@ export async function bftOracleRoutes(server: FastifyInstance) {
   server.post("/aggregate", async (request: FastifyRequest<{ Body: z.infer<typeof aggregateSchema> }>, reply: FastifyReply) => {
     try {
       const { assetCode, reports } = aggregateSchema.parse(request.body);
-      const result = await bftOracleAggregatorService.aggregateBftState(assetCode, reports);
+      const result = await bftOracleAggregatorService.aggregateBftState(assetCode, reports as any);
       return reply.code(200).send(result);
     } catch (error) {
       logger.error(error, "Failed to run BFT state aggregation");
@@ -38,7 +38,7 @@ export async function bftOracleRoutes(server: FastifyInstance) {
   server.post("/providers", async (request: FastifyRequest<{ Body: z.infer<typeof registerNodeSchema> }>, reply: FastifyReply) => {
     try {
       const body = registerNodeSchema.parse(request.body);
-      const provider = await bftOracleAggregatorService.registerProviderNode(body);
+      const provider = await bftOracleAggregatorService.registerProviderNode(body as any);
       return reply.code(201).send(provider);
     } catch (error) {
       logger.error(error, "Failed to register BFT provider node");

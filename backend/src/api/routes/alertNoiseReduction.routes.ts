@@ -36,7 +36,7 @@ export async function alertNoiseReductionRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const { accountId, alertRuleId, windowStart, windowEnd, sampleSize } = request.body;
 
       const result = await alertNoiseReductionService.analyzeAlertNoise({
@@ -65,7 +65,7 @@ export async function alertNoiseReductionRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const { analysisId } = request.params;
       const result = await alertNoiseReductionService.getAnalysis(analysisId);
       return reply.send(result);
@@ -93,7 +93,7 @@ export async function alertNoiseReductionRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const { accountId } = request.params;
       const { limit, offset } = getPaginationParams(request.query as Record<string, string>);
 
@@ -123,7 +123,7 @@ export async function alertNoiseReductionRoutes(server: FastifyInstance) {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const { recommendationId } = request.params;
 
       const result = await alertNoiseReductionService.applyRecommendation(recommendationId);

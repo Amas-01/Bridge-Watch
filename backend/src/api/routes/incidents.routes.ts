@@ -1,9 +1,9 @@
 import { FastifyInstance } from "fastify";
 import { IncidentIngestionService } from "../../services/incidentIngestion.service.js";
-import { getDb } from "../../database/connection.js";
+import { getDatabase } from "../../database/connection.js";
 
 export async function incidentsRoutes(fastify: FastifyInstance) {
-  const db = getDb();
+  const db = getDatabase();
   const service = new IncidentIngestionService(db);
 
   fastify.get("/incidents", async (request, reply) => {
