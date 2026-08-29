@@ -6,14 +6,14 @@ import AlertSnoozeControls from "../alerts/AlertSnoozeControls";
 import { useAlertSnoozes } from "../../hooks/useAlertSnoozes";
 import { CollapsibleWidget } from "../dashboard/CollapsibleWidget";
 
-interface AssetAlert {
+interface WatchlistWsAlert {
   symbol: string;
   message: string;
   severity?: "info" | "warning" | "error";
   timestamp?: string;
 }
 
-function asAssetAlert(value: unknown): AssetAlert | null {
+function asAssetAlert(value: unknown): WatchlistWsAlert | null {
   if (!value || typeof value !== "object") {
     return null;
   }
@@ -36,7 +36,7 @@ function asAssetAlert(value: unknown): AssetAlert | null {
 
 export default function WatchlistWidget() {
   const { activeWatchlist, activeSymbols } = useWatchlist();
-  const [alerts, setAlerts] = useState<AssetAlert[]>([]);
+  const [alerts, setAlerts] = useState<WatchlistWsAlert[]>([]);
   const { snooze, unsnooze, getStatus, snoozeMany } = useAlertSnoozes();
 
   const symbolsSet = useMemo(() => new Set(activeSymbols), [activeSymbols]);

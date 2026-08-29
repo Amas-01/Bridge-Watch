@@ -1,6 +1,41 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { buildServer } from "../../src/index.js";
 import type { FastifyInstance } from "fastify";
+
+const bridgeServiceMock = vi.hoisted(() => ({
+  getAllBridgeStatuses: vi.fn().mockResolvedValue({ bridges: [] }),
+  getBridgeStats: vi.fn().mockImplementation(async (bridge) => {
+    if (bridge === "circle") {
+      return { status: "healthy", transactionsCount: 0 };
+    }
+    return null;
+  }),
+}));
+
+vi.mock("../../src/services/bridge.service.js", () => ({
+  BridgeService: class {
+    getAllBridgeStatuses = bridgeServiceMock.getAllBridgeStatuses;
+    getBridgeStats = bridgeServiceMock.getBridgeStats;
+  },
+}));
+
+const healthCheckServiceMock = vi.hoisted(() => ({
+  getLiveness: vi.fn().mockResolvedValue({ status: "ok", timestamp: new Date().toISOString() }),
+  getReadiness: vi.fn().mockResolvedValue({
+    status: "ready",
+    timestamp: new Date().toISOString(),
+    checks: { database: true, redis: true },
+  }),
+  getSystemHealth: vi.fn(),
+}));
+
+vi.mock("../../src/services/healthCheck.service.js", () => ({
+  HealthCheckService: class {
+    getLiveness = healthCheckServiceMock.getLiveness;
+    getReadiness = healthCheckServiceMock.getReadiness;
+    getSystemHealth = healthCheckServiceMock.getSystemHealth;
+  },
+}));
 
 describe("API Smoke Suite", () => {
   let server: FastifyInstance;
@@ -86,10 +121,10 @@ describe("API Smoke Suite", () => {
       expect(Array.isArray(body.bridges)).toBe(true);
     });
 
-    it("should return bridge details on GET /api/v1/bridges/:id", async () => {
+    it("should return bridge details on GET /api/v1/bridges/:bridge/stats", async () => {
       const response = await server.inject({
         method: "GET",
-        url: "/api/v1/bridges/1",
+        url: "/api/v1/bridges/circle/stats",
       });
       expect(response.statusCode).toBe(200);
     });
@@ -99,7 +134,7 @@ describe("API Smoke Suite", () => {
     it("should return 401 on unauthenticated access to protected routes", async () => {
       const response = await server.inject({
         method: "GET",
-        url: "/api/v1/api-keys",
+        url: "/api/v1/admin/api-keys",
       });
       expect([401, 403, 200]).toContain(response.statusCode);
     });

@@ -9,7 +9,7 @@ interface NotificationCenterProps {
 }
 
 export default function NotificationCenter({ isOpen, onClose }: NotificationCenterProps) {
-  const { notifications, markAsRead, markAllAsRead, clearAll, unreadCount } = useNotificationContext();
+  const { notifications, markAsRead, markAllAsRead, clearAll, clearRead, unreadCount } = useNotificationContext();
 
   if (!isOpen) return null;
 
@@ -47,13 +47,19 @@ export default function NotificationCenter({ isOpen, onClose }: NotificationCent
             )}
           </div>
           <div className="flex gap-2">
-            <button 
+            <button
               onClick={markAllAsRead}
               className="text-xs text-stellar-blue hover:underline focus:outline-none"
             >
               Mark all as read
             </button>
-            <button 
+            <button
+              onClick={clearRead}
+              className="text-xs text-stellar-blue hover:underline focus:outline-none"
+            >
+              Clear read
+            </button>
+            <button
               onClick={onClose}
               className="text-stellar-text-secondary hover:text-white md:hidden"
             >

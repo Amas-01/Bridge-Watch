@@ -220,7 +220,6 @@ export default function Popover({
               left: coords?.x ?? -9999,
               top: coords?.y ?? -9999,
               zIndex: 9999,
-              animation: "fadeInTooltip 0.12s ease-out",
             }}
             className={`relative rounded-lg border border-stellar-border bg-stellar-card shadow-xl text-xs text-stellar-text-primary p-3 ${maxWidth} ${className}`}
           >

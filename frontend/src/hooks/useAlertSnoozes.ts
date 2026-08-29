@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useLocalStorageState } from "./useLocalStorageState";
 
-export type SnoozeDurationMinutes = 15 | 30 | 60 | 240;
+export type SnoozeDurationMinutes = 1 | 15 | 30 | 60 | 240;
 
 export interface SnoozedAlertEntry {
   key: string;

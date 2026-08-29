@@ -20,19 +20,22 @@ describe("ApiKeyService", () => {
     expect(created.apiKey.startsWith("bwk_live_")).toBe(true);
 
     const validated = await service.validateKey(created.apiKey, ["jobs:read"], "127.0.0.1");
-    expect(validated).not.toBeNull();
-    expect(validated?.name).toBe("Integrator");
+    expect(validated.ok).toBe(true);
+    expect(validated.ok && validated.result.name).toBe("Integrator");
   });
 
-  it("rejects validation when a required scope is missing", async () => {
+  it("distinguishes an insufficient scope from an invalid key", async () => {
     const created = await service.createKey({
       name: "Read only",
       scopes: ["jobs:read"],
       createdBy: "tester",
     });
 
-    const validated = await service.validateKey(created.apiKey, ["jobs:trigger"]);
-    expect(validated).toBeNull();
+    const wrongScope = await service.validateKey(created.apiKey, ["jobs:trigger"]);
+    expect(wrongScope).toEqual({ ok: false, reason: "insufficient_scope" });
+
+    const wrongKey = await service.validateKey("bwk_live_does-not-exist", ["jobs:read"]);
+    expect(wrongKey).toEqual({ ok: false, reason: "invalid_key" });
   });
 
   it("rotates and revokes keys", async () => {
@@ -49,6 +52,6 @@ describe("ApiKeyService", () => {
     expect(revoked.revokedAt).not.toBeNull();
 
     const validated = await service.validateKey(rotated.apiKey, ["admin:api-keys"]);
-    expect(validated).toBeNull();
+    expect(validated).toEqual({ ok: false, reason: "invalid_key" });
   });
 });

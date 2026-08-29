@@ -1,42 +1,152 @@
 # Load Testing Framework
 
-This directory contains the load testing framework for Bridge-Watch using k6.
+This directory contains the load testing framework for Bridge-Watch using k6, with comprehensive scenario coverage for critical API endpoints.
 
 ## Profiles
 
-- smoke: fast PR validation profile
-- ramp: gradual ramp-up scenario
-- spike: sudden traffic burst scenario
-- endurance: sustained traffic over time
+| Profile | VUs | Duration | Use Case |
+|---------|-----|----------|----------|
+| `smoke` | 1-5 | 30s | Fast PR validation |
+| `ramp` | 10-50 | 2m | Gradual ramp-up |
+| `spike` | 100+ | 1-2m | Traffic burst |
+| `endurance` | 20 | 30m | Long-running stability |
+
+## Scenarios
+
+### 1. Health Endpoints (`scenarios/api-load.js`)
+Tests core health and status endpoints:
+- `GET /api/v1/health` - Overall system health
+- `GET /health` - Simple health check
+- `GET /api/v1/circuit-health` - Circuit breaker status
+
+**Coverage:** Readiness and detailed health endpoints under load
+
+### 2. Batch Reconciliation (`scenarios/batch-reconciliation.js`)
+Comprehensive load testing for reconciliation operations - **Closes #870**
+
+#### Endpoints Tested
+- `GET /api/v1/reconciliation/runs` - List with pagination (limit, offset)
+- `GET /api/v1/reconciliation/runs/batch` - Batch details for multiple concurrent runs
+- `GET /api/v1/reconciliation/runs?stream=true` - Real-time streaming data
+
+#### Metrics Collected
+- `batch_reconciliation_latency` - p50, p95, p99 percentiles
+- `batch_reconciliation_failures` - Count of failed requests
+- `batch_reconciliation_runs_concurrent` - Number of concurrent operations tracked
+
+#### Performance Thresholds
+- **p95 latency:** < 5000ms
+- **p99 latency:** < 8000ms
+- **Failure rate:** < 50 errors total
+- All responses must be valid JSON with status 200
+
+#### Test Execution
+```bash
+# Smoke test
+k6 run --env PROFILE=smoke load-tests/scenarios/batch-reconciliation.js
+
+# Load test with custom URL
+k6 run --env PROFILE=load \
+  --env BASE_URL=http://localhost:3001 \
+  --env API_KEY=your-api-key \
+  load-tests/scenarios/batch-reconciliation.js
+```
+
+### 3. Soroban Batch Planner (`scenarios/soroban-batch-planner.js`)
+Throughput of the resource-budget-aware batch submission planner under ledger budget pressure - **Closes #1016**
+
+#### Endpoints Tested
+- `POST /api/v1/soroban/batch-planner/plan` - Plan, dry-run submit, and reconcile an oversized backlog (150 items/request by default) so the planner must pack multiple budget-respecting batches
+- `GET /api/v1/soroban/batch-planner/status` - Durable lifecycle ledger snapshot
+
+Requires the backend's `SOROBAN_RPC_URL` to point at a reachable Soroban RPC (the local sandbox from `docker-compose.sandbox.yml` is intended for this) since each item is simulated for a real resource estimate.
+
+#### Metrics Collected
+- `soroban_batch_plan_latency` - p50, p95, p99 percentiles across plan + status calls
+- `soroban_batch_plan_failures` - Count of failed requests
+- `soroban_batch_items_planned` / `soroban_batch_batches_per_request` - Packing throughput per request
+- `soroban_batch_rejection_rate` - Share of requests where at least one item exceeded a ceiling alone
+
+#### Performance Thresholds
+- **p95 latency:** < 5000ms
+- **Failures:** < 20 total
+- **Item rejection rate:** < 5%
+
+#### Test Execution
+```bash
+# Smoke test
+k6 run --env PROFILE=smoke load-tests/scenarios/soroban-batch-planner.js
+
+# Apply more ledger budget pressure with a larger backlog per request
+k6 run --env PROFILE=load --env BACKLOG_SIZE=500 \
+  --env BASE_URL=http://localhost:3001 \
+  load-tests/scenarios/soroban-batch-planner.js
+```
 
 ## Quick Start
 
-1. Start the backend service locally.
+1. Start the backend service:
+   ```bash
+   make dev
+   ```
+
 2. Run smoke test:
+   ```bash
+   k6 run load-tests/scenarios/api-load.js -e PROFILE=smoke -e BASE_URL=http://127.0.0.1:3001
+   ```
 
-```bash
-k6 run load-tests/scenarios/api-load.js -e PROFILE=smoke -e BASE_URL=http://127.0.0.1:3001
-```
+3. Export comprehensive report:
+   ```bash
+   k6 run load-tests/scenarios/batch-reconciliation.js \
+     -e PROFILE=smoke \
+     -e BASE_URL=http://127.0.0.1:3001 \
+     -e SUMMARY_JSON=load-tests/results/summary.json \
+     -e SUMMARY_TXT=load-tests/results/summary.txt
+   ```
 
-3. Export report:
-
-```bash
-k6 run load-tests/scenarios/api-load.js \
-  -e PROFILE=smoke \
-  -e BASE_URL=http://127.0.0.1:3001 \
-  -e SUMMARY_JSON=load-tests/results/summary.json \
-  -e SUMMARY_TXT=load-tests/results/summary.txt
-node load-tests/scripts/generate-report.mjs load-tests/results/summary.json load-tests/results/report.md
-```
+4. View results:
+   ```bash
+   cat load-tests/results/summary.txt
+   ```
 
 ## Scenario Coverage
 
-- Gradual ramp-up tests: profile ramp
-- Spike testing: profile spike
-- Endurance testing: profile endurance
-- Resource/dependency stress signal: readiness and detailed health endpoints under load
+- **API Health:** Fast validation of core endpoints
+- **Gradual ramp-up:** Profile `ramp` for smooth load increase
+- **Spike testing:** Profile `spike` for sudden traffic burst
+- **Endurance testing:** Profile `endurance` for long-running stability
+- **Batch Reconciliation:** Concurrent operations with realistic pagination patterns
 
 ## Regression Detection
 
-Baseline thresholds are defined in load-tests/config/baselines.js and enforced in k6 thresholds.
-A run fails automatically when thresholds are breached.
+Baseline thresholds are defined in `load-tests/config/baselines.js` and enforced in k6 thresholds.
+A run fails automatically when thresholds are breached, preventing performance regressions.
+
+### Baseline Configuration
+```javascript
+export const baselines = {
+  "batch_reconciliation_latency{quantile:0.95}": ["p(95) < 5000"],
+  "batch_reconciliation_latency{quantile:0.99}": ["p(99) < 8000"],
+  "batch_reconciliation_failures": ["count < 50"],
+};
+```
+
+## Environment Variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `PROFILE` | `smoke` | Test profile (smoke, ramp, spike, endurance) |
+| `BASE_URL` | `http://127.0.0.1:3001` | API base URL |
+| `API_KEY` | `test-key-123` | API authentication key |
+| `SUMMARY_JSON` | `load-tests/results/batch-reconciliation-summary.json` | JSON output |
+| `SUMMARY_TXT` | `load-tests/results/batch-reconciliation-summary.txt` | Text output |
+
+## CI/CD Integration
+
+Load tests run automatically on every push via `.github/workflows/load-tests.yml`:
+```yaml
+- name: Run batch reconciliation load test
+  run: make load-tests
+```
+
+Tests must pass before PR merge.

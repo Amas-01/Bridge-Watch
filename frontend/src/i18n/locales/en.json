@@ -79,14 +79,44 @@
   },
   "settings": {
     "title": "Settings",
+    "pageDescription": "Manage your application preferences, display options, and notification settings.",
     "language": "Language",
     "theme": "Theme",
     "notifications": "Notifications",
+    "notificationsTitle": "Notification settings",
+    "notificationsHelp": "Control when and how operational alerts appear in-app.",
     "preferences": "Preferences",
     "account": "Account",
     "lightMode": "Light Mode",
     "darkMode": "Dark Mode",
-    "autoDetect": "Auto Detect"
+    "autoDetect": "Auto Detect",
+    "changeLanguage": "Change language",
+    "languageDescription": "Choose your preferred display language. Your selection is saved in this browser.",
+    "displayTitle": "Display",
+    "displayHelp": "Display preferences are persisted per browser.",
+    "displaySavedNote": "Saved in this browser only.",
+    "compactNumbers": "Compact number format",
+    "compactNumbersDesc": "Prefer shorter numeric labels where the UI supports it.",
+    "reduceMotion": "Reduce motion",
+    "reduceMotionDesc": "Minimize animations for charts and loading states.",
+    "uiDensity": "UI Density",
+    "uiDensityDesc": "Adjust the spacing and size of dashboard elements.",
+    "densityCompact": "Compact",
+    "densityComfortable": "Comfortable",
+    "densitySpacious": "Spacious",
+    "dataRefresh": "Data refresh",
+    "dataRefreshHelp": "Faster refresh improves responsiveness at the cost of more API requests.",
+    "dataRefreshDesc": "Target interval for live dashboards. The app aligns polling with this preference where possible.",
+    "developerTools": "Developer tools",
+    "developerToolsDesc": "Trigger manual notifications to test the real-time alerting system.",
+    "testInfo": "Test Info",
+    "testSystem": "Test System",
+    "testAlert": "Test Alert",
+    "profileInfo": "Profile information",
+    "editProfileLocked": "Edit Profile (Locked)",
+    "preferenceSaved": "Preference saved.",
+    "densityUpdated": "Density preference updated.",
+    "refreshIntervalUpdated": "Refresh interval updated."
   },
   "export": {
     "title": "Export Data",
@@ -144,5 +174,8 @@
     "days_plural": "{{count}} days",
     "ago": "{{time}} ago",
     "justNow": "Just now"
+  },
+  "app": {
+    "loadingPage": "Loading page..."
   }
 }

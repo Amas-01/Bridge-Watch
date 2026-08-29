@@ -1,9 +1,50 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import { buildServer } from "../../src/index.js";
 import type { FastifyInstance } from "fastify";
 
+const exportServiceMocks = vi.hoisted(() => ({
+  requestExport: vi.fn(),
+  listExports: vi.fn(),
+  getExportStatus: vi.fn(),
+  generateDownloadUrl: vi.fn(),
+  deleteExport: vi.fn(),
+}));
+
+vi.mock("../../src/services/export.service.js", () => ({
+  ExportService: class {
+    requestExport = exportServiceMocks.requestExport;
+    listExports = exportServiceMocks.listExports;
+    getExportStatus = exportServiceMocks.getExportStatus;
+    generateDownloadUrl = exportServiceMocks.generateDownloadUrl;
+    deleteExport = exportServiceMocks.deleteExport;
+  },
+}));
+
 describe("Exports API", () => {
   let server: FastifyInstance;
+
+  beforeEach(() => {
+    Object.values(exportServiceMocks).forEach((mock) => mock.mockReset());
+    exportServiceMocks.requestExport.mockImplementation(async (userId, body: any) => {
+      if (!body || !body.format || !body.dataType) {
+        throw new Error("Missing required fields");
+      }
+      return { id: "export-123", status: "pending" };
+    });
+    exportServiceMocks.listExports.mockResolvedValue([{ id: "export-123", status: "pending" }]);
+    exportServiceMocks.getExportStatus.mockImplementation(async (id) => {
+      if (id === "non-existent-id") return null;
+      return { id, status: "completed" };
+    });
+    exportServiceMocks.generateDownloadUrl.mockImplementation(async (id) => {
+      if (id === "non-existent-id") throw new Error("Export not found");
+      return "http://download.url";
+    });
+    exportServiceMocks.deleteExport.mockImplementation(async (id) => {
+      if (id === "non-existent-id") throw new Error("Export not found");
+      return true;
+    });
+  });
 
   beforeAll(async () => {
     server = await buildServer();

@@ -1,4 +1,5 @@
 import type { SearchResult, SearchCategory } from "../../hooks/useSearch";
+import type { AssetSearchFacets } from "../../services/api";
 
 // ─── Highlight helper ─────────────────────────────────────────────────────────
 
@@ -54,6 +55,40 @@ const CATEGORY_META: Record<
 };
 
 const CATEGORY_ORDER: SearchCategory[] = ["assets", "bridges", "incidents", "alerts", "pages"];
+
+// ─── AssetFacetCounts ─────────────────────────────────────────────────────────
+
+const FACET_LABELS: Record<keyof AssetSearchFacets, string> = {
+  bridgeProvider: "Bridge",
+  sourceChain: "Chain",
+};
+
+function AssetFacetCounts({ facets }: { facets: AssetSearchFacets }) {
+  const groups: Array<{ key: keyof AssetSearchFacets; label: string }> = [
+    { key: "bridgeProvider", label: FACET_LABELS.bridgeProvider },
+    { key: "sourceChain", label: FACET_LABELS.sourceChain },
+  ].filter((group) => facets[group.key].length > 0);
+
+  if (groups.length === 0) return null;
+
+  return (
+    <div className="px-4 pb-2 flex flex-wrap gap-x-4 gap-y-1">
+      {groups.map((group) => (
+        <div key={group.key} className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-stellar-text-secondary">{group.label}:</span>
+          {facets[group.key].map((facet) => (
+            <span
+              key={facet.value}
+              className="inline-flex items-center rounded-full bg-stellar-border px-2 py-0.5 text-xs text-stellar-text-secondary"
+            >
+              {facet.value} ({facet.count})
+            </span>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 // ─── ResultItem ───────────────────────────────────────────────────────────────
 
@@ -130,6 +165,8 @@ interface SearchResultsProps {
   /** Flat list of all displayed items — caller passes this so active index is
    *  computed relative to the same ordered array used for keyboard nav. */
   flatItems: SearchResult[];
+  /** Facet counts for the "assets" category, shown under its group header. */
+  assetFacets?: AssetSearchFacets;
 }
 
 export function SearchResults({
@@ -139,6 +176,7 @@ export function SearchResults({
   onSelect,
   onHover,
   flatItems,
+  assetFacets,
 }: SearchResultsProps) {
   if (results.length === 0) return null;
 
@@ -161,6 +199,7 @@ export function SearchResults({
             <p className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-stellar-text-secondary">
               {label}
             </p>
+            {cat === "assets" && assetFacets && <AssetFacetCounts facets={assetFacets} />}
             {items.map((result) => {
               const flatIdx = flatItems.indexOf(result);
               return (

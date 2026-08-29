@@ -1,15 +1,11 @@
 import crypto from "crypto";
 import { getDatabase } from "../database/connection.js";
+import { config } from "../config/index.js";
 import { logger } from "../utils/logger.js";
+import { ingestionWatermarkCoordinator } from "./ingestionWatermarkCoordinator.service.js";
 
-/**
- * Types of ingestion jobs.
- */
 export type IngestionJobType = "alert" | "event" | "metric";
 
-/**
- * Priority levels for the queue.
- */
 export enum JobPriority {
   LOW = 1,
   MEDIUM = 2,
@@ -17,16 +13,10 @@ export enum JobPriority {
   CRITICAL = 4,
 }
 
-/**
- * Payload shape for a job – free form JSON.
- */
 export interface IngestionJobPayload {
   [key: string]: unknown;
 }
 
-/**
- * Represents a job stored in the database.
- */
 export interface IngestionJob {
   id: string;
   type: IngestionJobType;
@@ -40,9 +30,6 @@ export interface IngestionJob {
   status: "pending" | "processing" | "failed" | "completed";
 }
 
-/**
- * Simple metrics exposed by the manager.
- */
 export interface IngestionMetrics {
   pending: number;
   processing: number;
@@ -51,23 +38,35 @@ export interface IngestionMetrics {
   deadLetter: number;
 }
 
-/**
- * Ingestion Queue Manager – singleton service that handles job lifecycle.
- *
- * Features:
- *  - Priority queue (higher numeric value = higher priority).
- *  - Configurable max attempts and exponential back‑off.
- *  - Back‑pressure via a concurrency limit.
- *  - Dead‑letter table for jobs that exceed max attempts.
- *  - Basic metrics for monitoring.
- *  - Manual re‑queue of dead‑letter jobs.
- */
+export interface UnconfirmedEvent {
+  id: string;
+  sourceChain: string;
+  eventType: string;
+  payload: Record<string, unknown>;
+  txHash: string;
+  ledgerSequence: number;
+  observedLedger: number;
+  confirmations: number;
+  requiredConfirmations: number;
+  isConfirmed: boolean;
+  isRolledBack: boolean;
+}
+
+const MIN_CONFIRMATIONS: Record<string, number> = {
+  stellar: config.INGESTION_MIN_CONFIRMATIONS_STELLAR,
+  ethereum: config.INGESTION_MIN_CONFIRMATIONS_ETHEREUM,
+  polygon: config.INGESTION_MIN_CONFIRMATIONS_POLYGON,
+  base: config.INGESTION_MIN_CONFIRMATIONS_BASE,
+};
+
+function getRequiredConfirmations(chain: string): number {
+  return MIN_CONFIRMATIONS[chain] ?? 3;
+}
+
 export class IngestionQueueManager {
   private static instance: IngestionQueueManager;
 
-  // Concurrency limit – how many jobs may be processed in parallel.
   private readonly concurrencyLimit: number;
-  // Current number of jobs being processed.
   private processingCount = 0;
 
   private constructor(concurrencyLimit: number = 5) {
@@ -81,10 +80,6 @@ export class IngestionQueueManager {
     return IngestionQueueManager.instance;
   }
 
-  /**
-   * Enqueue a new ingestion job.
-   * The job is stored in the `ingestion_jobs` table.
-   */
   public async enqueueJob(params: {
     type: IngestionJobType;
     priority?: JobPriority;
@@ -122,18 +117,12 @@ export class IngestionQueueManager {
     return job;
   }
 
-  /**
-   * Process pending jobs respecting priority and concurrency limits.
-   * The caller should invoke this method periodically (e.g., a setInterval).
-   */
   public async processPendingJobs(): Promise<void> {
     if (this.processingCount >= this.concurrencyLimit) {
-      // Back‑pressure: do not fetch new jobs until a slot is free.
       return;
     }
 
     const db = getDatabase();
-    // Fetch a batch of pending jobs ordered by priority desc and created_at.
     const pendingJobs = await db("ingestion_jobs")
       .where({ status: "pending" })
       .orWhere(function () {
@@ -154,86 +143,199 @@ export class IngestionQueueManager {
     }
   }
 
-  /** Internal helper to handle a single job record. */
   private async handleJob(row: any): Promise<void> {
     const db = getDatabase();
     const jobId = row.id;
     try {
-      // Mark as processing
       await db("ingestion_jobs")
         .where({ id: jobId })
         .update({ status: "processing", updated_at: new Date() });
 
-      // Simulate processing – real implementation would call a handler based on `type`.
       await this.processJobLogic(row);
 
-      // Mark completed
       await db("ingestion_jobs")
         .where({ id: jobId })
         .update({ status: "completed", updated_at: new Date() });
       logger.info({ jobId }, "Ingestion job completed");
     } catch (err) {
-      // Increment attempt counter and decide next step
       const attempts = (row.attempts ?? 0) + 1;
       const maxAttempts = row.max_attempts ?? 3;
       const nextRetry = attempts < maxAttempts ? this.calculateBackoff(attempts) : null;
-      const newStatus = attempts >= maxAttempts ? "failed" : "failed"; // keep "failed" until moved to dead‑letter.
 
       await db("ingestion_jobs")
         .where({ id: jobId })
         .update({
           attempts,
           next_retry_at: nextRetry,
-          status: newStatus,
+          status: "failed",
           updated_at: new Date(),
         });
 
       logger.error({ jobId, err }, "Ingestion job processing failed");
 
       if (attempts >= maxAttempts) {
-        // Move to dead‑letter table
         await this.moveToDeadLetter(row);
       }
     }
   }
 
-  /** Placeholder for actual job handling logic – to be replaced with real implementation. */
   private async processJobLogic(jobRow: any): Promise<void> {
-    // For demonstration we simply resolve immediately.
-    // Real code would deserialize payload and call appropriate handler.
     return;
   }
 
-  /** Calculate exponential back‑off delay based on attempt count. */
-  private calculateBackoff(attempt: number): Date {
-    const baseDelayMs = 5_000; // 5 seconds
-    const delay = baseDelayMs * Math.pow(2, attempt - 1);
-    const next = new Date();
-    next.setTime(next.getTime() + delay);
-    return next;
-  }
-
-  /** Move a job record to the dead‑letter table. */
-  private async moveToDeadLetter(jobRow: any): Promise<void> {
+  public async bufferUnconfirmedEvent(params: {
+    sourceChain: string;
+    eventType: string;
+    payload: Record<string, unknown>;
+    txHash: string;
+    ledgerSequence: number;
+    currentLedger: number;
+  }): Promise<UnconfirmedEvent> {
     const db = getDatabase();
-    // Insert into dead_letter_jobs table preserving original fields.
-    await db("dead_letter_jobs").insert({
-      id: jobRow.id,
-      type: jobRow.type,
-      priority: jobRow.priority,
-      payload: jobRow.payload,
-      attempts: jobRow.attempts,
-      max_attempts: jobRow.max_attempts,
-      error_message: jobRow.last_error ?? null,
-      created_at: jobRow.created_at,
-      failed_at: new Date(),
+    const required = getRequiredConfirmations(params.sourceChain);
+    const confirmations = Math.max(0, params.currentLedger - params.ledgerSequence);
+
+    const [row] = await db("unconfirmed_events")
+      .insert({
+        source_chain: params.sourceChain,
+        event_type: params.eventType,
+        payload: JSON.stringify(params.payload),
+        tx_hash: params.txHash,
+        ledger_sequence: params.ledgerSequence,
+        observed_ledger: params.currentLedger,
+        confirmations: confirmations,
+        required_confirmations: required,
+        is_confirmed: confirmations >= required,
+        confirmed_at: confirmations >= required ? new Date() : null,
+      })
+      .onConflict(["tx_hash", "source_chain"])
+      .merge({
+        confirmations: confirmations,
+        is_confirmed: confirmations >= required,
+        confirmed_at: confirmations >= required ? new Date() : null,
+        updated_at: new Date(),
+      })
+      .returning("*");
+
+    // Publish durable source progress with finality separated from observation.
+    // Downstream consumers can therefore wait for the confirmation boundary,
+    // rather than treating a fast provider's wall-clock update as complete.
+    await ingestionWatermarkCoordinator.publish({
+      source: params.sourceChain,
+      coveredThrough: params.currentLedger,
+      finalizedThrough: Math.max(0, params.currentLedger - required),
+      gaps: [],
     });
-    // Remove from ingestion_jobs
-    await db("ingestion_jobs").where({ id: jobRow.id }).delete();
-    logger.warn({ jobId: jobRow.id }, "Job moved to dead‑letter queue");
+
+    if (confirmations >= required) {
+      logger.info(
+        { txHash: params.txHash, sourceChain: params.sourceChain, confirmations, required },
+        "Event confirmed and ready for processing"
+      );
+    } else {
+      logger.debug(
+        { txHash: params.txHash, sourceChain: params.sourceChain, confirmations, required },
+        "Event buffered awaiting confirmations"
+      );
+    }
+
+    return this.mapUnconfirmedEvent(row);
   }
 
-  /** Retrieve simple metrics for monitoring. */
+  public async checkConfirmationsAndProcess(): Promise<void> {
+    const db = getDatabase();
+    const now = new Date();
+    const cutoff = new Date(now.getTime() - config.INGESTION_UNCONFIRMED_EVENT_TTL_MINUTES * 60 * 1000);
+
+    const unconfirmed = await db("unconfirmed_events")
+      .where({ is_confirmed: false, is_rolled_back: false })
+      .where("observed_at", ">", cutoff);
+
+    for (const event of unconfirmed) {
+      const currentLedger = await this.getCurrentLedger(event.source_chain as string);
+      if (currentLedger === null) continue;
+
+      const eventLedger = Number(event.ledger_sequence);
+      const confirmations = currentLedger - eventLedger;
+
+      if (confirmations >= Number(event.required_confirmations)) {
+        await db("unconfirmed_events")
+          .where({ id: event.id })
+          .update({
+            confirmations,
+            is_confirmed: true,
+            confirmed_at: now,
+            updated_at: now,
+          });
+        logger.info(
+          { eventId: event.id, confirmations, required: event.required_confirmations },
+          "Event reached required confirmations"
+        );
+      } else {
+        await db("unconfirmed_events")
+          .where({ id: event.id })
+          .update({ confirmations: Math.max(0, confirmations), updated_at: now });
+      }
+    }
+  }
+
+  public async detectReorgAndRollback(): Promise<string[]> {
+    const db = getDatabase();
+    const now = new Date();
+    const rollbackCutoff = new Date(now.getTime() - config.INGESTION_UNCONFIRMED_EVENT_TTL_MINUTES * 60 * 1000);
+    const chainGroups = await db("unconfirmed_events")
+      .where({ is_rolled_back: false })
+      .where("observed_at", ">", rollbackCutoff)
+      .select("source_chain")
+      .distinct();
+
+    const rolledBackEventIds: string[] = [];
+
+    for (const group of chainGroups) {
+      const chain = group.source_chain as string;
+      const currentLedger = await this.getCurrentLedger(chain);
+      if (currentLedger === null) continue;
+
+      const confirmedEvents = await db("unconfirmed_events")
+        .where({ source_chain: chain, is_confirmed: true, is_rolled_back: false })
+        .where("ledger_sequence", ">", currentLedger - config.INGESTION_REORG_BUFFER_DEPTH)
+        .select("ledger_sequence", "tx_hash", "id")
+        .orderBy("ledger_sequence", "desc")
+        .limit(50);
+
+      for (const event of confirmedEvents) {
+        const txStillValid = await this.checkTransactionOnChain(chain, event.tx_hash as string, Number(event.ledger_sequence));
+        if (!txStillValid) {
+          await db("unconfirmed_events")
+            .where({ id: event.id })
+            .update({
+              is_rolled_back: true,
+              is_confirmed: false,
+              rolled_back_at: now,
+              updated_at: now,
+            });
+
+          await db("ingestion_jobs")
+            .where({ status: "pending" })
+            .whereRaw("payload::jsonb @> ?", JSON.stringify({ txHash: event.tx_hash }))
+            .delete();
+
+          logger.warn(
+            { eventId: event.id, txHash: event.tx_hash, chain },
+            "Event rolled back due to re-org detection"
+          );
+          rolledBackEventIds.push(event.id as string);
+        }
+      }
+    }
+
+    if (rolledBackEventIds.length > 0) {
+      logger.warn({ count: rolledBackEventIds.length }, "Re-org detected and rollback applied");
+    }
+
+    return rolledBackEventIds;
+  }
+
   public async getMetrics(): Promise<IngestionMetrics> {
     const db = getDatabase();
     const [{ pending }, { processing }, { completed }, { failed }, { deadLetter }] = await Promise.all([
@@ -252,14 +354,33 @@ export class IngestionQueueManager {
     };
   }
 
-  /** Manually re‑queue a dead‑letter job back into the ingestion queue. */
+  public async getUnconfirmedEventMetrics(): Promise<{
+    total: number;
+    pendingConfirmation: number;
+    confirmed: number;
+    rolledBack: number;
+  }> {
+    const db = getDatabase();
+    const [total, pendingConfirmation, confirmed, rolledBack] = await Promise.all([
+      db("unconfirmed_events").count({ count: "*" }).first(),
+      db("unconfirmed_events").where({ is_confirmed: false, is_rolled_back: false }).count({ count: "*" }).first(),
+      db("unconfirmed_events").where({ is_confirmed: true }).count({ count: "*" }).first(),
+      db("unconfirmed_events").where({ is_rolled_back: true }).count({ count: "*" }).first(),
+    ]);
+    return {
+      total: Number(total?.count ?? 0),
+      pendingConfirmation: Number(pendingConfirmation?.count ?? 0),
+      confirmed: Number(confirmed?.count ?? 0),
+      rolledBack: Number(rolledBack?.count ?? 0),
+    };
+  }
+
   public async requeueDeadLetter(jobId: string): Promise<void> {
     const db = getDatabase();
     const deadJob = await db("dead_letter_jobs").where({ id: jobId }).first();
     if (!deadJob) {
-      throw new Error(`Dead‑letter job not found: ${jobId}`);
+      throw new Error(`Dead-letter job not found: ${jobId}`);
     }
-    // Insert back into ingestion_jobs with attempts reset.
     const now = new Date();
     await db("ingestion_jobs").insert({
       id: deadJob.id,
@@ -273,9 +394,78 @@ export class IngestionQueueManager {
       next_retry_at: null,
       status: "pending",
     });
-    // Remove from dead_letter_jobs
     await db("dead_letter_jobs").where({ id: jobId }).delete();
-    logger.info({ jobId }, "Dead‑letter job re‑queued");
+    logger.info({ jobId }, "Dead-letter job re-queued");
+  }
+
+  private calculateBackoff(attempt: number): Date {
+    const baseDelayMs = 5_000;
+    const delay = baseDelayMs * Math.pow(2, attempt - 1);
+    const next = new Date();
+    next.setTime(next.getTime() + delay);
+    return next;
+  }
+
+  private async moveToDeadLetter(jobRow: any): Promise<void> {
+    const db = getDatabase();
+    await db("dead_letter_jobs").insert({
+      id: jobRow.id,
+      type: jobRow.type,
+      priority: jobRow.priority,
+      payload: jobRow.payload,
+      attempts: jobRow.attempts,
+      max_attempts: jobRow.max_attempts,
+      error_message: jobRow.last_error ?? null,
+      created_at: jobRow.created_at,
+      failed_at: new Date(),
+    });
+    await db("ingestion_jobs").where({ id: jobRow.id }).delete();
+    logger.warn({ jobId: jobRow.id }, "Job moved to dead-letter queue");
+  }
+
+  private mapUnconfirmedEvent(row: any): UnconfirmedEvent {
+    return {
+      id: row.id,
+      sourceChain: row.source_chain,
+      eventType: row.event_type,
+      payload: typeof row.payload === "string" ? JSON.parse(row.payload) : row.payload,
+      txHash: row.tx_hash,
+      ledgerSequence: Number(row.ledger_sequence),
+      observedLedger: Number(row.observed_ledger),
+      confirmations: Number(row.confirmations),
+      requiredConfirmations: Number(row.required_confirmations),
+      isConfirmed: row.is_confirmed,
+      isRolledBack: row.is_rolled_back,
+    };
+  }
+
+  private async getCurrentLedger(sourceChain: string): Promise<number | null> {
+    try {
+      const db = getDatabase();
+      if (sourceChain === "stellar") {
+        const result = await db("unconfirmed_events")
+          .where({ source_chain: sourceChain })
+          .max("observed_ledger as max_ledger")
+          .first();
+        const ledger = result?.max_ledger ? Number(result.max_ledger) : null;
+        return ledger !== null ? ledger + 1 : null;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async checkTransactionOnChain(chain: string, txHash: string, ledgerSequence: number): Promise<boolean> {
+    try {
+      const db = getDatabase();
+      const existing = await db("unconfirmed_events")
+        .where({ tx_hash: txHash, source_chain: chain, ledger_sequence: ledgerSequence, is_rolled_back: false })
+        .first();
+      return !!existing;
+    } catch {
+      return true;
+    }
   }
 }
 

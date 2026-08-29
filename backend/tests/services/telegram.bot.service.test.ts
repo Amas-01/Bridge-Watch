@@ -131,6 +131,45 @@ describe("TelegramBotService", () => {
     }
   });
 
+  describe("Command routing", () => {
+    const commandHandler = (service: TelegramBotService, name: string) => {
+      const bot = (service as any).bot;
+      const registration = bot.command.mock.calls.find(
+        ([registeredName]: [string]) => registeredName === name,
+      );
+      expect(registration, `/${name} should be registered`).toBeDefined();
+      return registration![1];
+    };
+
+    it("routes /help and returns the command list", async () => {
+      const replyWithMarkdown = vi.fn();
+      await commandHandler(telegramService, "help")({ replyWithMarkdown });
+      expect(replyWithMarkdown).toHaveBeenCalledWith(
+        expect.stringContaining("/status"),
+      );
+    });
+
+    it("routes /status to the system status response", async () => {
+      vi.spyOn(telegramService as any, "getSystemStatus").mockResolvedValue(
+        "Bridge Watch is healthy",
+      );
+      const replyWithMarkdown = vi.fn();
+      await commandHandler(telegramService, "status")({ replyWithMarkdown });
+      expect(replyWithMarkdown).toHaveBeenCalledWith("Bridge Watch is healthy");
+    });
+
+    it("rejects /broadcast from an unauthorized chat", async () => {
+      vi.spyOn(telegramService as any, "isAdminChat").mockResolvedValue(false);
+      const reply = vi.fn();
+      await commandHandler(telegramService, "broadcast")({
+        chat: { id: 999 },
+        message: { text: "/broadcast maintenance" },
+        reply,
+      });
+      expect(reply).toHaveBeenCalledWith(expect.stringContaining("Unauthorized"));
+    });
+  });
+
   describe("Message Formatting", () => {
     it("should escape special Markdown V2 characters", () => {
       const input = "Test *bold* and _italic_ [link](url)";

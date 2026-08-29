@@ -10,6 +10,7 @@
  * All prices are quoted in USD.
  */
 
+import Decimal from "decimal.js";
 import { redis } from "../../utils/redis.js";
 import { logger } from "../../utils/logger.js";
 import { withRetry } from "../../utils/retry.js";
@@ -235,21 +236,24 @@ export class DexSource {
             300
           );
 
-          const bid = parseFloat(book.bids?.[0]?.price ?? "0");
-          const ask = parseFloat(book.asks?.[0]?.price ?? "0");
+          const bidStr = book.bids?.[0]?.price ?? "0";
+          const askStr = book.asks?.[0]?.price ?? "0";
+          const bid = new Decimal(bidStr);
+          const ask = new Decimal(askStr);
 
-          if (!bid && !ask) return;
+          if (bid.isZero() && ask.isZero()) return;
 
-          // Mid-price in XLM/asset; we approximate USD via a known XLM price
-          // For production: fetch XLM/USD separately. Here we use a placeholder.
-          const xlmUsd = await this.fetchXlmUsd();
-          const midXlm = bid && ask ? (bid + ask) / 2 : bid || ask;
-          const priceUsd = midXlm > 0 ? (1 / midXlm) * xlmUsd : 0;
+          // Mid-price in XLM/asset; convert to USD using live XLM/USD rate.
+          const xlmUsd = new Decimal(await this.fetchXlmUsd());
+          const midXlm = bid.isPositive() && ask.isPositive()
+            ? bid.plus(ask).div(2)
+            : bid.isPositive() ? bid : ask;
+          const priceUsd = midXlm.isPositive() ? xlmUsd.div(midXlm) : new Decimal(0);
 
-          if (priceUsd > 0) {
+          if (priceUsd.isPositive()) {
             results.push({
               symbol,
-              price: priceUsd,
+              price: priceUsd.toNumber(),
               dex: "Stellar DEX",
               source: SOURCE_NAME,
             });
@@ -263,34 +267,66 @@ export class DexSource {
     return results;
   }
 
-  /** Fetch XLM/USD price from Stellar DEX (XLM vs USDC) */
+  /** Fetch XLM/USD price — tries Stellar DEX order book first, then Binance, then a stale cache. */
   private async fetchXlmUsd(): Promise<number> {
     const cacheKey = "dex:xlm-usd";
     try {
       const cached = await redis.get(cacheKey);
       if (cached) return parseFloat(cached);
     } catch {
+      // ignore cache errors
+    }
+
+    // Primary: Stellar DEX XLM/USDC order book
+    const usdc = STELLAR_ASSETS["USDC"];
+    const horizonUrl = `${STELLAR_HORIZON}/order_book?selling_asset_type=native&buying_asset_type=credit_alphanum4&buying_asset_code=${usdc.code}&buying_asset_issuer=${usdc.issuer}&limit=1`;
+
+    try {
+      const book = await fetchJson<{ bids: { price: string }[]; asks: { price: string }[] }>(horizonUrl);
+      const bidStr = book.bids?.[0]?.price ?? "0";
+      const askStr = book.asks?.[0]?.price ?? "0";
+      const bid = new Decimal(bidStr);
+      const ask = new Decimal(askStr);
+      const mid = bid.isPositive() && ask.isPositive()
+        ? bid.plus(ask).div(2)
+        : bid.isPositive() ? bid : ask;
+      if (mid.isPositive()) {
+        const xlmUsd = new Decimal(1).div(mid);
+        await Promise.all([
+          redis.set(cacheKey, xlmUsd.toString(), "EX", 30).catch(() => undefined),
+          redis.set(`${cacheKey}:stale`, xlmUsd.toString(), "EX", 3600).catch(() => undefined),
+        ]);
+        return xlmUsd.toNumber();
+      }
+    } catch {
+      logger.warn("Stellar DEX XLM/USD fetch failed, falling back to Binance");
+    }
+
+    // Secondary: Binance public ticker (no API key required)
+    try {
+      const binanceUrl = "https://api.binance.com/api/v3/ticker/price?symbol=XLMUSDT";
+      const ticker = await fetchJson<{ symbol: string; price: string }>(binanceUrl);
+      const price = parseFloat(ticker.price);
+      if (price > 0) {
+        await Promise.all([
+          redis.set(cacheKey, String(price), "EX", 30).catch(() => undefined),
+          redis.set(`${cacheKey}:stale`, String(price), "EX", 3600).catch(() => undefined),
+        ]);
+        return price;
+      }
+    } catch {
+      logger.warn("Binance XLM/USD fetch failed, using last known or emergency fallback");
+    }
+
+    // Last resort: stale cache without TTL check, then hardcoded fallback
+    try {
+      const stale = await redis.get(`${cacheKey}:stale`);
+      if (stale) return parseFloat(stale);
+    } catch {
       // ignore
     }
 
-    const usdc = STELLAR_ASSETS["USDC"];
-    const url = `${STELLAR_HORIZON}/order_book?selling_asset_type=native&buying_asset_type=credit_alphanum4&buying_asset_code=${usdc.code}&buying_asset_issuer=${usdc.issuer}&limit=1`;
-
-    try {
-      const book = await fetchJson<{ bids: { price: string }[]; asks: { price: string }[] }>(url);
-      const bid = parseFloat(book.bids?.[0]?.price ?? "0");
-      const ask = parseFloat(book.asks?.[0]?.price ?? "0");
-      const mid = bid && ask ? (bid + ask) / 2 : bid || ask;
-      if (mid > 0) {
-        const xlmUsd = 1 / mid;
-        await redis.set(cacheKey, String(xlmUsd), "EX", 30).catch(() => undefined);
-        return xlmUsd;
-      }
-    } catch {
-      // fallback
-    }
-
-    return 0.12; // emergency fallback
+    return 0.12; // emergency fallback — update if XLM price drifts significantly
   }
 
   // ---------------------------------------------------------------------------

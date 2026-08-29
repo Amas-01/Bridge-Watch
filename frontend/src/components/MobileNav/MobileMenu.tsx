@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState, type TouchEvent } from "react";
 import { Link } from "react-router-dom";
 import {
   isNavItemActive,
-  navGroups,
   type NavGroup,
 } from "./navigation";
+import { useTranslatedNavGroups } from "../../hooks/useTranslatedNav";
 
 interface MobileMenuProps {
   open: boolean;
@@ -20,6 +20,7 @@ export default function MobileMenu({
   pathname,
   onClose,
 }: MobileMenuProps) {
+  const navGroups = useTranslatedNavGroups();
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(
     () =>
       navGroups.reduce<Record<string, boolean>>((accumulator, group) => {

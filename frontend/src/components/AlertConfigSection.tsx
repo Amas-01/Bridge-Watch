@@ -1,13 +1,6 @@
 import AlertSnoozeControls from "./alerts/AlertSnoozeControls";
 import { useAlertSnoozes } from "../hooks/useAlertSnoozes";
-
-interface Alert {
-  id: string;
-  type: string;
-  severity: "info" | "warning" | "critical";
-  message: string;
-  createdAt: string;
-}
+import type { Alert } from "../types";
 
 interface AlertConfigSectionProps {
   alerts: Alert[] | null | undefined;

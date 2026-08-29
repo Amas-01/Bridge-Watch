@@ -1,0 +1,40 @@
+version: "3.8"
+
+# Local Soroban Sandbox Environment for Contract Development
+# Usage:  docker compose -f docker-compose.sandbox.yml up -d
+# Or:     npm run sandbox:start
+
+networks:
+  bridge-watch-sandbox:
+    driver: bridge
+
+services:
+  # ---------------------------------------------------------------------------
+  # Stellar Quickstart — Local Soroban Network
+  # ---------------------------------------------------------------------------
+  soroban-sandbox:
+    image: stellar/quickstart:soroban-dev
+    container_name: bridge-watch-soroban-sandbox
+    restart: unless-stopped
+    command: >
+      --standalone
+      --enable-soroban-rpc
+    ports:
+      # Bind to localhost only for security
+      - "127.0.0.1:8000:8000"
+    environment:
+      - NETWORK=standalone
+      - ENABLE_SOROBAN_RPC=true
+    volumes:
+      - soroban_sandbox_data:/opt/stellar
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - bridge-watch-sandbox
+
+volumes:
+  soroban_sandbox_data:

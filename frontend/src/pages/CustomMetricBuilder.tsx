@@ -98,6 +98,9 @@ export default function CustomMetricBuilder() {
               className="mt-1 h-48 w-full rounded-md border border-stellar-border bg-stellar-dark px-3 py-2 font-mono text-sm text-white"
               value={formula}
               onChange={(e) => setFormula(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.stopPropagation();
+              }}
               spellCheck={false}
             />
           </div>

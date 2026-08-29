@@ -440,37 +440,96 @@ export class LiquidityFragmentationService {
       "30d": "30 days",
     };
 
-    const historicalData = await knex.raw(
-      `
-      WITH liquidity_buckets AS (
+    let historicalData: any;
+
+    if (period === "7d" || period === "30d") {
+      try {
+        if (period === "30d") {
+          historicalData = await knex.raw(
+            `
+            SELECT
+              bucket as timestamp,
+              total_tvl as total_liquidity,
+              dex_count,
+              ARRAY[avg_tvl_per_dex] as liquidities
+            FROM liquidity_daily
+            WHERE symbol = ?
+              AND bucket >= NOW() - INTERVAL '30 days'
+            ORDER BY bucket ASC
+          `,
+            [symbol]
+          );
+        } else {
+          historicalData = await knex.raw(
+            `
+            WITH liquidity_buckets AS (
+              SELECT
+                bucket,
+                dex,
+                AVG(avg_tvl) as avg_liquidity
+              FROM liquidity_hourly
+              WHERE symbol = ?
+                AND bucket >= NOW() - INTERVAL '7 days'
+              GROUP BY bucket, dex
+            ),
+            bucket_totals AS (
+              SELECT
+                bucket,
+                SUM(avg_liquidity) as total_liquidity,
+                COUNT(DISTINCT dex) as dex_count,
+                ARRAY_AGG(avg_liquidity ORDER BY avg_liquidity DESC) as liquidities
+              FROM liquidity_buckets
+              GROUP BY bucket
+            )
+            SELECT
+              bucket as timestamp,
+              total_liquidity,
+              dex_count,
+              liquidities
+            FROM bucket_totals
+            ORDER BY bucket ASC
+          `,
+            [symbol]
+          );
+        }
+      } catch {
+        // Fallback to raw hypertable query
+      }
+    }
+
+    if (!historicalData || !historicalData.rows || historicalData.rows.length === 0) {
+      historicalData = await knex.raw(
+        `
+        WITH liquidity_buckets AS (
+          SELECT
+            time_bucket(?, time) as bucket,
+            dex,
+            AVG(tvl_usd::numeric) as avg_liquidity
+          FROM liquidity_snapshots
+          WHERE symbol = ?
+            AND time >= NOW() - INTERVAL ?
+          GROUP BY bucket, dex
+        ),
+        bucket_totals AS (
+          SELECT
+            bucket,
+            SUM(avg_liquidity) as total_liquidity,
+            COUNT(DISTINCT dex) as dex_count,
+            ARRAY_AGG(avg_liquidity ORDER BY avg_liquidity DESC) as liquidities
+          FROM liquidity_buckets
+          GROUP BY bucket
+        )
         SELECT
-          time_bucket(?, time) as bucket,
-          dex,
-          AVG(tvl_usd::numeric) as avg_liquidity
-        FROM liquidity_snapshots
-        WHERE symbol = ?
-          AND time >= NOW() - INTERVAL ?
-        GROUP BY bucket, dex
-      ),
-      bucket_totals AS (
-        SELECT
-          bucket,
-          SUM(avg_liquidity) as total_liquidity,
-          COUNT(DISTINCT dex) as dex_count,
-          ARRAY_AGG(avg_liquidity ORDER BY avg_liquidity DESC) as liquidities
-        FROM liquidity_buckets
-        GROUP BY bucket
-      )
-      SELECT
-        bucket as timestamp,
-        total_liquidity,
-        dex_count,
-        liquidities
-      FROM bucket_totals
-      ORDER BY bucket ASC
-    `,
-      [intervalMap[period], symbol, durationMap[period]]
-    );
+          bucket as timestamp,
+          total_liquidity,
+          dex_count,
+          liquidities
+        FROM bucket_totals
+        ORDER BY bucket ASC
+      `,
+        [intervalMap[period], symbol, durationMap[period]]
+      );
+    }
 
     if (!historicalData.rows || historicalData.rows.length === 0) {
       return null;

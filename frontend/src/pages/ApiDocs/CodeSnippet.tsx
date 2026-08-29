@@ -16,7 +16,7 @@ export default function CodeSnippet({ code, lang }: Props) {
   }
 
   return (
-    <div className="relative rounded-md bg-[#0d1117] border border-stellar-border overflow-hidden">
+    <div className="relative rounded-md bg-neutral-950 border border-stellar-border overflow-hidden">
       <div className="flex items-center justify-between px-4 py-2 border-b border-stellar-border">
         <span className="text-xs text-stellar-text-secondary font-mono">{lang}</span>
         <button

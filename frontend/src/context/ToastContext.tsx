@@ -3,6 +3,7 @@ import {
   useId,
   useMemo,
   useState,
+  useRef,
   type ReactNode,
 } from "react";
 import { ToastContext, ToastVariant, ToastItem } from "./ToastContextValue";
@@ -60,8 +61,13 @@ function ToastViewport({
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const titleId = useId();
+  const timersRef = useRef<Record<string, number>>({});
 
   const remove = useCallback((id: string) => {
+    if (timersRef.current[id]) {
+      window.clearTimeout(timersRef.current[id]);
+      delete timersRef.current[id];
+    }
     setToasts((prev) => prev.filter((x) => x.id !== id));
   }, []);
 
@@ -72,7 +78,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           ? crypto.randomUUID()
           : `toast-${Date.now()}-${Math.random()}`;
       setToasts((prev) => [...prev, { id, message, variant }]);
-      window.setTimeout(() => remove(id), 6000);
+      timersRef.current[id] = window.setTimeout(() => remove(id), 6000);
     },
     [remove]
   );

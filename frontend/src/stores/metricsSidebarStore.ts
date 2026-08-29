@@ -14,11 +14,13 @@ interface MetricsSidebarState {
   pinned: PinnedMetric[];
   isOpen: boolean;
   isCollapsed: boolean;
+  collapsedIds: string[];
   pinMetric: (metric: Omit<PinnedMetric, "order">) => void;
   unpinMetric: (id: string) => void;
   reorderMetrics: (orderedIds: string[]) => void;
   toggleOpen: () => void;
   toggleCollapse: () => void;
+  toggleWidgetCollapse: (id: string) => void;
   setOpen: (open: boolean) => void;
 }
 
@@ -28,6 +30,7 @@ export const useMetricsSidebarStore = create<MetricsSidebarState>()(
       pinned: [],
       isOpen: false,
       isCollapsed: false,
+      collapsedIds: [],
 
       pinMetric(metric) {
         set((s) => {
@@ -43,6 +46,7 @@ export const useMetricsSidebarStore = create<MetricsSidebarState>()(
           pinned: s.pinned
             .filter((p) => p.id !== id)
             .map((p, i) => ({ ...p, order: i })),
+          collapsedIds: s.collapsedIds.filter((c) => c !== id),
         }));
       },
 
@@ -65,6 +69,14 @@ export const useMetricsSidebarStore = create<MetricsSidebarState>()(
 
       toggleCollapse() {
         set((s) => ({ isCollapsed: !s.isCollapsed }));
+      },
+
+      toggleWidgetCollapse(id) {
+        set((s) => ({
+          collapsedIds: s.collapsedIds.includes(id)
+            ? s.collapsedIds.filter((c) => c !== id)
+            : [...s.collapsedIds, id],
+        }));
       },
 
       setOpen(open) {

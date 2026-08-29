@@ -1,8 +1,8 @@
 import { randomUUID } from "crypto";
 import type { FastifyRequest } from "fastify";
-import Redis from "ioredis";
 import { config } from "../../config/index.js";
 import { logger } from "../../utils/logger.js";
+import { factory, redisSubscriber } from "../../utils/redis.js";
 import {
   type ClientState,
   type ChannelName,
@@ -58,11 +58,11 @@ export class WebSocketServer implements IBroadcaster {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
   /**
-   * Dedicated Redis client in subscribe mode.
+   * Shared Redis subscriber from the factory.
    * A Redis client in subscribe mode cannot issue regular commands, so we keep
-   * a separate instance here and use the shared `redis` util for publishing.
+   * a separate subscriber client here and use the standard `redis` for publishing.
    */
-  private readonly subscriber: Redis;
+  private readonly subscriber: typeof redisSubscriber;
 
   private readonly counters = {
     totalConnections: 0,
@@ -74,12 +74,7 @@ export class WebSocketServer implements IBroadcaster {
   constructor() {
     this.channelManager = new ChannelManager(this);
 
-    this.subscriber = new Redis({
-      host: config.REDIS_HOST,
-      port: config.REDIS_PORT,
-      password: config.REDIS_PASSWORD || undefined,
-      lazyConnect: true,
-    });
+    this.subscriber = redisSubscriber;
 
     this.subscriber.on("error", (err) => {
       logger.error({ err }, "WS Redis subscriber error");
@@ -124,9 +119,7 @@ export class WebSocketServer implements IBroadcaster {
     channel: ChannelName,
     payload: string
   ): Promise<void> {
-    // Import lazily to avoid module-load ordering issues.
-    const { redis } = await import("../../utils/redis.js");
-    await redis.publish(REDIS_WS_CHANNELS[channel], payload);
+    await factory.getClient().publish(REDIS_WS_CHANNELS[channel], payload);
   }
 
   // ─── Connection handling ────────────────────────────────────────────────────
@@ -146,6 +139,7 @@ export class WebSocketServer implements IBroadcaster {
     // Allow authentication at connection time via ?token= query param so
     // clients can subscribe to private channels immediately after connecting.
     const token = query.token;
+    const tenantId = query.tenant_id as string | undefined;
     const isAuthenticated = token ? this.validateToken(token) : false;
 
     const state: ClientState = {
@@ -158,6 +152,8 @@ export class WebSocketServer implements IBroadcaster {
       messageCount: 0,
       windowStart: Date.now(),
       ip,
+      pendingPing: false,
+      tenantId: isAuthenticated ? tenantId : undefined,
     };
 
     this.clients.set(clientId, state);
@@ -182,6 +178,7 @@ export class WebSocketServer implements IBroadcaster {
     // Update lastSeen on protocol-level pong (heartbeat response).
     socket.on("pong", () => {
       state.lastSeen = new Date();
+      state.pendingPing = false;
     });
 
     socket.on("close", () => this.removeClient(state));
@@ -373,9 +370,24 @@ export class WebSocketServer implements IBroadcaster {
 
   private startHeartbeat(): void {
     this.heartbeatTimer = setInterval(() => {
-      const cutoffMs = Date.now() - (HEARTBEAT_INTERVAL_MS + HEARTBEAT_TIMEOUT_MS);
+      const now = Date.now();
 
       for (const state of this.clients.values()) {
+        // A client that was pinged last sweep and never replied with a pong
+        // has silently disappeared – terminate immediately.
+        if (state.pendingPing) {
+          logger.warn(
+            { clientId: state.id },
+            "WebSocket client missed pong – terminating connection"
+          );
+          state.socket.terminate();
+          this.removeClient(state);
+          continue;
+        }
+
+        // If the client has not been seen for longer than the combined
+        // interval + timeout window, it is also considered dead.
+        const cutoffMs = now - (HEARTBEAT_INTERVAL_MS + HEARTBEAT_TIMEOUT_MS);
         if (state.lastSeen.getTime() < cutoffMs) {
           logger.warn(
             { clientId: state.id },
@@ -383,7 +395,12 @@ export class WebSocketServer implements IBroadcaster {
           );
           state.socket.terminate();
           this.removeClient(state);
-        } else if (state.socket.readyState === WS_OPEN) {
+          continue;
+        }
+
+        // Send a ping; the pong handler will clear `pendingPing`.
+        if (state.socket.readyState === WS_OPEN) {
+          state.pendingPing = true;
           state.socket.ping();
         }
       }

@@ -1,9 +1,53 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import { buildServer } from "../../src/index.js";
 import type { FastifyInstance } from "fastify";
 
+const analyticsServiceMocks = vi.hoisted(() => ({
+  getProtocolStats: vi.fn(),
+  getBridgeComparisons: vi.fn(),
+  getAssetRankings: vi.fn(),
+  getVolumeAggregation: vi.fn(),
+  calculateTrend: vi.fn(),
+  getTopPerformers: vi.fn(),
+  getHistoricalComparison: vi.fn(),
+  invalidateCache: vi.fn(),
+  executeCustomMetric: vi.fn(),
+}));
+
+vi.mock("../../src/services/analytics.service.js", () => ({
+  AnalyticsService: class {
+    getProtocolStats = analyticsServiceMocks.getProtocolStats;
+    getBridgeComparisons = analyticsServiceMocks.getBridgeComparisons;
+    getAssetRankings = analyticsServiceMocks.getAssetRankings;
+    getVolumeAggregation = analyticsServiceMocks.getVolumeAggregation;
+    calculateTrend = analyticsServiceMocks.calculateTrend;
+    getTopPerformers = analyticsServiceMocks.getTopPerformers;
+    getHistoricalComparison = analyticsServiceMocks.getHistoricalComparison;
+    invalidateCache = analyticsServiceMocks.invalidateCache;
+    executeCustomMetric = analyticsServiceMocks.executeCustomMetric;
+  },
+  AggregationPeriod: {
+    Hourly: "hourly",
+    Daily: "daily",
+    Weekly: "weekly",
+    Monthly: "monthly",
+  },
+}));
+
 describe("Analytics API", () => {
   let server: FastifyInstance;
+
+  beforeEach(() => {
+    Object.values(analyticsServiceMocks).forEach((mock) => mock.mockReset());
+    analyticsServiceMocks.getProtocolStats.mockResolvedValue({});
+    analyticsServiceMocks.getBridgeComparisons.mockResolvedValue([]);
+    analyticsServiceMocks.getAssetRankings.mockResolvedValue([]);
+    analyticsServiceMocks.getVolumeAggregation.mockResolvedValue([]);
+    analyticsServiceMocks.calculateTrend.mockResolvedValue({});
+    analyticsServiceMocks.getTopPerformers.mockResolvedValue([]);
+    analyticsServiceMocks.getHistoricalComparison.mockResolvedValue([]);
+    analyticsServiceMocks.executeCustomMetric.mockResolvedValue({});
+  });
 
   beforeAll(async () => {
     server = await buildServer();

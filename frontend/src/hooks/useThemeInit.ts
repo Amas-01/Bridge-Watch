@@ -1,18 +1,41 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useThemeStore, useTheme } from "../stores";
+import { useUserPreferencesStore } from "../stores/userPreferencesStore";
 
 /**
  * Hook to initialize and manage theme on application mount.
  * Applies the theme to the document and handles system theme changes.
  */
 export function useThemeInit() {
-  const { resolvedMode, applyTheme, setResolvedMode, mode } = useThemeStore();
+  const { resolvedMode, applyTheme, setResolvedMode, mode, setMode } = useThemeStore();
   const theme = useTheme();
+  
+  const displayMode = useUserPreferencesStore((s) => s.displayMode);
+  const setPreference = useUserPreferencesStore((s) => s.setPreference);
+  const initialized = useRef(false);
 
   // Apply theme on mount
   useEffect(() => {
     applyTheme();
   }, []);
+
+  // Sync with backend preferences on load and on preference change
+  useEffect(() => {
+    if (displayMode && displayMode !== mode) {
+      setMode(displayMode as "light" | "dark" | "system");
+    }
+  }, [displayMode]);
+
+  // Sync mode back to preferences if it changes after init
+  useEffect(() => {
+    if (!initialized.current) {
+      initialized.current = true;
+      return;
+    }
+    if (mode && mode !== displayMode) {
+      setPreference("displayMode", mode);
+    }
+  }, [mode]);
 
   // Re-apply when resolved mode changes
   useEffect(() => {

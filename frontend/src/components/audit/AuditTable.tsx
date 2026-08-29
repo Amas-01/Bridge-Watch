@@ -3,7 +3,7 @@ import { AuditDetailModal } from './AuditDetailModal';
 import { AuditEvent } from '../../types';
 
 interface AuditTableProps {
-  filters: Record<string, string>;
+  filters: Record<string, string | string[]>;
 }
 
 export const AuditTable: React.FC<AuditTableProps> = ({ filters }) => {
@@ -12,12 +12,40 @@ export const AuditTable: React.FC<AuditTableProps> = ({ filters }) => {
 
   useEffect(() => {
     // In a real app, fetch from /api/audit with filters
-    const query = new URLSearchParams(filters).toString();
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (Array.isArray(value)) {
+        value.forEach(v => params.append(key, v));
+      } else if (value) {
+        params.set(key, value);
+      }
+    });
+    const query = params.toString();
     fetch(`/api/audit?${query}`)
       .then(res => res.json())
-      .then(data => setEvents(data.events || []))
+      .then(data => {
+        let filtered = data.events || [];
+        // Client-side severity filtering if needed
+        if (filters.severity && Array.isArray(filters.severity) && filters.severity.length > 0) {
+          filtered = filtered.filter((event: AuditEvent) =>
+            filters.severity.includes(event.severity || 'info')
+          );
+        }
+        setEvents(filtered);
+      })
       .catch(console.error);
   }, [filters]);
+
+  const getSeverityColor = (severity?: string) => {
+    switch (severity) {
+      case 'critical':
+        return 'text-red-600 bg-red-50';
+      case 'warning':
+        return 'text-yellow-600 bg-yellow-50';
+      default:
+        return 'text-blue-600 bg-blue-50';
+    }
+  };
 
   return (
     <div>
@@ -28,7 +56,7 @@ export const AuditTable: React.FC<AuditTableProps> = ({ filters }) => {
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actor</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Resource</th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Severity</th>
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
@@ -38,7 +66,9 @@ export const AuditTable: React.FC<AuditTableProps> = ({ filters }) => {
               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{event.actorId}</td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{event.action}</td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{event.resourceType}:{event.resourceId}</td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Success</td>
+              <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium rounded ${getSeverityColor(event.severity)}`}>
+                {(event.severity || 'info').toUpperCase()}
+              </td>
             </tr>
           ))}
         </tbody>

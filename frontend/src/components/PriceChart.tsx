@@ -36,6 +36,7 @@ interface PriceChartProps {
   isLoading: boolean;
   chartId: string;
   annotations?: ChartAnnotation[];
+  thresholdValue?: number;
 }
 
 export default function PriceChart({
@@ -44,6 +45,7 @@ export default function PriceChart({
   isLoading,
   chartId,
   annotations = [],
+  thresholdValue,
 }: PriceChartProps) {
   const { getEffectiveSelection } = useTimeRange();
   const selection = getEffectiveSelection(chartId);
@@ -54,11 +56,14 @@ export default function PriceChart({
 
   const filteredData = useMemo(
     () => filterSeriesByTimeRange(data, (item) => item.timestamp, selection),
-    [data, selection]
+    [data, selection],
   );
 
   const chartData = useMemo(() => {
-    const grouped = new Map<string, { timestamp: string } & Record<string, number | string>>();
+    const grouped = new Map<
+      string,
+      { timestamp: string } & Record<string, number | string>
+    >();
 
     filteredData.forEach((entry) => {
       const key = entry.timestamp;
@@ -73,13 +78,13 @@ export default function PriceChart({
     return Array.from(grouped.values()).sort(
       (a, b) =>
         new Date(String(a.timestamp)).getTime() -
-        new Date(String(b.timestamp)).getTime()
+        new Date(String(b.timestamp)).getTime(),
     );
   }, [filteredData]);
 
   const sources = useMemo(
     () => [...new Set(filteredData.map((entry) => entry.source))],
-    [filteredData]
+    [filteredData],
   );
   const [visibleSources, setVisibleSources] = useState<string[]>([]);
   const [legendSortMode, setLegendSortMode] = useState<LegendSortMode>("name");
@@ -87,19 +92,20 @@ export default function PriceChart({
   const annotationMarks = useMemo(
     () =>
       annotations.filter((annotation) =>
-        filteredData.some((entry) => entry.timestamp === annotation.timestamp)
+        filteredData.some((entry) => entry.timestamp === annotation.timestamp),
       ),
-    [annotations, filteredData]
+    [annotations, filteredData],
   );
 
   const sourceColors = useMemo(
     () =>
       sources.reduce<Record<string, string>>((acc, source, index) => {
         acc[source] =
-          theme.categorical[index] ?? generateDynamicColor(source.toLowerCase());
+          theme.categorical[index] ??
+          generateDynamicColor(source.toLowerCase());
         return acc;
       }, {}),
-    [sources, theme.categorical]
+    [sources, theme.categorical],
   );
 
   useEffect(() => {
@@ -116,7 +122,10 @@ export default function PriceChart({
       sources.map((source) => {
         const latestPoint = [...filteredData]
           .reverse()
-          .find((entry) => entry.source === source && typeof entry.price === "number");
+          .find(
+            (entry) =>
+              entry.source === source && typeof entry.price === "number",
+          );
 
         return {
           id: source,
@@ -125,13 +134,15 @@ export default function PriceChart({
           latestValue: latestPoint?.price,
         };
       }),
-    [filteredData, sourceColors, sources]
+    [filteredData, sourceColors, sources],
   );
 
   const toggleSource = (source: string) => {
     setVisibleSources((current) => {
       if (current.includes(source)) {
-        return current.length === 1 ? current : current.filter((item) => item !== source);
+        return current.length === 1
+          ? current
+          : current.filter((item) => item !== source);
       }
       return [...current, source];
     });
@@ -148,7 +159,9 @@ export default function PriceChart({
           />
         </h3>
         <div className="h-64 flex items-center justify-center">
-          <span className="text-stellar-text-secondary">Loading chart data...</span>
+          <span className="text-stellar-text-secondary">
+            Loading chart data...
+          </span>
         </div>
       </div>
     );
@@ -196,30 +209,42 @@ export default function PriceChart({
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={chartData}>
           <CartesianGrid strokeDasharray="3 3" stroke={theme.grid} />
-          <XAxis dataKey="timestamp" stroke={theme.axis} tick={{ fontSize: 12 }} />
-          <YAxis stroke={theme.axis} tick={{ fontSize: 12 }} domain={["auto", "auto"]} />
+          <XAxis
+            dataKey="timestamp"
+            stroke={theme.axis}
+            tick={{ fontSize: 12 }}
+          />
+          <YAxis
+            stroke={theme.axis}
+            tick={{ fontSize: 12 }}
+            domain={["auto", "auto"]}
+          />
           <Tooltip
             content={
               <ChartTooltip
                 labelFormatter={(lbl) => new Date(lbl).toLocaleString()}
                 formatter={(value) =>
-                  typeof value === "number" ? `$${value.toFixed(4)}` : String(value)
+                  typeof value === "number"
+                    ? `$${value.toFixed(4)}`
+                    : String(value)
                 }
                 showCopy
               />
             }
           />
-          {sources.filter((source) => visibleSources.includes(source)).map((source) => (
-            <Line
-              key={source}
-              type="monotone"
-              dataKey={source}
-              name={source}
-              stroke={sourceColors[source]}
-              dot={false}
-              strokeWidth={2}
-            />
-          ))}
+          {sources
+            .filter((source) => visibleSources.includes(source))
+            .map((source) => (
+              <Line
+                key={source}
+                type="monotone"
+                dataKey={source}
+                name={source}
+                stroke={sourceColors[source]}
+                dot={false}
+                strokeWidth={2}
+              />
+            ))}
           {annotationMarks.map((annotation) => (
             <ReferenceLine
               key={annotation.id}
@@ -235,6 +260,20 @@ export default function PriceChart({
               }}
             />
           ))}
+          {thresholdValue !== undefined && (
+            <ReferenceLine
+              y={thresholdValue}
+              stroke="#f59e0b"
+              strokeDasharray="5 5"
+              strokeWidth={2}
+              label={{
+                value: `Threshold: ${thresholdValue.toFixed(4)}`,
+                fill: "#f59e0b",
+                fontSize: 11,
+                position: "right",
+              }}
+            />
+          )}
         </LineChart>
       </ResponsiveContainer>
     </div>

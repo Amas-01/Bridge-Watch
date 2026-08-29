@@ -21,6 +21,84 @@ const bridgesFixture = {
   ]
 };
 
+const incidentsFixture = [
+  {
+    id: "inc-critical-open",
+    bridgeId: "Circle",
+    assetCode: "USDC",
+    severity: "critical" as const,
+    status: "open" as const,
+    title: "USDC reserve attestation delayed",
+    description: "Circle reserve attestation data is outside the expected freshness window.",
+    sourceUrl: "https://status.example.test/inc-critical-open",
+    sourceType: "monitor",
+    sourceExternalId: "alert-100",
+    sourceRepository: null,
+    sourceRepoAvatarUrl: null,
+    sourceActor: "Bridge Watch",
+    sourceAttribution: {},
+    requiresManualReview: true,
+    ingestionAttemptCount: 1,
+    lastIngestionError: null,
+    normalizedFingerprint: "circle-usdc-attestation",
+    followUpActions: ["Page on-call", "Verify reserves"],
+    occurredAt: "2026-06-26T12:00:00.000Z",
+    resolvedAt: null,
+    createdAt: "2026-06-26T12:00:00.000Z",
+    updatedAt: "2026-06-26T12:05:00.000Z",
+  },
+  {
+    id: "inc-high-investigating",
+    bridgeId: "Allbridge",
+    assetCode: "XLM",
+    severity: "high" as const,
+    status: "investigating" as const,
+    title: "Allbridge transfer latency elevated",
+    description: "Median transfer confirmation time exceeded the SLO for Stellar routes.",
+    sourceUrl: "https://status.example.test/inc-high-investigating",
+    sourceType: "monitor",
+    sourceExternalId: "alert-101",
+    sourceRepository: null,
+    sourceRepoAvatarUrl: null,
+    sourceActor: "Bridge Watch",
+    sourceAttribution: {},
+    requiresManualReview: false,
+    ingestionAttemptCount: 1,
+    lastIngestionError: null,
+    normalizedFingerprint: "allbridge-xlm-latency",
+    followUpActions: ["Inspect queue depth"],
+    occurredAt: "2026-06-26T13:00:00.000Z",
+    resolvedAt: null,
+    createdAt: "2026-06-26T13:00:00.000Z",
+    updatedAt: "2026-06-26T13:15:00.000Z",
+  },
+  {
+    id: "inc-low-resolved",
+    bridgeId: "Wormhole",
+    assetCode: "EURC",
+    severity: "low" as const,
+    status: "resolved" as const,
+    title: "Wormhole EURC heartbeat recovered",
+    description: "A temporary heartbeat delay recovered without operator intervention.",
+    sourceUrl: "https://status.example.test/inc-low-resolved",
+    sourceType: "monitor",
+    sourceExternalId: "alert-102",
+    sourceRepository: null,
+    sourceRepoAvatarUrl: null,
+    sourceActor: "Bridge Watch",
+    sourceAttribution: {},
+    requiresManualReview: false,
+    ingestionAttemptCount: 1,
+    lastIngestionError: null,
+    normalizedFingerprint: "wormhole-eurc-heartbeat",
+    followUpActions: [],
+    occurredAt: "2026-06-25T09:30:00.000Z",
+    resolvedAt: "2026-06-25T10:00:00.000Z",
+    createdAt: "2026-06-25T09:30:00.000Z",
+    updatedAt: "2026-06-25T10:00:00.000Z",
+  },
+];
+
 const transactionsFixture = {
   transactions: [
     {
@@ -76,6 +154,36 @@ export async function mockCoreApi(page: Page): Promise<void> {
       status: 200,
       headers: jsonHeaders,
       body: JSON.stringify({}),
+    });
+  });
+
+  await page.route("**/api/v1/incidents/*/read", async (route) => {
+    await route.fulfill({
+      status: 204,
+      headers: jsonHeaders,
+      body: "",
+    });
+  });
+
+  await page.route("**/api/v1/incidents**", async (route) => {
+    const url = new URL(route.request().url());
+    const filtered = incidentsFixture.filter((incident) => {
+      const severity = url.searchParams.get("severity");
+      const status = url.searchParams.get("status");
+      const bridgeId = url.searchParams.get("bridgeId");
+      const assetCode = url.searchParams.get("assetCode");
+      return (
+        (!severity || incident.severity === severity) &&
+        (!status || incident.status === status) &&
+        (!bridgeId || incident.bridgeId === bridgeId) &&
+        (!assetCode || incident.assetCode === assetCode)
+      );
+    });
+
+    await route.fulfill({
+      status: 200,
+      headers: jsonHeaders,
+      body: JSON.stringify({ incidents: filtered, total: filtered.length }),
     });
   });
 

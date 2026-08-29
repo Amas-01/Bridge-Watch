@@ -24,7 +24,17 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     }
 
     const unsub = wsService.onStateChange(setConnectionState);
-    return unsub;
+
+    // Listen for network connectivity changes
+    const handleOnline = () => {
+      wsService.connect(WS_URL);
+    };
+
+    window.addEventListener("online", handleOnline);
+    return () => {
+      unsub();
+      window.removeEventListener("online", handleOnline);
+    };
   }, []);
 
   const send = useCallback((data: unknown) => {

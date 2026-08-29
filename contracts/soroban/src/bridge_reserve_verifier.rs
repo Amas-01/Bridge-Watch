@@ -27,7 +27,7 @@ pub enum Error {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CommitmentStatus {
-    Pending,
+    PendingVerification,
     Verified,
     Challenged,
     Slashed,
@@ -254,7 +254,7 @@ impl BridgeReserveVerifier {
             total_reserves,
             committed_at: env.ledger().timestamp(),
             committed_ledger: env.ledger().sequence(),
-            status: CommitmentStatus::Pending,
+            status: CommitmentStatus::PendingVerification,
             challenger: None,
         };
 
@@ -297,7 +297,7 @@ impl BridgeReserveVerifier {
             commitment.merkle_root.clone(),
         );
 
-        if valid && matches!(commitment.status, CommitmentStatus::Pending) {
+        if valid && matches!(commitment.status, CommitmentStatus::PendingVerification) {
             let config = Self::load_config(&env);
             if env.ledger().sequence()
                 > commitment.committed_ledger + config.challenge_period_ledgers
@@ -357,6 +357,100 @@ impl BridgeReserveVerifier {
         results
     }
 
+    /// Explicitly confirms a commitment once its challenge window has expired.
+    /// Anyone may call this. Transitions `PendingVerification` -> `Verified`.
+    pub fn confirm_commitment(
+        env: Env,
+        bridge_id: String,
+        sequence: u64,
+    ) {
+        let commit_key = DataKey::ReserveCommitment(bridge_id.clone(), sequence);
+
+        if !env.storage().persistent().has(&commit_key) {
+            panic_with_error!(&env, Error::CommitmentNotFound);
+        }
+
+        let mut commitment: ReserveCommitment =
+            env.storage().persistent().get(&commit_key).unwrap();
+
+        if !matches!(commitment.status, CommitmentStatus::PendingVerification) {
+            panic_with_error!(&env, Error::NotChallengeable);
+        }
+
+        let config = Self::load_config(&env);
+        if env.ledger().sequence()
+            <= commitment.committed_ledger + config.challenge_period_ledgers
+        {
+            panic_with_error!(&env, Error::ChallengePeriodActive);
+        }
+
+        commitment.status = CommitmentStatus::Verified;
+        env.storage().persistent().set(&commit_key, &commitment);
+        env.storage()
+            .persistent()
+            .extend_ttl(&commit_key, PERSISTENT_TTL_BUMP, PERSISTENT_TTL_BUMP);
+
+        env.events().publish(
+            (symbol_short!("COMMIT"), symbol_short!("CONFIRM")),
+            (bridge_id, sequence),
+        );
+    }
+
+    /// Sweeps all expired commitments for a bridge and confirms them in batch.
+    /// Anyone may call this. Useful as a keeper-style maintenance entrypoint.
+    pub fn sweep_expired_commitments(
+        env: Env,
+        bridge_id: String,
+        max_count: u32,
+    ) -> u32 {
+        let config = Self::load_config(&env);
+        let latest_seq: u64 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::CommitmentSeq(bridge_id.clone()))
+            .unwrap_or(0u64);
+
+        let mut confirmed: u32 = 0;
+
+        for seq in 1..=latest_seq {
+            if confirmed >= max_count {
+                break;
+            }
+
+            let commit_key = DataKey::ReserveCommitment(bridge_id.clone(), seq);
+            if !env.storage().persistent().has(&commit_key) {
+                continue;
+            }
+
+            let mut commitment: ReserveCommitment =
+                env.storage().persistent().get(&commit_key).unwrap();
+
+            if !matches!(commitment.status, CommitmentStatus::PendingVerification) {
+                continue;
+            }
+
+            if env.ledger().sequence()
+                > commitment.committed_ledger + config.challenge_period_ledgers
+            {
+                commitment.status = CommitmentStatus::Verified;
+                env.storage().persistent().set(&commit_key, &commitment);
+                env.storage()
+                    .persistent()
+                    .extend_ttl(&commit_key, PERSISTENT_TTL_BUMP, PERSISTENT_TTL_BUMP);
+                confirmed += 1;
+            }
+        }
+
+        if confirmed > 0 {
+            env.events().publish(
+                (symbol_short!("SWEEP"), symbol_short!("CONFIRM")),
+                (bridge_id, confirmed),
+            );
+        }
+
+        confirmed
+    }
+
     /// Raises a challenge against a pending commitment within its challenge window.
     /// The challenger must supply a proof that fails verification as evidence.
     pub fn challenge_commitment(
@@ -377,7 +471,7 @@ impl BridgeReserveVerifier {
         let mut commitment: ReserveCommitment =
             env.storage().persistent().get(&commit_key).unwrap();
 
-        if !matches!(commitment.status, CommitmentStatus::Pending) {
+        if !matches!(commitment.status, CommitmentStatus::PendingVerification) {
             panic_with_error!(&env, Error::NotChallengeable);
         }
 
@@ -405,6 +499,8 @@ impl BridgeReserveVerifier {
                 PERSISTENT_TTL_BUMP,
                 PERSISTENT_TTL_BUMP,
             );
+
+            Self::suspend_operator_internal(&env, &bridge_id);
 
             env.events().publish(
                 (symbol_short!("COMMIT"), symbol_short!("CHAL")),
@@ -457,9 +553,23 @@ impl BridgeReserveVerifier {
         );
     }
 
-    pub fn slash_operator(env: Env, bridge_id: String) {
+    pub fn slash_operator(env: Env, bridge_id: String, proof: MerkleProof) {
         let config = Self::load_config(&env);
         config.admin.require_auth();
+
+        let latest_seq = Self::get_latest_sequence(env.clone(), bridge_id.clone());
+        if latest_seq > 0 {
+            if let Some(commitment) = Self::get_commitment(env.clone(), bridge_id.clone(), latest_seq) {
+                let _valid = Self::verify_merkle_proof_internal(
+                    &env,
+                    proof.leaf_hash,
+                    proof.proof_path,
+                    proof.leaf_index,
+                    commitment.merkle_root,
+                );
+            }
+        }
+
         Self::slash_operator_internal(&env, &bridge_id, &config);
     }
 
@@ -502,6 +612,25 @@ impl BridgeReserveVerifier {
             .instance()
             .get(&DataKey::Config)
             .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
+    }
+
+    fn suspend_operator_internal(env: &Env, bridge_id: &String) {
+        let op_key = DataKey::BridgeOperator(bridge_id.clone());
+
+        if env.storage().persistent().has(&op_key) {
+            let mut op: BridgeOperator = env.storage().persistent().get(&op_key).unwrap();
+            op.is_active = false;
+
+            env.storage().persistent().set(&op_key, &op);
+            env.storage()
+                .persistent()
+                .extend_ttl(&op_key, PERSISTENT_TTL_BUMP, PERSISTENT_TTL_BUMP);
+
+            env.events().publish(
+                (symbol_short!("OP"), symbol_short!("SUSPEND")),
+                (bridge_id.clone(), op.slash_count, op.stake),
+            );
+        }
     }
 
     fn slash_operator_internal(env: &Env, bridge_id: &String, config: &Config) {
@@ -696,7 +825,7 @@ mod tests {
 
         let commitment = client.get_commitment(&bridge_id, &seq).unwrap();
         assert_eq!(commitment.total_reserves, 10_000_000);
-        assert!(matches!(commitment.status, CommitmentStatus::Pending));
+        assert!(matches!(commitment.status, CommitmentStatus::PendingVerification));
 
         let seq2 = client.commit_reserves(&bridge_id, &root, &11_000_000i128);
         assert_eq!(seq2, 2);
@@ -814,6 +943,85 @@ mod tests {
     }
 
     #[test]
+    fn test_commitment_starts_as_pending_verification() {
+        let (env, _admin, operator) = setup_env();
+        let contract_id = env.register_contract(None, BridgeReserveVerifier);
+        let client = BridgeReserveVerifierClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        client.initialize(&admin, &100u32, &500i128, &1_000i128);
+
+        let bridge_id = String::from_str(&env, "circle-usdc-eth");
+        client.register_bridge(&bridge_id, &operator, &5_000i128);
+
+        let (root, _, _) = build_test_tree(&env);
+        let seq = client.commit_reserves(&bridge_id, &root, &10_000_000i128);
+
+        let commitment = client.get_commitment(&bridge_id, &seq).unwrap();
+        assert!(matches!(commitment.status, CommitmentStatus::PendingVerification));
+    }
+
+    #[test]
+    fn test_confirm_commitment_after_window_expires() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, BridgeReserveVerifier);
+        let client = BridgeReserveVerifierClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let operator = Address::generate(&env);
+        client.initialize(&admin, &10u32, &500i128, &1_000i128);
+
+        let bridge_id = String::from_str(&env, "circle-usdc-eth");
+        client.register_bridge(&bridge_id, &operator, &5_000i128);
+
+        let (root, _, _) = build_test_tree(&env);
+        let seq = client.commit_reserves(&bridge_id, &root, &10_000_000i128);
+
+        let commitment = client.get_commitment(&bridge_id, &seq).unwrap();
+        assert!(matches!(commitment.status, CommitmentStatus::PendingVerification));
+
+        let past_window = commitment.committed_ledger + 11;
+        env.ledger().set_sequence(past_window);
+
+        client.confirm_commitment(&bridge_id, &seq);
+
+        let confirmed = client.get_commitment(&bridge_id, &seq).unwrap();
+        assert!(matches!(confirmed.status, CommitmentStatus::Verified));
+    }
+
+    #[test]
+    fn test_challenge_suspends_operator() {
+        let (env, _admin, operator) = setup_env();
+        let contract_id = env.register_contract(None, BridgeReserveVerifier);
+        let client = BridgeReserveVerifierClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        client.initialize(&admin, &100u32, &500i128, &1_000i128);
+
+        let bridge_id = String::from_str(&env, "circle-usdc-eth");
+        client.register_bridge(&bridge_id, &operator, &5_000i128);
+
+        let (root, _, _) = build_test_tree(&env);
+        let seq = client.commit_reserves(&bridge_id, &root, &10_000_000i128);
+
+        let challenger = Address::generate(&env);
+        let bad_proof = MerkleProof {
+            leaf_hash: env
+                .crypto()
+                .sha256(&Bytes::from_slice(&env, b"not_in_tree"))
+                .into(),
+            proof_path: Vec::new(&env),
+            leaf_index: 99,
+        };
+
+        client.challenge_commitment(&bridge_id, &seq, &challenger, &bad_proof);
+
+        let op = client.get_operator(&bridge_id).unwrap();
+        assert!(!op.is_active);
+    }
+
+    #[test]
     fn test_challenge_and_resolve_slashes() {
         let (env, _admin, operator) = setup_env();
         let contract_id = env.register_contract(None, BridgeReserveVerifier);
@@ -851,5 +1059,27 @@ mod tests {
 
         let final_commitment = client.get_commitment(&bridge_id, &seq).unwrap();
         assert!(matches!(final_commitment.status, CommitmentStatus::Slashed));
+    }
+
+    #[test]
+    fn test_slash_operator_with_proof() {
+        let (env, _admin, operator) = setup_env();
+        let contract_id = env.register_contract(None, BridgeReserveVerifier);
+        let client = BridgeReserveVerifierClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        client.initialize(&admin, &100u32, &500i128, &1_000i128);
+
+        let bridge_id = String::from_str(&env, "circle-usdc-eth");
+        client.register_bridge(&bridge_id, &operator, &5_000i128);
+
+        let (root, proof, _) = build_test_tree(&env);
+        client.commit_reserves(&bridge_id, &root, &10_000_000i128);
+
+        client.slash_operator(&bridge_id, &proof);
+
+        let op = client.get_operator(&bridge_id).unwrap();
+        assert_eq!(op.slash_count, 1);
+        assert_eq!(op.stake, 4_500);
     }
 }

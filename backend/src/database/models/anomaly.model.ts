@@ -42,6 +42,29 @@ export interface AnomalyEventFilters {
   limit?: number;
 }
 
+export interface AnomalyTuningProfileRecord {
+  id?: string;
+  name: string;
+  deviation_multiplier: number;
+  sliding_window_size: number;
+  is_active: boolean;
+  updated_by: string | null;
+  created_at?: Date;
+  updated_at?: Date;
+}
+
+export interface AnomalyTuningOverrideRecord {
+  id?: string;
+  anomaly_type: AnomalyType | "*";
+  asset_code: string;
+  bridge_name: string;
+  reason: string;
+  starts_at: Date;
+  expires_at: Date;
+  created_by: string | null;
+  created_at?: Date;
+}
+
 export class AnomalyModel {
   private db = getDatabase();
 
@@ -106,6 +129,61 @@ export class AnomalyModel {
     return rows.map(this.mapEvent);
   }
 
+  async getActiveTuningProfile(): Promise<AnomalyTuningProfileRecord> {
+    const row = await this.db("anomaly_tuning_profiles").where({ is_active: true }).orderBy("updated_at", "desc").first();
+    if (!row) {
+      throw new Error("No active anomaly tuning profile is configured");
+    }
+    return this.mapTuningProfile(row);
+  }
+
+  async updateActiveTuningProfile(
+    input: Pick<AnomalyTuningProfileRecord, "deviation_multiplier" | "sliding_window_size" | "updated_by">
+  ): Promise<AnomalyTuningProfileRecord> {
+    const active = await this.getActiveTuningProfile();
+    const [row] = await this.db("anomaly_tuning_profiles")
+      .where({ id: active.id })
+      .update({ ...input, updated_at: this.db.fn.now() })
+      .returning("*");
+    return this.mapTuningProfile(row);
+  }
+
+  async createTuningOverride(
+    input: Omit<AnomalyTuningOverrideRecord, "id" | "created_at">
+  ): Promise<AnomalyTuningOverrideRecord> {
+    const [row] = await this.db("anomaly_tuning_overrides").insert(input).returning("*");
+    return this.mapTuningOverride(row);
+  }
+
+  async getActiveTuningOverrides(at = new Date()): Promise<AnomalyTuningOverrideRecord[]> {
+    const rows = await this.db("anomaly_tuning_overrides")
+      .where("starts_at", "<=", at)
+      .andWhere("expires_at", ">", at)
+      .orderBy("expires_at", "asc");
+    return rows.map(this.mapTuningOverride);
+  }
+
+  async findActiveTuningOverride(
+    anomalyType: AnomalyType,
+    assetCode: string,
+    bridgeName: string | null,
+    at = new Date()
+  ): Promise<AnomalyTuningOverrideRecord | undefined> {
+    const row = await this.db("anomaly_tuning_overrides")
+      .where("starts_at", "<=", at)
+      .andWhere("expires_at", ">", at)
+      .whereIn("anomaly_type", ["*", anomalyType])
+      .whereIn("asset_code", ["*", assetCode.toUpperCase()])
+      .whereIn("bridge_name", ["*", bridgeName ?? "*"])
+      .orderBy("expires_at", "desc")
+      .first();
+    return row ? this.mapTuningOverride(row) : undefined;
+  }
+
+  async deleteTuningOverride(id: string): Promise<boolean> {
+    return (await this.db("anomaly_tuning_overrides").where({ id }).delete()) > 0;
+  }
+
   private mapThreshold(row: any): AnomalyThresholdRecord {
     return {
       id: row.id,
@@ -138,6 +216,33 @@ export class AnomalyModel {
       suppressed_until: row.suppressed_until ? new Date(row.suppressed_until) : null,
       is_suppressed: Boolean(row.is_suppressed),
       suppressed_by_event_id: row.suppressed_by_event_id,
+    };
+  }
+
+  private mapTuningProfile(row: any): AnomalyTuningProfileRecord {
+    return {
+      id: row.id,
+      name: row.name,
+      deviation_multiplier: Number(row.deviation_multiplier),
+      sliding_window_size: Number(row.sliding_window_size),
+      is_active: Boolean(row.is_active),
+      updated_by: row.updated_by ?? null,
+      created_at: row.created_at ? new Date(row.created_at) : undefined,
+      updated_at: row.updated_at ? new Date(row.updated_at) : undefined,
+    };
+  }
+
+  private mapTuningOverride(row: any): AnomalyTuningOverrideRecord {
+    return {
+      id: row.id,
+      anomaly_type: row.anomaly_type,
+      asset_code: row.asset_code,
+      bridge_name: row.bridge_name,
+      reason: row.reason,
+      starts_at: new Date(row.starts_at),
+      expires_at: new Date(row.expires_at),
+      created_by: row.created_by ?? null,
+      created_at: row.created_at ? new Date(row.created_at) : undefined,
     };
   }
 }

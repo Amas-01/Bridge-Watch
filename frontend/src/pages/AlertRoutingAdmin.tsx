@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
+  AlertService,
   createAlertRoutingRule,
   deleteAlertRoutingRule,
   getAlertRoutingAudit,
@@ -57,6 +58,7 @@ export default function AlertRoutingAdmin() {
   );
   const [ownerFilter, setOwnerFilter] = useState("");
   const [rules, setRules] = useState<AlertRoutingRule[]>([]);
+  const [selectedRuleIds, setSelectedRuleIds] = useState<string[]>([]);
   const [audit, setAudit] = useState<AlertRoutingAuditEntry[]>([]);
   const [form, setForm] = useState<RuleFormState>(INITIAL_FORM);
   const [loading, setLoading] = useState(false);
@@ -178,6 +180,43 @@ export default function AlertRoutingAdmin() {
       await loadData();
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : "Failed to delete rule");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggleSelectRule = (id: string) => {
+    setSelectedRuleIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleToggleSelectAll = () => {
+    if (selectedRuleIds.length === rules.length && rules.length > 0) {
+      setSelectedRuleIds([]);
+    } else {
+      setSelectedRuleIds(rules.map((r) => r.id));
+    }
+  };
+
+  const handleBulkUpdateActive = async (isActive: boolean) => {
+    if (!adminToken || selectedRuleIds.length === 0) {
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      await AlertService.bulkUpdateRules(adminToken, selectedRuleIds, isActive);
+      setSelectedRuleIds([]);
+      await loadData();
+    } catch (bulkError) {
+      setError(
+        bulkError instanceof Error
+          ? bulkError.message
+          : `Failed to bulk ${isActive ? "enable" : "disable"} rules`
+      );
     } finally {
       setLoading(false);
     }
@@ -449,15 +488,46 @@ export default function AlertRoutingAdmin() {
 
         <section className="space-y-6">
           <div className="rounded-3xl border border-stellar-border bg-stellar-card/80 p-6">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-xl font-semibold text-white">Rules</h2>
-              <input
-                type="text"
-                value={ownerFilter}
-                onChange={(event) => setOwnerFilter(event.target.value)}
-                placeholder="Filter owner"
-                className="w-44 rounded-xl border border-stellar-border bg-stellar-dark px-3 py-2 text-xs text-white outline-none transition focus:border-stellar-blue focus:ring-2 focus:ring-stellar-blue"
-              />
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <h2 className="text-xl font-semibold text-white">Rules</h2>
+                {selectedRuleIds.length > 0 && (
+                  <span className="rounded-full bg-stellar-blue/20 px-2.5 py-0.5 text-xs font-medium text-stellar-blue">
+                    {selectedRuleIds.length} selected
+                  </span>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {selectedRuleIds.length > 0 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void handleBulkUpdateActive(true)}
+                      disabled={loading}
+                      className="rounded-xl bg-emerald-600/20 border border-emerald-500/30 px-3 py-1.5 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-600/30 disabled:opacity-50"
+                    >
+                      Bulk Enable
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleBulkUpdateActive(false)}
+                      disabled={loading}
+                      className="rounded-xl bg-amber-600/20 border border-amber-500/30 px-3 py-1.5 text-xs font-semibold text-amber-300 transition hover:bg-amber-600/30 disabled:opacity-50"
+                    >
+                      Bulk Disable
+                    </button>
+                  </>
+                )}
+
+                <input
+                  type="text"
+                  value={ownerFilter}
+                  onChange={(event) => setOwnerFilter(event.target.value)}
+                  placeholder="Filter owner"
+                  className="w-44 rounded-xl border border-stellar-border bg-stellar-dark px-3 py-2 text-xs text-white outline-none transition focus:border-stellar-blue focus:ring-2 focus:ring-stellar-blue"
+                />
+              </div>
             </div>
 
             <div className="mt-4 space-y-3">
@@ -466,46 +536,97 @@ export default function AlertRoutingAdmin() {
                   No routing rules found.
                 </div>
               ) : (
-                rules.map((rule) => (
-                  <article key={rule.id} className="rounded-2xl border border-stellar-border bg-stellar-dark/70 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="text-sm font-semibold text-white">{rule.name}</h3>
-                        <p className="mt-1 text-xs text-stellar-text-secondary">
-                          {rule.ownerAddress ?? "global"} • order {rule.priorityOrder}
-                        </p>
-                        <p className="mt-1 text-xs text-stellar-text-secondary">
-                          channels: {rule.channels.join(", ")} • fallback: {rule.fallbackChannels.join(", ")}
-                        </p>
-                      </div>
-                      <span
-                        className={`rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${
-                          rule.isActive
-                            ? "bg-emerald-500/15 text-emerald-300"
-                            : "bg-red-500/15 text-red-300"
-                        }`}
-                      >
-                        {rule.isActive ? "active" : "inactive"}
-                      </span>
-                    </div>
-                    <div className="mt-3 flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void handleToggleActive(rule)}
-                        className="rounded-full border border-stellar-border px-3 py-1 text-xs text-stellar-text-secondary transition hover:border-stellar-blue hover:text-white"
-                      >
-                        {rule.isActive ? "Disable" : "Enable"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleDeleteRule(rule.id)}
-                        className="rounded-full border border-red-500/40 px-3 py-1 text-xs text-red-300 transition hover:bg-red-500/10"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </article>
-                ))
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-stellar-border text-xs uppercase tracking-wider text-stellar-text-secondary">
+                        <th className="py-3 px-3 w-10">
+                          <input
+                            type="checkbox"
+                            checked={rules.length > 0 && selectedRuleIds.length === rules.length}
+                            onChange={handleToggleSelectAll}
+                            className="h-4 w-4 rounded border-stellar-border bg-stellar-dark text-stellar-blue focus:ring-stellar-blue"
+                            aria-label="Select all rules"
+                          />
+                        </th>
+                        <th className="py-3 px-3 font-semibold text-white">Rule</th>
+                        <th className="py-3 px-3 font-semibold text-white">Order</th>
+                        <th className="py-3 px-3 font-semibold text-white">Channels</th>
+                        <th className="py-3 px-3 font-semibold text-white">Status</th>
+                        <th className="py-3 px-3 font-semibold text-white text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stellar-border/50 text-sm">
+                      {rules.map((rule) => {
+                        const isSelected = selectedRuleIds.includes(rule.id);
+                        return (
+                          <tr
+                            key={rule.id}
+                            className={`transition hover:bg-stellar-dark/50 ${
+                              isSelected ? "bg-stellar-blue/5" : ""
+                            }`}
+                          >
+                            <td className="py-3 px-3">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => handleToggleSelectRule(rule.id)}
+                                className="h-4 w-4 rounded border-stellar-border bg-stellar-dark text-stellar-blue focus:ring-stellar-blue"
+                                aria-label={`Select rule ${rule.name}`}
+                              />
+                            </td>
+                            <td className="py-3 px-3">
+                              <p className="font-semibold text-white">{rule.name}</p>
+                              <p className="text-xs text-stellar-text-secondary">
+                                Owner: {rule.ownerAddress ?? "global"}
+                              </p>
+                            </td>
+                            <td className="py-3 px-3 text-xs text-stellar-text-secondary">
+                              {rule.priorityOrder}
+                            </td>
+                            <td className="py-3 px-3 text-xs text-stellar-text-secondary">
+                              <span>{rule.channels.join(", ")}</span>
+                              {rule.fallbackChannels.length > 0 && (
+                                <span className="block text-[11px] opacity-75">
+                                  fallback: {rule.fallbackChannels.join(", ")}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3">
+                              <span
+                                className={`inline-block rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ${
+                                  rule.isActive
+                                    ? "bg-emerald-500/15 text-emerald-300"
+                                    : "bg-red-500/15 text-red-300"
+                                }`}
+                              >
+                                {rule.isActive ? "active" : "inactive"}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => void handleToggleActive(rule)}
+                                  className="rounded-full border border-stellar-border px-3 py-1 text-xs text-stellar-text-secondary transition hover:border-stellar-blue hover:text-white"
+                                >
+                                  {rule.isActive ? "Disable" : "Enable"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleDeleteRule(rule.id)}
+                                  className="rounded-full border border-red-500/40 px-3 py-1 text-xs text-red-300 transition hover:bg-red-500/10"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           </div>

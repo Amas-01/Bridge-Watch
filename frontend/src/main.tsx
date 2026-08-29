@@ -1,4 +1,4 @@
-import React from "react";
+import React, { Suspense } from "react";
 import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
@@ -8,6 +8,7 @@ import { TimeRangeProvider } from "./hooks/useTimeRange";
 import { WatchlistProvider } from "./hooks/useWatchlist";
 import { WebSocketProvider } from "./contexts/WebSocketContext";
 import ThemeProvider from "./theme/ThemeProvider";
+import "./i18n/config";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -26,18 +27,26 @@ registerAction({ id: "toggle-theme", title: "Toggle Dark Mode", onExecute: () =>
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <ThemeProvider>
-      <QueryClientProvider client={queryClient}>
-        <BrowserRouter>
-          <WebSocketProvider>
-            <WatchlistProvider>
-              <TimeRangeProvider>
-                <App />
-              </TimeRangeProvider>
-            </WatchlistProvider>
-          </WebSocketProvider>
-        </BrowserRouter>
-      </QueryClientProvider>
-    </ThemeProvider>
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-stellar-dark flex items-center justify-center text-stellar-text-secondary">
+          Loading...
+        </div>
+      }
+    >
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <BrowserRouter>
+            <WebSocketProvider>
+              <WatchlistProvider>
+                <TimeRangeProvider>
+                  <App />
+                </TimeRangeProvider>
+              </WatchlistProvider>
+            </WebSocketProvider>
+          </BrowserRouter>
+        </QueryClientProvider>
+      </ThemeProvider>
+    </Suspense>
   </React.StrictMode>
 );

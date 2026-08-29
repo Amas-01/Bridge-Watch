@@ -12,6 +12,8 @@ interface Props {
   metric: PinnedMetric;
   liveValue?: MetricValue;
   onUnpin: (id: string) => void;
+  collapsed?: boolean;
+  onToggleCollapse?: (id: string) => void;
 }
 
 function trendArrow(trend?: "up" | "down" | "flat") {
@@ -20,7 +22,13 @@ function trendArrow(trend?: "up" | "down" | "flat") {
   return null;
 }
 
-export default function PinnedMetricCard({ metric, liveValue, onUnpin }: Props) {
+export default function PinnedMetricCard({
+  metric,
+  liveValue,
+  onUnpin,
+  collapsed = false,
+  onToggleCollapse,
+}: Props) {
   const {
     attributes,
     listeners,
@@ -68,17 +76,42 @@ export default function PinnedMetricCard({ metric, liveValue, onUnpin }: Props) 
       {/* Content */}
       <div className="flex-1 min-w-0">
         <p className="text-xs text-stellar-text-secondary truncate">{metric.label}</p>
-        <div className="flex items-baseline gap-1 mt-0.5">
-          <p className="text-base font-semibold text-white truncate">
-            {displayVal}
-          </p>
-          {liveValue?.unit && (
-            <span className="text-xs text-stellar-text-muted">{liveValue.unit}</span>
-          )}
-          {trendArrow(liveValue?.trend)}
-        </div>
-        <p className="text-xs text-stellar-text-muted capitalize mt-0.5">{metric.category}</p>
+        {!collapsed && (
+          <>
+            <div className="flex items-baseline gap-1 mt-0.5">
+              <p className="text-base font-semibold text-white truncate">
+                {displayVal}
+              </p>
+              {liveValue?.unit && (
+                <span className="text-xs text-stellar-text-muted">{liveValue.unit}</span>
+              )}
+              {trendArrow(liveValue?.trend)}
+            </div>
+            <p className="text-xs text-stellar-text-muted capitalize mt-0.5">{metric.category}</p>
+          </>
+        )}
       </div>
+
+      {/* Collapse / expand */}
+      {onToggleCollapse && (
+        <button
+          type="button"
+          onClick={() => onToggleCollapse(metric.id)}
+          className="flex-shrink-0 text-stellar-text-muted hover:text-white transition-colors rounded p-0.5 focus:outline-none"
+          aria-label={`${collapsed ? "Expand" : "Collapse"} ${metric.label}`}
+          aria-expanded={!collapsed}
+          title={collapsed ? "Expand" : "Collapse"}
+        >
+          <svg
+            className={`w-3.5 h-3.5 transition-transform duration-200 ${collapsed ? "-rotate-90" : ""}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      )}
 
       {/* Unpin */}
       <button

@@ -1,13 +1,13 @@
 const STATUS_ITEMS = [
-  { label: "Healthy", color: "#22c55e" },
-  { label: "Degraded", color: "#f59e0b" },
-  { label: "Offline", color: "#ef4444" },
+  { label: "Healthy", className: "bg-status-success" },
+  { label: "Degraded", className: "bg-status-warning" },
+  { label: "Offline", className: "bg-status-danger" },
 ] as const;
 
 const HEALTH_ITEMS = [
-  { label: "High (≥85)", color: "#22c55e" },
-  { label: "Medium (60–84)", color: "#f59e0b" },
-  { label: "Low (<60)", color: "#ef4444" },
+  { label: "High (≥85)", className: "border-status-success" },
+  { label: "Medium (60–84)", className: "border-status-warning" },
+  { label: "Low (<60)", className: "border-status-danger" },
 ] as const;
 
 export default function Legend() {
@@ -18,22 +18,20 @@ export default function Legend() {
       </p>
 
       <p className="text-slate-500 mb-1">Bridge Status</p>
-      {STATUS_ITEMS.map(({ label, color }) => (
+      {STATUS_ITEMS.map(({ label, className }) => (
         <div key={label} className="flex items-center gap-2 mb-1">
           <span
-            className="inline-block w-5 h-[2px] rounded"
-            style={{ backgroundColor: color }}
+            className={`inline-block w-5 h-[2px] rounded ${className}`}
           />
           <span>{label}</span>
         </div>
       ))}
 
       <p className="text-slate-500 mt-2 mb-1">Chain Health</p>
-      {HEALTH_ITEMS.map(({ label, color }) => (
+      {HEALTH_ITEMS.map(({ label, className }) => (
         <div key={label} className="flex items-center gap-2 mb-1">
           <span
-            className="inline-block w-3 h-3 rounded-full border-2"
-            style={{ borderColor: color, backgroundColor: "transparent" }}
+            className={`inline-block w-3 h-3 rounded-full border-2 ${className}`}
           />
           <span>{label}</span>
         </div>

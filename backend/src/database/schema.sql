@@ -294,11 +294,17 @@ CREATE TABLE webhook_endpoints (
   filter_event_types      JSONB       NOT NULL DEFAULT '[]',
   is_batch_delivery_enabled BOOLEAN   NOT NULL DEFAULT FALSE,
   batch_window_ms         INTEGER     NOT NULL DEFAULT 5000,
+  consecutive_failures    INTEGER     NOT NULL DEFAULT 0,
+  circuit_breaker_status  TEXT        NOT NULL DEFAULT 'closed',  -- closed | open | half_open
+  circuit_breaker_tripped_at TIMESTAMPTZ,
+  circuit_breaker_reset_at   TIMESTAMPTZ,
   created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX webhook_endpoints_owner_idx       ON webhook_endpoints (owner_address);
 CREATE INDEX webhook_endpoints_active_idx      ON webhook_endpoints (is_active);
+CREATE INDEX idx_webhook_endpoints_cb_status   ON webhook_endpoints (circuit_breaker_status)
+  WHERE circuit_breaker_status != 'closed';
 
 -- webhook_deliveries
 -- Individual webhook delivery attempts.

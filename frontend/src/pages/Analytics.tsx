@@ -5,6 +5,8 @@ import SnapshotCard from "../components/analytics/SnapshotCard";
 import BridgeComparison from "../components/analytics/BridgeComparison";
 import IncidentHeatmap from "../components/IncidentHeatmap";
 import AnomalyTrendCharts from "../components/AnomalyTrendCharts";
+import AnomalyTuningPanel from "../components/AnomalyTuningPanel";
+import { TimeRangeSelector } from "../components/TimeRangeSelector";
 import type { BridgeAnalytics } from "../hooks/useAnalytics";
 import { useAssetsWithHealth } from "../hooks/useAssets";
 import { usePricesForSymbols } from "../hooks/usePrices";
@@ -95,30 +97,39 @@ export default function Analytics() {
       )}
 
       {/* Overview Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {metrics.slice(0, 4).map((stat) => (
-          <div
-            key={stat.id}
-            className="bg-stellar-card border border-stellar-border rounded-lg p-6 cursor-pointer hover:border-stellar-blue transition-colors"
+      <div className="space-y-6">
+        {/* Time Range Selector for Analytics */}
+        <TimeRangeSelector 
+          chartId="analytics-overview" 
+          title="Analytics Time Range" 
+          showApplyGlobally={true}
+        />
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {metrics.slice(0, 4).map((stat) => (
+            <div
+              key={stat.id}
+              className="bg-stellar-card border border-stellar-border rounded-lg p-6 cursor-pointer hover:border-stellar-blue transition-colors"
+              onClick={() => setIsDrilldownOpen(true)}
+            >
+              <p className="text-sm text-stellar-text-secondary">{stat.label}</p>
+              <p className="mt-2 text-2xl font-bold text-white">{stat.value}</p>
+              {stat.trend && (
+                <p className={`mt-1 text-sm ${stat.trend.direction === "up" ? "text-green-400" : "text-red-400"}`}>
+                  {stat.trend.value}
+                </p>
+              )}
+            </div>
+          ))}
+          <button
+            type="button"
             onClick={() => setIsDrilldownOpen(true)}
+            className="bg-stellar-card border border-stellar-border rounded-lg p-6 flex flex-col items-center justify-center hover:border-stellar-blue transition-colors"
           >
-            <p className="text-sm text-stellar-text-secondary">{stat.label}</p>
-            <p className="mt-2 text-2xl font-bold text-white">{stat.value}</p>
-            {stat.trend && (
-              <p className={`mt-1 text-sm ${stat.trend.direction === "up" ? "text-green-400" : "text-red-400"}`}>
-                {stat.trend.value}
-              </p>
-            )}
-          </div>
-        ))}
-        <button
-          type="button"
-          onClick={() => setIsDrilldownOpen(true)}
-          className="bg-stellar-card border border-stellar-border rounded-lg p-6 flex flex-col items-center justify-center hover:border-stellar-blue transition-colors"
-        >
-          <span className="text-3xl mb-2">🔍</span>
-          <span className="text-sm font-medium text-stellar-text-primary">View All Metrics</span>
-        </button>
+            <span className="text-3xl mb-2">🔍</span>
+            <span className="text-sm font-medium text-stellar-text-primary">View All Metrics</span>
+          </button>
+        </div>
       </div>
 
       {/* Asset Comparison */}
@@ -241,6 +252,8 @@ export default function Analytics() {
 
       {/* Anomaly Trend Charts */}
       <AnomalyTrendCharts />
+
+      <AnomalyTuningPanel />
 
       {/* Health Score Trends */}
       <div className="bg-stellar-card border border-stellar-border rounded-lg p-6">

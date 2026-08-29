@@ -1,5 +1,6 @@
-import { createRedisClient } from "../config/redis.js";
+import { RedisClientFactory } from "../config/redis.js";
 
-const redis = createRedisClient();
-
-export { redis };
+export const factory = RedisClientFactory.getInstance();
+export const redis = factory.getClient();
+export const redisSubscriber = factory.getSubscriber();
+export { RedisClientFactory };

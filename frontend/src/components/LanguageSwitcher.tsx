@@ -8,23 +8,17 @@ import { useTranslation } from "react-i18next";
 import { SUPPORTED_LANGUAGES, SupportedLanguage } from "../i18n/config";
 
 export function LanguageSwitcher() {
-  const { i18n } = useTranslation();
+  const { i18n, t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
 
+  const activeLanguageCode = i18n.language.split("-")[0];
   const currentLanguage =
-    SUPPORTED_LANGUAGES.find((lang) => lang.code === i18n.language) ||
+    SUPPORTED_LANGUAGES.find((lang) => lang.code === activeLanguageCode) ||
     SUPPORTED_LANGUAGES[0];
 
   const handleLanguageChange = (languageCode: SupportedLanguage) => {
-    i18n.changeLanguage(languageCode);
+    void i18n.changeLanguage(languageCode);
     setIsOpen(false);
-
-    // Update document direction for RTL languages
-    const language = SUPPORTED_LANGUAGES.find(
-      (lang) => lang.code === languageCode,
-    );
-    document.documentElement.dir =
-      language && "rtl" in language && language.rtl === true ? "rtl" : "ltr";
   };
 
   return (
@@ -32,7 +26,7 @@ export function LanguageSwitcher() {
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-        aria-label="Change language"
+        aria-label={t("settings.changeLanguage")}
       >
         <svg
           className="w-5 h-5"

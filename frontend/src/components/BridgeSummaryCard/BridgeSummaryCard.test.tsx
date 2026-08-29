@@ -102,14 +102,14 @@ describe("BridgeSummaryCard", () => {
       render(<BridgeSummaryCard summary={degradedBridge} variant="standard" />);
       
       expect(screen.getByText("Degraded")).toBeInTheDocument();
-      expect(screen.getByLabelText("Status: Degraded")).toHaveClass("text-yellow-400");
+      expect(screen.getByLabelText("Status: Degraded")).toHaveClass("text-status-warning");
     });
 
     it("displays down status with red styling", () => {
       render(<BridgeSummaryCard summary={downBridge} variant="standard" />);
       
       expect(screen.getByText("Down")).toBeInTheDocument();
-      expect(screen.getByLabelText("Status: Down")).toHaveClass("text-red-400");
+      expect(screen.getByLabelText("Status: Down")).toHaveClass("text-status-danger");
     });
 
     it("displays mismatch percentage with appropriate color", () => {
@@ -181,14 +181,14 @@ describe("BridgeSummaryCard", () => {
       render(<BridgeSummaryCard summary={degradedBridge} variant="detailed" />);
       
       const mismatch = screen.getByLabelText(/Supply mismatch: 5.26%/);
-      expect(mismatch).toHaveClass("text-red-400");
+      expect(mismatch).toHaveClass("text-status-danger");
     });
 
     it("renders mismatch in green when below 0.5%", () => {
       render(<BridgeSummaryCard summary={mockBridgeSummary} variant="detailed" />);
       
       const mismatch = screen.getByLabelText(/Supply mismatch: 0.00%/);
-      expect(mismatch).toHaveClass("text-green-400");
+      expect(mismatch).toHaveClass("text-status-success");
     });
 
     it("renders mismatch in yellow when 0.5-1%", () => {
@@ -199,7 +199,7 @@ describe("BridgeSummaryCard", () => {
       render(<BridgeSummaryCard summary={bridge} variant="detailed" />);
       
       const mismatch = screen.getByLabelText(/Supply mismatch: 0.80%/);
-      expect(mismatch).toHaveClass("text-yellow-400");
+      expect(mismatch).toHaveClass("text-status-warning");
     });
   });
 

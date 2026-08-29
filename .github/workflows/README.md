@@ -76,7 +76,7 @@ This directory contains the CI/CD pipeline configuration for Stellar Bridge Watc
 - A manual dispatch can request an emergency override, but the actor must have `maintain` or `admin` permission and provide an audit reason of at least 10 characters. Overrides are unavailable to tag-triggered releases.
 - Set `RELEASE_REQUIRED_WORKFLOWS` to a comma-separated list to customize the required workflow names.
 
-The release dry-run calls the same shield with external health and prior-workflow evidence disabled; metadata and artifact gates still run. Every shield execution writes a gate-by-gate decision table to the GitHub Actions job summary.
+The release dry-run calls the same shield with external health and prior-workflow evidence disabled, and runs the shield in report-only mode so PR checks still continue to the concrete dry-run jobs. Metadata and artifact gates still run and are written to the GitHub Actions job summary, but only the real release workflow enforces the shield decision.
 
 ### 4. Code Quality Workflow (`code-quality.yml`)
 

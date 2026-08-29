@@ -21,10 +21,24 @@ export default function OnboardingDialog({ open, onClose, onComplete }: Props) {
       {
         title: "Welcome to Bridge Watch",
         body: (
-          <p className="text-sm text-stellar-text-secondary">
-            This dashboard helps you monitor bridged assets on Stellar: health scores, bridge
-            status, and price signals.
-          </p>
+          <div className="space-y-3 text-sm text-stellar-text-secondary">
+            <p>
+              This dashboard helps you monitor bridged assets on Stellar: health scores, bridge
+              status, and price signals.
+            </p>
+            <p>
+              For the official Soroban SDK documentation, open{" "}
+              <a
+                href="https://developers.stellar.org/docs/build/smart-contracts"
+                target="_blank"
+                rel="noreferrer"
+                className="text-stellar-blue hover:underline"
+              >
+                Developer Help
+              </a>
+              .
+            </p>
+          </div>
         ),
       },
       {

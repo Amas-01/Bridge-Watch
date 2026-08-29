@@ -29,6 +29,16 @@ export interface SearchSuggestion {
   count: number;
 }
 
+export interface FacetValueCount {
+  value: string;
+  count: number;
+}
+
+export interface AssetSearchFacets {
+  bridgeProvider: FacetValueCount[];
+  sourceChain: FacetValueCount[];
+}
+
 interface SearchDocumentRecord {
   document_key: string;
   entity_type: SearchEntityType;
@@ -84,7 +94,9 @@ const SYNONYM_MAP: Record<string, string[]> = {
 export class SearchService {
   private readonly db = getDatabase();
 
-  async search(searchQuery: SearchQuery): Promise<{ results: SearchResult[]; total: number }> {
+  async search(
+    searchQuery: SearchQuery
+  ): Promise<{ results: SearchResult[]; total: number; facets?: AssetSearchFacets }> {
     const { query, type, limit = 20, offset = 0, fuzzy = true, filters = {} } = searchQuery;
 
     if (!query || query.trim().length < 2) {
@@ -102,9 +114,43 @@ export class SearchService {
     const results = rankedResults.slice(offset, offset + limit);
     await this.trackSearchAnalytics(query, undefined, rankedResults.length, filters);
 
+    const facets = type === "asset" ? this.buildAssetFacets(rankedResults) : undefined;
+
     return {
       results,
       total: rankedResults.length,
+      ...(facets ? { facets } : {}),
+    };
+  }
+
+  /**
+   * Counts matching assets per bridge provider and source chain, mirroring
+   * the filter dimensions already supported by the asset search index.
+   */
+  private buildAssetFacets(assetResults: SearchResult[]): AssetSearchFacets {
+    const bridgeProviderCounts = new Map<string, number>();
+    const sourceChainCounts = new Map<string, number>();
+
+    for (const result of assetResults) {
+      const bridgeProvider = result.metadata.bridgeProvider;
+      if (typeof bridgeProvider === "string" && bridgeProvider) {
+        bridgeProviderCounts.set(bridgeProvider, (bridgeProviderCounts.get(bridgeProvider) ?? 0) + 1);
+      }
+
+      const sourceChain = result.metadata.sourceChain;
+      if (typeof sourceChain === "string" && sourceChain) {
+        sourceChainCounts.set(sourceChain, (sourceChainCounts.get(sourceChain) ?? 0) + 1);
+      }
+    }
+
+    const toSortedCounts = (counts: Map<string, number>): FacetValueCount[] =>
+      Array.from(counts.entries())
+        .map(([value, count]) => ({ value, count }))
+        .sort((left, right) => right.count - left.count);
+
+    return {
+      bridgeProvider: toSortedCounts(bridgeProviderCounts),
+      sourceChain: toSortedCounts(sourceChainCounts),
     };
   }
 

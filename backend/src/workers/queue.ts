@@ -1,13 +1,11 @@
-import { Queue, Worker, Job, ConnectionOptions } from "bullmq";
+import { Queue, Worker, Job } from "bullmq";
 import { config } from "../config/index.js";
 import { logger } from "../utils/logger.js";
 import { retryPolicyService } from "../services/retryPolicy.service.js";
+import { RedisClientFactory } from "../config/redis.js";
 
-const connection: ConnectionOptions = {
-  host: config.REDIS_HOST,
-  port: config.REDIS_PORT,
-  password: config.REDIS_PASSWORD,
-};
+const factory = RedisClientFactory.getInstance();
+const connection = factory.getBullMQConnection();
 
 export const QUEUE_NAME = "bridge-watch-jobs";
 export type Priority = "critical" | "high" | "medium" | "low";
@@ -31,7 +29,6 @@ export class JobQueue {
           removeOnComplete: true,
           removeOnFail: false,
         },
-        // rate limiting can be configured per priority via environment
         limiter: {
           max: Number(process.env[`QUEUE_RATE_MAX_${p.toUpperCase()}`] || 1000),
           duration: Number(process.env[`QUEUE_RATE_DURATION_MS_${p.toUpperCase()}`] || 1000),
@@ -56,7 +53,6 @@ export class JobQueue {
     const priority: Priority | undefined = options.priority;
     const q = this.queueForPriority(priority);
     logger.info({ jobName: name, priority: priority ?? "medium" }, "Adding job to prioritized queue");
-    // remove priority from options since bullmq uses numeric priority separately
     const opts = { ...options };
     delete opts.priority;
     return q.add(name, data, opts);
@@ -73,7 +69,6 @@ export class JobQueue {
   public initWorker(processor: (job: Job) => Promise<void>) {
     if (this.worker) return;
 
-    // create a worker that listens on all priority queues by switching processor per queue
     const queueNames = Object.keys(this.queues);
     this.worker = new Worker(queueNames[0], async (job) => processor(job), {
       connection,
@@ -90,7 +85,6 @@ export class JobQueue {
   }
 
   public async getJobCounts() {
-    // aggregate counts across queues
     const keys = Object.keys(this.queues);
     const counts = {} as Record<string, any>;
     for (const k of keys) {

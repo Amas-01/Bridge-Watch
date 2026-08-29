@@ -29,8 +29,47 @@ import type {
   ProvenanceListItem,
   CrossChainStateResult,
   CrossChainVerificationSummary,
+  ServiceAnnotation,
+  CreateServiceAnnotationInput,
+  UpdateServiceAnnotationInput,
+  ServiceAnnotationAuditEntry,
+  ApiKeyScopeTemplate,
+  DatasetSummary,
+  DatasetColumn,
+  ColumnLineageView,
+  ImportValidationPreview,
+  QuarantineRecord,
+  QuarantineStats,
+  QuarantineStatus,
 } from "../types";
+import type { LiquidityConcentrationData } from "../types/liquidity";
 const API_BASE_URL = "/api/v1";
+
+export type ApiVersion = "v1";
+export interface ApiContractSummary {
+  version: ApiVersion;
+  mediaType: string;
+  status: "current" | "deprecated";
+  fingerprint: string;
+  sunsetAt: string | null;
+}
+export interface ApiCapabilities {
+  version: ApiVersion;
+  fingerprint: string;
+  capabilities: Record<string, boolean>;
+}
+
+export async function getApiContract(version?: ApiVersion) {
+  return fetchApi<Record<string, unknown>>(`/compatibility/contract${version ? `?version=${version}` : ""}`);
+}
+
+export async function getApiCapabilities(version?: ApiVersion): Promise<ApiCapabilities> {
+  return fetchApi<ApiCapabilities>(`/compatibility/capabilities${version ? `?version=${version}` : ""}`);
+}
+
+export async function getApiVersions(): Promise<{ current: ApiVersion; versions: ApiContractSummary[] }> {
+  return fetchApi<{ current: ApiVersion; versions: ApiContractSummary[] }>("/compatibility/versions");
+}
 
 async function fetchApi<T>(
   endpoint: string,
@@ -67,6 +106,59 @@ async function fetchApi<T>(
   }
 
   return response.json();
+}
+
+export interface AnomalyTuningProfile {
+  id: string;
+  name: string;
+  deviation_multiplier: number;
+  sliding_window_size: number;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+export interface AnomalyTuningOverride {
+  id: string;
+  anomaly_type: string;
+  asset_code: string;
+  bridge_name: string;
+  reason: string;
+  starts_at: string;
+  expires_at: string;
+}
+
+export function getAnomalyTuning(apiKey: string) {
+  return fetchApi<{ profile: AnomalyTuningProfile; overrides: AnomalyTuningOverride[] }>(
+    "/anomaly/tuning",
+    undefined,
+    apiKey
+  );
+}
+
+export function updateAnomalyTuning(
+  apiKey: string,
+  input: { deviationMultiplier: number; slidingWindowSize: number }
+) {
+  return fetchApi<{ profile: AnomalyTuningProfile }>(
+    "/anomaly/tuning",
+    { method: "PUT", body: JSON.stringify(input) },
+    apiKey
+  );
+}
+
+export function createAnomalyTuningOverride(
+  apiKey: string,
+  input: { assetCode?: string; reason: string; expiresAt: string }
+) {
+  return fetchApi<{ override: AnomalyTuningOverride }>(
+    "/anomaly/tuning/overrides",
+    { method: "POST", body: JSON.stringify(input) },
+    apiKey
+  );
+}
+
+export function deleteAnomalyTuningOverride(apiKey: string, id: string) {
+  return fetchApi<void>(`/anomaly/tuning/overrides/${id}`, { method: "DELETE" }, apiKey);
 }
 
 /** Root health endpoint (not under /api/v1). */
@@ -150,12 +242,41 @@ export function getAssetHealthHistory(
 ) {
   return fetchApi<
     | {
-        symbol: string;
-        period: "24h" | "7d" | "30d";
-        points: Array<{ timestamp: string; score: number }>;
-      }
+      symbol: string;
+      period: "24h" | "7d" | "30d";
+      points: Array<{ timestamp: string; score: number }>;
+    }
     | null
   >(`/assets/${symbol}/health/history?period=${period}`);
+}
+
+export interface HealthScoreHistoryRecord {
+  id: string;
+  symbol: string;
+  overallScore: number;
+  liquidityDepthScore: number;
+  priceStabilityScore: number;
+  bridgeUptimeScore: number;
+  reserveBackingScore: number;
+  volumeTrendScore: number;
+  trend: "improving" | "stable" | "deteriorating";
+  delta: number | null;
+  source: "scheduled" | "manual" | "backfill";
+  recordedAt: string;
+}
+
+export function getHealthScoreHistory(
+  symbol: string,
+  params?: { from?: string; to?: string; limit?: number }
+) {
+  const query = new URLSearchParams();
+  if (params?.from) query.set("from", params.from);
+  if (params?.to) query.set("to", params.to);
+  if (params?.limit) query.set("limit", String(params.limit));
+  const qs = query.toString();
+  return fetchApi<{ symbol: string; records: HealthScoreHistoryRecord[]; count: number }>(
+    `/health-score-history/${symbol}${qs ? `?${qs}` : ""}`
+  );
 }
 
 export async function getAssetsWithHealth(): Promise<AssetWithHealth[]> {
@@ -183,6 +304,12 @@ export function getAssetLiquidity(symbol: string) {
       timestamp?: string;
     }>;
   } | null>(`/assets/${symbol}/liquidity`);
+}
+
+export function getLiquidityConcentration(pair: string) {
+  return fetchApi<LiquidityConcentrationData | null>(
+    `/assets/${pair.split("/")[1]}/liquidity/concentration?pair=${encodeURIComponent(pair)}`
+  );
 }
 
 export function getAssetPrice(symbol: string) {
@@ -224,6 +351,28 @@ export function getAssetPriceHistory(symbol: string, timeframe: string) {
   return fetchApi<Array<{ source: string; price: number; timestamp: string }>>(
     `/assets/${symbol}/price/history?timeframe=${timeframe}`
   );
+}
+
+export function getAssetPriceSparkline(
+  symbol: string,
+  period: "24h" | "7d" | "30d" = "7d"
+) {
+  return fetchApi<{
+    symbol: string;
+    period: "24h" | "7d" | "30d";
+    points: Array<{ timestamp: string; value: number }>;
+  }>(`/assets/${symbol}/price/history?period=${period}`);
+}
+
+export function getAssetVolumeSparkline(
+  symbol: string,
+  period: "24h" | "7d" | "30d" = "7d"
+) {
+  return fetchApi<{
+    symbol: string;
+    period: "24h" | "7d" | "30d";
+    points: Array<{ timestamp: string; value: number }>;
+  }>(`/assets/${symbol}/volume/history?period=${period}`);
 }
 
 export function getAssetPriceSources(symbol: string) {
@@ -330,8 +479,31 @@ export function getBridges() {
   return fetchApi<{ bridges: Bridge[] }>("/bridges");
 }
 
-export function getBridgeStats(bridge: string) {
-  return fetchApi<BridgeStats | null>(`/bridges/${bridge}/stats`);
+export function getBridgeStats(bridge: string, startDate?: string, endDate?: string) {
+  const params = new URLSearchParams();
+  if (startDate) params.set("startDate", startDate);
+  if (endDate) params.set("endDate", endDate);
+  const query = params.toString();
+  return fetchApi<BridgeStats | null>(`/bridges/${bridge}/stats${query ? `?${query}` : ""}`);
+}
+
+export interface CircuitStateResponse {
+  scope: string;
+  identifier: string | null;
+  level: string;
+  isPaused: boolean;
+  triggeredBy: string | null;
+  triggerReason: string | null;
+  timestamp: number | null;
+  recoveryDeadline: number | null;
+  guardianApprovals: number | null;
+  guardianThreshold: number | null;
+  status: string | null;
+}
+
+export function getCircuitState(scope: "bridge" | "asset", identifier: string) {
+  const params = new URLSearchParams({ scope, identifier });
+  return fetchApi<CircuitStateResponse | null>(`/circuit-health/health/state?${params.toString()}`);
 }
 
 export interface ReconciliationSummaryFilters {
@@ -476,6 +648,176 @@ export function extendApiKey(apiKey: string, id: string, extraDays: number) {
   );
 }
 
+// #1172 — API Key Scope Templates
+export function listApiKeyTemplates(apiKey: string, includeInactive = false) {
+  const suffix = includeInactive ? "?includeInactive=true" : "";
+  return fetchApi<{ templates: ApiKeyScopeTemplate[] }>(
+    `/admin/api-key-templates${suffix}`,
+    undefined,
+    apiKey
+  );
+}
+
+export function createApiKeyTemplate(
+  apiKey: string,
+  payload: { name: string; description?: string; scopes: string[]; rateLimitPerMinute?: number }
+) {
+  return fetchApi<{ template: ApiKeyScopeTemplate }>(
+    "/admin/api-key-templates",
+    { method: "POST", body: JSON.stringify(payload) },
+    apiKey
+  );
+}
+
+export function updateApiKeyTemplate(
+  apiKey: string,
+  id: string,
+  payload: Partial<{ name: string; description: string | null; scopes: string[]; rateLimitPerMinute: number | null; isActive: boolean }>
+) {
+  return fetchApi<{ template: ApiKeyScopeTemplate }>(
+    `/admin/api-key-templates/${id}`,
+    { method: "PATCH", body: JSON.stringify(payload) },
+    apiKey
+  );
+}
+
+// #1171 — Dataset Column Lineage
+export function listDatasets(apiKey: string, category?: string) {
+  const suffix = category ? `?category=${encodeURIComponent(category)}` : "";
+  return fetchApi<{ datasets: DatasetSummary[] }>(
+    `/datasets/lineage/datasets${suffix}`,
+    undefined,
+    apiKey
+  );
+}
+
+export function getDatasetColumns(apiKey: string, datasetId: string) {
+  return fetchApi<{ dataset: DatasetSummary; columns: DatasetColumn[] }>(
+    `/datasets/lineage/datasets/${datasetId}/columns`,
+    undefined,
+    apiKey
+  );
+}
+
+export function getColumnLineage(apiKey: string, datasetId: string, columnId: string) {
+  return fetchApi<ColumnLineageView>(
+    `/datasets/lineage/datasets/${datasetId}/columns/${columnId}`,
+    undefined,
+    apiKey
+  );
+}
+
+export function createDataset(
+  apiKey: string,
+  payload: {
+    name: string;
+    displayName: string;
+    description?: string;
+    category?: string;
+    sourceDatasetId?: string;
+    columns?: Array<{ name: string; dataType?: string; description?: string; isPrimaryKey?: boolean }>;
+  }
+) {
+  return fetchApi<{ dataset: DatasetSummary }>(
+    "/datasets/lineage/datasets",
+    { method: "POST", body: JSON.stringify(payload) },
+    apiKey
+  );
+}
+
+// #1170 — Import Validation Preview
+export function createValidationPreview(
+  apiKey: string,
+  payload: { dataType: string; rows: Array<Record<string, unknown>>; batchSize?: number }
+) {
+  return fetchApi<{ preview: ImportValidationPreview }>(
+    "/admin/imports/preview",
+    { method: "POST", body: JSON.stringify(payload) },
+    apiKey
+  );
+}
+
+export function listValidationPreviews(apiKey: string) {
+  return fetchApi<{ previews: ImportValidationPreview[] }>(
+    "/admin/imports/preview",
+    undefined,
+    apiKey
+  );
+}
+
+export function getValidationPreview(apiKey: string, id: string) {
+  return fetchApi<{ preview: ImportValidationPreview }>(
+    `/admin/imports/preview/${id}`,
+    undefined,
+    apiKey
+  );
+}
+
+export function getValidationPreviewStatus(apiKey: string) {
+  return fetchApi<{ counts: Record<string, number> }>(
+    "/admin/imports/preview/status",
+    undefined,
+    apiKey
+  );
+}
+
+// #1168 — Failed Parse Quarantine Queue
+export function listQuarantineRecords(
+  apiKey: string,
+  filters?: { status?: QuarantineStatus; source?: string; dataType?: string; limit?: number }
+) {
+  const params = new URLSearchParams();
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.source) params.set("source", filters.source);
+  if (filters?.dataType) params.set("dataType", filters.dataType);
+  if (filters?.limit) params.set("limit", String(filters.limit));
+  const qs = params.toString();
+  return fetchApi<{ records: QuarantineRecord[] }>(
+    `/admin/quarantine${qs ? `?${qs}` : ""}`,
+    undefined,
+    apiKey
+  );
+}
+
+export function getQuarantineStats(apiKey: string) {
+  return fetchApi<{ stats: QuarantineStats }>("/admin/quarantine/stats", undefined, apiKey);
+}
+
+export function enqueueQuarantineRecord(
+  apiKey: string,
+  payload: { source: string; dataType: string; rawPayload: Record<string, unknown>; parseError: string; errorCode?: string; priority?: number }
+) {
+  return fetchApi<{ record: QuarantineRecord }>(
+    "/admin/quarantine",
+    { method: "POST", body: JSON.stringify(payload) },
+    apiKey
+  );
+}
+
+export function resolveQuarantineRecord(apiKey: string, id: string, note?: string) {
+  return fetchApi<{ record: QuarantineRecord }>(
+    `/admin/quarantine/${id}/resolve`,
+    { method: "POST", body: JSON.stringify({ note }) },
+    apiKey
+  );
+}
+
+export function disposeQuarantineRecord(apiKey: string, id: string, note?: string) {
+  return fetchApi<{ record: QuarantineRecord }>(
+    `/admin/quarantine/${id}/dispose`,
+    { method: "POST", body: JSON.stringify({ note }) },
+    apiKey
+  );
+}
+
+export function retryQuarantineRecord(apiKey: string, id: string) {
+  return fetchApi<{ record: QuarantineRecord }>(
+    `/admin/quarantine/${id}/retry`,
+    { method: "POST" },
+    apiKey
+  );
+}
+
 // Alert routing admin
 export function listAlertRoutingRules(apiKey: string, ownerAddress?: string) {
   const suffix = ownerAddress
@@ -526,6 +868,37 @@ export function deleteAlertRoutingRule(apiKey: string, id: string) {
     apiKey
   );
 }
+
+export async function bulkUpdateAlertRoutingRules(
+  apiKey: string,
+  ruleIds: string[],
+  isActive: boolean
+): Promise<{ rules: AlertRoutingRule[]; count: number }> {
+  try {
+    return await fetchApi<{ rules: AlertRoutingRule[]; count: number }>(
+      "/admin/alert-routing/rules/bulk",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ ruleIds, isActive }),
+      },
+      apiKey
+    );
+  } catch {
+    const updated = await Promise.all(
+      ruleIds.map((id) => updateAlertRoutingRule(apiKey, id, { isActive }))
+    );
+    return { rules: updated.map((res) => res.rule), count: updated.length };
+  }
+}
+
+export const AlertService = {
+  listRules: listAlertRoutingRules,
+  createRule: createAlertRoutingRule,
+  updateRule: updateAlertRoutingRule,
+  bulkUpdateRules: bulkUpdateAlertRoutingRules,
+  deleteRule: deleteAlertRoutingRule,
+  getAudit: getAlertRoutingAudit,
+};
 
 export function getAlertRoutingAudit(
   apiKey: string,
@@ -669,18 +1042,30 @@ export interface IndexedSearchResult {
   metadata: Record<string, unknown>;
 }
 
-export function searchIndexed(query: string, limit = 12) {
+export interface FacetValueCount {
+  value: string;
+  count: number;
+}
+
+export interface AssetSearchFacets {
+  bridgeProvider: FacetValueCount[];
+  sourceChain: FacetValueCount[];
+}
+
+export function searchIndexed(query: string, limit = 12, type?: "asset" | "bridge" | "incident" | "alert") {
   const params = new URLSearchParams({
     q: query,
     limit: String(limit),
     fuzzy: "true",
   });
+  if (type) params.set("type", type);
 
   return fetchApi<{
     success: boolean;
     data: {
       results: IndexedSearchResult[];
       total: number;
+      facets?: AssetSearchFacets;
     };
   }>(`/search?${params.toString()}`);
 }
@@ -986,4 +1371,153 @@ export function triggerCrossChainVerification(bridgeId: string): Promise<CrossCh
     `/cross-chain-verification/${encodeURIComponent(bridgeId)}/verify`,
     { method: "POST" }
   );
+}
+
+export interface FreshnessSourceStatus {
+  key: string;
+  label: string;
+  status: "fresh" | "stale" | "unknown";
+  lastUpdated: string | null;
+  expectedIntervalMs: number;
+  trend?: "improving" | "stable" | "degrading" | null;
+  ageMs?: number | null;
+}
+
+export interface FreshnessSnapshot {
+  sources: FreshnessSourceStatus[];
+  staleSources: number;
+  freshSources: number;
+  timestamp: string;
+}
+
+export interface FreshnessSourceDetail extends FreshnessSourceStatus {
+  history?: Array<{ timestamp: string; ageMs: number }>;
+  recentIntervalsMs?: number[];
+}
+
+export interface FreshnessAlert {
+  source: string;
+  label: string;
+  severity: "warning" | "critical";
+  message: string;
+  since: string;
+}
+
+export function getFreshnessSnapshot(opts?: {
+  includeHistory?: boolean;
+  historyLimit?: number;
+}): Promise<FreshnessSnapshot> {
+  const params = new URLSearchParams();
+  if (opts?.includeHistory) params.set("includeHistory", "true");
+  if (opts?.historyLimit != null) params.set("historyLimit", String(opts.historyLimit));
+  const qs = params.toString();
+  return fetchApi<FreshnessSnapshot>(`/freshness${qs ? `?${qs}` : ""}`);
+}
+
+export function getFreshnessSource(
+  source: string,
+  opts?: { historyLimit?: number }
+): Promise<FreshnessSourceDetail> {
+  const params = new URLSearchParams();
+  if (opts?.historyLimit != null) params.set("historyLimit", String(opts.historyLimit));
+  const qs = params.toString();
+  return fetchApi<FreshnessSourceDetail>(
+    `/freshness/${encodeURIComponent(source)}${qs ? `?${qs}` : ""}`
+  );
+}
+
+export function getFreshnessSourceTrend(
+  source: string,
+  opts?: { historyLimit?: number }
+): Promise<FreshnessSourceDetail> {
+  const params = new URLSearchParams();
+  if (opts?.historyLimit != null) params.set("historyLimit", String(opts.historyLimit));
+  const qs = params.toString();
+  return fetchApi<FreshnessSourceDetail>(
+    `/freshness/${encodeURIComponent(source)}/trend${qs ? `?${qs}` : ""}`
+  );
+}
+
+export function getFreshnessAlerts(): Promise<{ alerts: FreshnessAlert[]; timestamp: string }> {
+  return fetchApi<{ alerts: FreshnessAlert[]; timestamp: string }>("/freshness/alerts");
+}
+
+export interface SchemaDriftSummary {
+  source_name: string;
+  incident_count: number;
+  last_detected: string;
+}
+
+export interface SchemaDriftIncident {
+  id: string;
+  source_name: string;
+  drift_type: "ADDITION" | "REMOVAL" | "TYPE_CHANGE";
+  field_path: string;
+  expected_type?: string | null;
+  actual_type?: string | null;
+  is_breaking: boolean;
+  detected_at: string;
+  is_resolved?: boolean;
+}
+
+export interface SchemaDriftReport {
+  summary: SchemaDriftSummary[];
+  recentIncidents: SchemaDriftIncident[];
+}
+
+export function getSchemaDriftReport(): Promise<SchemaDriftReport> {
+  return fetchApi<SchemaDriftReport>("/schema-drift/report");
+}
+
+// Service Annotations
+export function listServiceAnnotations(params?: {
+  serviceName?: string;
+  entityType?: string;
+  entityId?: string;
+  active?: string;
+  author?: string;
+}): Promise<ServiceAnnotation[]> {
+  const searchParams = new URLSearchParams();
+  if (params?.serviceName) searchParams.set("serviceName", params.serviceName);
+  if (params?.entityType) searchParams.set("entityType", params.entityType);
+  if (params?.entityId) searchParams.set("entityId", params.entityId);
+  if (params?.active) searchParams.set("active", params.active);
+  if (params?.author) searchParams.set("author", params.author);
+  const qs = searchParams.toString();
+  return fetchApi<ServiceAnnotation[]>(`/service-annotations${qs ? `?${qs}` : ""}`);
+}
+
+export function getServiceAnnotation(id: string): Promise<ServiceAnnotation> {
+  return fetchApi<ServiceAnnotation>(`/service-annotations/${id}`);
+}
+
+export function createServiceAnnotation(
+  input: CreateServiceAnnotationInput
+): Promise<ServiceAnnotation> {
+  return fetchApi<ServiceAnnotation>("/service-annotations", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateServiceAnnotation(
+  id: string,
+  input: UpdateServiceAnnotationInput
+): Promise<ServiceAnnotation> {
+  return fetchApi<ServiceAnnotation>(`/service-annotations/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteServiceAnnotation(id: string): Promise<Record<string, never>> {
+  return fetchApi<Record<string, never>>(`/service-annotations/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export function getServiceAnnotationAudit(
+  id: string
+): Promise<ServiceAnnotationAuditEntry[]> {
+  return fetchApi<ServiceAnnotationAuditEntry[]>(`/service-annotations/${id}/audit`);
 }

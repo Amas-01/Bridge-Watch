@@ -42,6 +42,17 @@ export async function initWebhookWorker(): Promise<void> {
 
       try {
         const result = await webhookService.processDelivery(job);
+
+        // Record success — resets the consecutive failure counter
+        try {
+          await webhookService.recordSuccess(job.data.webhookEndpointId);
+        } catch (cbError) {
+          logger.error(
+            { jobId: job.id, error: cbError instanceof Error ? cbError.message : String(cbError) },
+            "Failed to record webhook success for circuit breaker"
+          );
+        }
+
         return result;
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
@@ -97,6 +108,17 @@ export async function initWebhookWorker(): Promise<void> {
         await webhookService.updateDeliveryStatus(job.data.deliveryId, "failed", undefined, errorMessage);
       } catch (updateError) {
         logger.error({ jobId: job.id }, "Failed to update delivery status after max retries");
+      }
+
+      // Record failure for circuit breaker tracking
+      try {
+        const { webhookService } = await import("../services/webhook.service.js");
+        await webhookService.recordFailure(job.data.webhookEndpointId);
+      } catch (cbError) {
+        logger.error(
+          { jobId: job.id, error: cbError instanceof Error ? cbError.message : String(cbError) },
+          "Failed to record webhook failure for circuit breaker"
+        );
       }
     }
   });

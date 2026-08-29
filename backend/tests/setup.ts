@@ -7,6 +7,39 @@ process.env.POSTGRES_PASSWORD = "test_password";
 process.env.REDIS_HOST = "localhost";
 process.env.REDIS_PORT = "6379";
 
+// Polyfill Promise prototype for Knex chain mocks in tests
+const chainMethods = [
+  "where",
+  "whereIn",
+  "whereBetween",
+  "whereNotNull",
+  "orWhere",
+  "orderBy",
+  "limit",
+  "offset",
+  "select",
+  "first",
+  "count",
+  "insert",
+  "update",
+  "delete",
+  "del",
+  "returning",
+  "onConflict",
+  "merge",
+  "ignore",
+  "clone",
+  "leftJoin"
+];
+
+for (const method of chainMethods) {
+  Object.defineProperty(Promise.prototype, method, {
+    value: function(this: any) { return this; },
+    configurable: true,
+    writable: true
+  });
+}
+
 import { beforeAll, afterAll, vi } from "vitest";
 
 // Mock ioredis globally to prevent test leaks

@@ -151,7 +151,6 @@ export default function Tooltip({
               top: coords.y,
               zIndex: 9999,
               pointerEvents: "none",
-              animation: "fadeInTooltip 0.12s ease-out",
             }}
             className={`rounded-lg px-3 py-2 text-xs max-w-xs ${themeClasses[theme]} ${className}`}
           >

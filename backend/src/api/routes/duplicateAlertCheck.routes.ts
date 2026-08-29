@@ -1,8 +1,14 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
+import rateLimit from "@fastify/rate-limit";
 import { duplicateAlertCheckService } from "../../services/duplicateAlertCheck.service.js";
 import { authMiddleware } from "../middleware/auth.js";
 
 export async function duplicateAlertCheckRoutes(server: FastifyInstance) {
+  await server.register(rateLimit, {
+    max: 100,
+    timeWindow: "1 minute",
+  });
+
   server.addHook("preHandler", authMiddleware());
 
   // GET /dedup-rules — list all configured dedup rules

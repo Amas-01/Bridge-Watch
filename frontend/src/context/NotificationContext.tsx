@@ -48,6 +48,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setNotifications([]);
   };
 
+  const clearRead = () => {
+    setNotifications((prev) => prev.filter((n) => !n.read));
+  };
+
   const updatePreferences = (newPrefs: Partial<NotificationPreferences>) => {
     setPreferences((prev) => ({ ...prev, ...newPrefs }));
   };
@@ -59,6 +63,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     markAsRead,
     markAllAsRead,
     clearAll,
+    clearRead,
     updatePreferences,
     unreadCount,
   };

@@ -1,0 +1,11 @@
+{
+  "current": "v1",
+  "versions": [
+    {
+      "version": "v1",
+      "mediaType": "application/vnd.bridge-watch.v1+json",
+      "status": "current",
+      "fingerprintSource": "backend/src/api/compatibility/contracts.ts"
+    }
+  ]
+}

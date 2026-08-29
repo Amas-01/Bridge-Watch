@@ -1,5 +1,34 @@
 import { http, HttpResponse } from "msw";
 
+let serviceAnnotations: Array<Record<string, unknown>> = [
+  {
+    id: "ann-1",
+    serviceName: "price-service",
+    entityType: "source",
+    entityId: null,
+    content: "Scheduled maintenance window",
+    author: "operator",
+    startTime: new Date(Date.now() - 3600000).toISOString(),
+    endTime: new Date(Date.now() + 3600000).toISOString(),
+    active: true,
+    createdAt: new Date(Date.now() - 7200000).toISOString(),
+    updatedAt: new Date(Date.now() - 7200000).toISOString(),
+  },
+  {
+    id: "ann-2",
+    serviceName: "horizon",
+    entityType: "system",
+    entityId: "core-api",
+    content: "Rate limit increased due to traffic spike",
+    author: "admin",
+    startTime: null,
+    endTime: null,
+    active: true,
+    createdAt: new Date(Date.now() - 86400000).toISOString(),
+    updatedAt: new Date(Date.now() - 86400000).toISOString(),
+  },
+];
+
 export const handlers = [
   // Mock Assets
   http.get("/api/v1/assets", () => {
@@ -163,5 +192,70 @@ export const handlers = [
         unknown: 0,
       },
     });
+  }),
+
+  // Service Annotations
+  http.get("/api/v1/service-annotations", () => {
+    return HttpResponse.json(serviceAnnotations);
+  }),
+
+  http.get("/api/v1/service-annotations/:id", ({ params }) => {
+    const ann = serviceAnnotations.find((a) => a.id === params.id);
+    if (!ann) return new HttpResponse(null, { status: 404 });
+    return HttpResponse.json(ann);
+  }),
+
+  http.post("/api/v1/service-annotations", async ({ request }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    const newAnn = {
+      id: `ann-${Date.now()}`,
+      serviceName: body.serviceName,
+      entityType: body.entityType ?? "source",
+      entityId: body.entityId ?? null,
+      content: body.content,
+      author: body.author,
+      startTime: body.startTime ?? null,
+      endTime: body.endTime ?? null,
+      active: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    serviceAnnotations = [newAnn, ...serviceAnnotations];
+    return HttpResponse.json(newAnn, { status: 201 });
+  }),
+
+  http.patch("/api/v1/service-annotations/:id", async ({ params, request }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    const index = serviceAnnotations.findIndex((a) => a.id === params.id);
+    if (index === -1) return new HttpResponse(null, { status: 404 });
+    serviceAnnotations[index] = {
+      ...serviceAnnotations[index],
+      ...(body.content !== undefined ? { content: body.content } : {}),
+      ...(body.active !== undefined ? { active: body.active } : {}),
+      ...(body.startTime !== undefined ? { startTime: body.startTime } : {}),
+      ...(body.endTime !== undefined ? { endTime: body.endTime } : {}),
+      updatedAt: new Date().toISOString(),
+    };
+    return HttpResponse.json(serviceAnnotations[index]);
+  }),
+
+  http.delete("/api/v1/service-annotations/:id", ({ params }) => {
+    const index = serviceAnnotations.findIndex((a) => a.id === params.id);
+    if (index === -1) return new HttpResponse(null, { status: 404 });
+    serviceAnnotations = serviceAnnotations.filter((a) => a.id !== params.id);
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  http.get("/api/v1/service-annotations/:id/audit", ({ params }) => {
+    return HttpResponse.json([
+      {
+        id: "audit-1",
+        annotation_id: params.id,
+        action: "created",
+        actor: "operator",
+        changes: JSON.stringify({}),
+        created_at: new Date().toISOString(),
+      },
+    ]);
   }),
 ];

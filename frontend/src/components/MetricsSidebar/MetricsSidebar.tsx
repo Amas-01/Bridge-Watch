@@ -68,7 +68,7 @@ function useLiveMetricValues() {
 }
 
 export default function MetricsSidebar() {
-  const { pinned, isCollapsed, unpinMetric, reorderMetrics, toggleCollapse } =
+  const { pinned, isCollapsed, collapsedIds, unpinMetric, reorderMetrics, toggleCollapse, toggleWidgetCollapse } =
     useMetricsSidebarStore();
 
   const liveValues = useLiveMetricValues();
@@ -138,6 +138,8 @@ export default function MetricsSidebar() {
                   metric={metric}
                   liveValue={liveValues[metric.id]}
                   onUnpin={unpinMetric}
+                  collapsed={collapsedIds.includes(metric.id)}
+                  onToggleCollapse={toggleWidgetCollapse}
                 />
               ))}
             </SortableContext>

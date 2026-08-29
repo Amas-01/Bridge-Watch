@@ -11,8 +11,17 @@ vi.mock("../../src/utils/logger.js", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+const { mockStartRun, mockFinishRun, mockGetLatestRun } = vi.hoisted(() => ({
+  mockStartRun: vi.fn(),
+  mockFinishRun: vi.fn(),
+  mockGetLatestRun: vi.fn(),
+}));
+
 vi.mock("../../src/config/index.js", () => ({
-  config: {},
+  config: {
+    LOG_LEVEL: "silent",
+    NODE_ENV: "test",
+  },
   SUPPORTED_ASSETS: [
     { code: "USDC" },
     { code: "EURC" },
@@ -22,10 +31,6 @@ vi.mock("../../src/config/index.js", () => ({
 vi.mock("../../src/database/connection.js", () => ({
   getDatabase: vi.fn(),
 }));
-
-const mockStartRun = vi.fn();
-const mockFinishRun = vi.fn();
-const mockGetLatestRun = vi.fn();
 
 vi.mock("../../src/services/reconciliation.service.js", () => ({
   ReconciliationService: vi.fn(() => ({

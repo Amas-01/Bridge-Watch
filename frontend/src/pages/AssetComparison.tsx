@@ -1,7 +1,9 @@
 import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAssetsWithHealth } from "../hooks/useAssets";
 import { useLocalStorageState } from "../hooks/useLocalStorageState";
-import { AssetSelector, AssetComparisonMatrix } from "../components/AssetComparison";
+import { AssetSelector, AssetComparisonMatrix, PriceSourceCoverageMatrix } from "../components/AssetComparison";
+import { getAssetMetadataBySymbol } from "../services/api";
 
 const MAX_COMPARE = 8;
 const STORAGE_KEY = "bridge-watch:asset-comparison:v1";
@@ -10,10 +12,38 @@ export default function AssetComparison() {
   const { data: allAssets = [], isLoading, error } = useAssetsWithHealth();
   const [selected, setSelected] = useLocalStorageState<string[]>(STORAGE_KEY, []);
   const [filter, setFilter] = useState("");
+  const [activeCategory, setActiveCategory] = useState("all");
+
+  const metadataQuery = useQuery({
+    queryKey: ["asset-comparison-metadata", allAssets.map((asset) => asset.symbol).join("|")],
+    queryFn: async () => {
+      const metadataEntries = await Promise.all(
+        allAssets.map(async (asset) => {
+          try {
+            const metadata = await getAssetMetadataBySymbol(asset.symbol);
+            return [asset.symbol, metadata.category ?? null] as const;
+          } catch {
+            return [asset.symbol, null] as const;
+          }
+        })
+      );
+
+      return Object.fromEntries(metadataEntries) as Record<string, string | null>;
+    },
+    enabled: allAssets.length > 0,
+  });
+
+  const assetsWithCategories = useMemo(() => {
+    const metadataMap = metadataQuery.data ?? {};
+    return allAssets.map((asset) => ({
+      ...asset,
+      category: metadataMap[asset.symbol] ?? asset.category ?? null,
+    }));
+  }, [allAssets, metadataQuery.data]);
 
   const selectedAssets = useMemo(
-    () => allAssets.filter((a) => selected.includes(a.symbol)),
-    [allAssets, selected]
+    () => assetsWithCategories.filter((asset) => selected.includes(asset.symbol)),
+    [assetsWithCategories, selected]
   );
 
   function toggleAsset(symbol: string) {
@@ -27,6 +57,7 @@ export default function AssetComparison() {
   function clearAll() {
     setSelected([]);
     setFilter("");
+    setActiveCategory("all");
   }
 
   const avgHealth =
@@ -82,11 +113,13 @@ export default function AssetComparison() {
           <p className="text-red-400 text-sm">Failed to load assets. Please try again.</p>
         ) : (
           <AssetSelector
-            assets={allAssets}
+            assets={assetsWithCategories}
             selected={selected}
             max={MAX_COMPARE}
             onToggle={toggleAsset}
             isLoading={isLoading}
+            activeCategory={activeCategory}
+            onCategoryChange={setActiveCategory}
           />
         )}
       </section>
@@ -142,6 +175,12 @@ export default function AssetComparison() {
         </div>
 
         <AssetComparisonMatrix assets={selectedAssets} filter={filter} />
+      </section>
+
+      {/* Price source coverage */}
+      <section className="bg-stellar-card border border-stellar-border rounded-lg p-6">
+        <h2 className="text-lg font-semibold text-white mb-5">Price Source Coverage</h2>
+        <PriceSourceCoverageMatrix symbols={selectedAssets.map((asset) => asset.symbol)} />
       </section>
     </div>
   );

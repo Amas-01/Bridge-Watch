@@ -71,7 +71,7 @@ export default function IncidentHeatmap() {
               {assetsSet.map((asset) => {
                 const cell = bucket[date][asset];
                 const count = cell?.count ?? 0;
-                const avgScore = cell ? cell.severityScore / cell.count : 0;
+                const avgScore = cell && cell.count > 0 ? cell.severityScore / cell.count : 0;
                 const color = count > 0 ? getColor(avgScore) : "bg-stellar-card";
                 return (
                   <div

@@ -1,8 +1,11 @@
 import crypto from "crypto";
+import { EventEmitter } from "events";
 import { getDatabase } from "../database/connection.js";
 import { logger } from "../utils/logger.js";
 import { Queue, Job, ConnectionOptions } from "bullmq";
 import { config } from "../config/index.js";
+import { WebhookBatchBufferService } from "./webhookBatchBuffer.service.js";
+import type { BatchBufferStatus } from "./webhookBatchBuffer.service.js";
 
 const fetch = globalThis.fetch;
 
@@ -22,7 +25,9 @@ export type WebhookEventType =
   | "price.deviation_detected"
   | "liquidity.threshold_breached";
 
-export type WebhookDeliveryStatus = "pending" | "success" | "failed" | "retrying";
+export type WebhookDeliveryStatus = "pending" | "buffered" | "success" | "failed" | "retrying";
+
+export type WebhookCircuitBreakerStatus = "closed" | "open" | "half_open";
 
 export interface WebhookEndpoint {
   id: string;
@@ -38,6 +43,10 @@ export interface WebhookEndpoint {
   filterEventTypes: WebhookEventType[];
   isBatchDeliveryEnabled: boolean;
   batchWindowMs: number;
+  consecutiveFailures: number;
+  circuitBreakerStatus: WebhookCircuitBreakerStatus;
+  circuitBreakerTrippedAt: Date | null;
+  circuitBreakerResetAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -100,16 +109,39 @@ const WEBHOOK_CONNECTION: ConnectionOptions = {
 const RETRY_DELAYS = [1000, 5000, 15000, 60000, 300000, 900000, 3600000];
 const MAX_RETRY_ATTEMPTS = 7;
 
+// Circuit breaker: trip after this many consecutive failures per endpoint
+const CONSECUTIVE_FAILURE_THRESHOLD = 10;
+
 // =============================================================================
 // WEBHOOK SERVICE CLASS
 // =============================================================================
 
-export class WebhookService {
+export class WebhookService extends EventEmitter {
   private static instance: WebhookService;
   private deliveryQueue: Queue;
   private rateLimitMap: Map<string, RateLimitEntry> = new Map();
+  public readonly batchBuffer: WebhookBatchBufferService;
 
   private constructor() {
+    super();
+    this.batchBuffer = new WebhookBatchBufferService(async (params) => {
+      try {
+        await this.queueBatchDelivery({
+          webhookEndpointId: params.endpointId,
+          eventType: params.eventType,
+          events: params.events as Array<Record<string, any>>,
+        });
+        await this.resolveBufferedDeliveries(params.deliveryIds, "success");
+      } catch (err) {
+        await this.resolveBufferedDeliveries(
+          params.deliveryIds,
+          "failed",
+          err instanceof Error ? err.message : String(err),
+        );
+        throw err;
+      }
+    });
+
     this.deliveryQueue = new Queue(WEBHOOK_QUEUE_NAME, {
       connection: WEBHOOK_CONNECTION,
       defaultJobOptions: {
@@ -284,6 +316,265 @@ export class WebhookService {
   }
 
   // ---------------------------------------------------------------------------
+  // CIRCUIT BREAKER
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Record a successful delivery. Resets the consecutive failure counter.
+   */
+  public async recordSuccess(webhookEndpointId: string): Promise<void> {
+    const db = getDatabase();
+    const endpoint = await this.getEndpoint(webhookEndpointId);
+    if (!endpoint) return;
+
+    if (endpoint.consecutiveFailures === 0 && endpoint.circuitBreakerStatus === "closed") {
+      return; // Nothing to reset
+    }
+
+    const updateData: Record<string, any> = {
+      consecutive_failures: 0,
+      updated_at: new Date(),
+    };
+
+    // If we were in half_open state and now succeed, fully close the breaker
+    if (endpoint.circuitBreakerStatus === "half_open") {
+      updateData.circuit_breaker_status = "closed";
+      updateData.circuit_breaker_reset_at = new Date();
+
+      logger.info(
+        { webhookEndpointId },
+        "Webhook circuit breaker recovered (half_open → closed)"
+      );
+    }
+
+    await db("webhook_endpoints").where("id", webhookEndpointId).update(updateData);
+  }
+
+  /**
+   * Record a failed delivery. Increments the consecutive failure counter
+   * and trips the circuit breaker when the threshold is reached.
+   */
+  public async recordFailure(webhookEndpointId: string): Promise<void> {
+    const db = getDatabase();
+    const endpoint = await this.getEndpoint(webhookEndpointId);
+    if (!endpoint) return;
+
+    // If the breaker is already open, don't count further
+    if (endpoint.circuitBreakerStatus === "open") {
+      return;
+    }
+
+    const newCount = endpoint.consecutiveFailures + 1;
+
+    if (newCount >= CONSECUTIVE_FAILURE_THRESHOLD) {
+      await this.tripCircuitBreaker(webhookEndpointId, newCount);
+    } else {
+      await db("webhook_endpoints")
+        .where("id", webhookEndpointId)
+        .update({
+          consecutive_failures: newCount,
+          updated_at: new Date(),
+        });
+
+      logger.debug(
+        { webhookEndpointId, consecutiveFailures: newCount, threshold: CONSECUTIVE_FAILURE_THRESHOLD },
+        "Webhook consecutive failure recorded"
+      );
+
+      if (newCount >= 3) {
+        const currentEndpoint = await this.getEndpoint(webhookEndpointId);
+        await this.sendWebhookFailureNotification(currentEndpoint, newCount);
+      }
+    }
+  }
+
+  /**
+   * Trip the circuit breaker: mark the endpoint as open, deactivate it,
+   * and broadcast a WebSocket system event.
+   */
+  private async tripCircuitBreaker(
+    webhookEndpointId: string,
+    failureCount: number,
+  ): Promise<void> {
+    const db = getDatabase();
+
+    await db("webhook_endpoints")
+      .where("id", webhookEndpointId)
+      .update({
+        consecutive_failures: failureCount,
+        circuit_breaker_status: "open",
+        circuit_breaker_tripped_at: new Date(),
+        is_active: false,
+        updated_at: new Date(),
+      });
+
+    const endpoint = await this.getEndpoint(webhookEndpointId);
+
+    logger.warn(
+      { webhookEndpointId, consecutiveFailures: failureCount },
+      "Webhook circuit breaker tripped — endpoint suspended"
+    );
+
+    // Broadcast system event via WebSocket (events channel)
+    this.emit("webhook:circuit_breaker:tripped", {
+      webhookEndpointId,
+      endpointName: endpoint?.name ?? "unknown",
+      endpointUrl: endpoint?.url ?? "unknown",
+      ownerAddress: endpoint?.ownerAddress ?? "unknown",
+      consecutiveFailures: failureCount,
+      threshold: CONSECUTIVE_FAILURE_THRESHOLD,
+      trippedAt: new Date().toISOString(),
+    });
+
+    await this.sendWebhookFailureNotification(endpoint, failureCount);
+  }
+
+  private async sendWebhookFailureNotification(
+    endpoint: WebhookEndpoint | null | undefined,
+    failureCount: number,
+    statusCode?: number | null
+  ): Promise<void> {
+    if (!endpoint) return;
+    try {
+      const { emailNotificationService } = await import("./email.service.js");
+      const db = getDatabase();
+      let recipientEmail: string | null = null;
+      if (endpoint.ownerAddress.includes("@")) {
+        recipientEmail = endpoint.ownerAddress;
+      } else {
+        try {
+          const user = await db("users")
+            .where({ stellar_address: endpoint.ownerAddress })
+            .orWhere({ address: endpoint.ownerAddress })
+            .first();
+          recipientEmail = user?.email ?? null;
+        } catch {
+          recipientEmail = null;
+        }
+        if (!recipientEmail) {
+          try {
+            const operator = await db("bridge_operators")
+              .where({ bridge_id: endpoint.id })
+              .first();
+            recipientEmail = (operator as any)?.contact_email ?? null;
+          } catch {
+            recipientEmail = null;
+          }
+        }
+      }
+      if (!recipientEmail) {
+        logger.warn(
+          { webhookEndpointId: endpoint.id },
+          "No recipient email found for webhook failure notification"
+        );
+        return;
+      }
+      let failureLogsSummary = "";
+      try {
+        const logs = await db("webhook_delivery_logs")
+          .where("webhook_endpoint_id", endpoint.id)
+          .orderBy("created_at", "desc")
+          .limit(5);
+        failureLogsSummary = logs
+          .map(
+            (l: any) =>
+              `Attempt ${l.attempt_number}: ${l.error_message || `HTTP ${l.response_status ?? "unknown"}`} at ${l.created_at}`
+          )
+          .join("\n");
+        if (!failureLogsSummary) failureLogsSummary = "No recent delivery logs available.";
+      } catch {
+        failureLogsSummary = "Unable to retrieve failure logs.";
+      }
+      await emailNotificationService.sendAlertEmail(
+        { email: recipientEmail },
+        {
+          alertType: "webhook.endpoint_failed",
+          severity: "high",
+          assetCode: "WEBHOOK",
+          message: `Webhook endpoint ${endpoint.url} has been deactivated after ${failureCount} consecutive failures.`,
+          triggeredAt: new Date().toISOString(),
+          metadata: {
+            endpointUrl: endpoint.url,
+            endpointName: endpoint.name,
+            statusCode: statusCode ?? null,
+            failureCount,
+            failureLogsSummary,
+            isActive: false,
+          },
+        }
+      );
+      logger.info(
+        { webhookEndpointId: endpoint.id, recipientEmail },
+        "Webhook failure notification email sent"
+      );
+    } catch (error) {
+      logger.error(
+        { error, webhookEndpointId: endpoint?.id },
+        "Failed to send webhook failure notification email"
+      );
+    }
+  }
+
+  /**
+   * Manually reset the circuit breaker from the settings UI.
+   * Re-activates the endpoint and clears the failure counter.
+   */
+  public async resetCircuitBreaker(webhookEndpointId: string): Promise<WebhookEndpoint | null> {
+    const db = getDatabase();
+    const endpoint = await this.getEndpoint(webhookEndpointId);
+    if (!endpoint) return null;
+
+    if (endpoint.circuitBreakerStatus === "closed" && endpoint.consecutiveFailures === 0) {
+      return endpoint; // Already closed, no-op
+    }
+
+    await db("webhook_endpoints")
+      .where("id", webhookEndpointId)
+      .update({
+        consecutive_failures: 0,
+        circuit_breaker_status: "closed",
+        circuit_breaker_reset_at: new Date(),
+        is_active: true,
+        updated_at: new Date(),
+      });
+
+    logger.info(
+      { webhookEndpointId },
+      "Webhook circuit breaker manually reset"
+    );
+
+    // Broadcast system event
+    this.emit("webhook:circuit_breaker:reset", {
+      webhookEndpointId,
+      endpointName: endpoint.name,
+      endpointUrl: endpoint.url,
+      ownerAddress: endpoint.ownerAddress,
+      resetAt: new Date().toISOString(),
+    });
+
+    return this.getEndpoint(webhookEndpointId);
+  }
+
+  /**
+   * Get the current circuit breaker state for an endpoint.
+   */
+  public getCircuitBreakerState(endpoint: WebhookEndpoint): {
+    status: WebhookCircuitBreakerStatus;
+    consecutiveFailures: number;
+    threshold: number;
+    trippedAt: Date | null;
+    resetAt: Date | null;
+  } {
+    return {
+      status: endpoint.circuitBreakerStatus,
+      consecutiveFailures: endpoint.consecutiveFailures,
+      threshold: CONSECUTIVE_FAILURE_THRESHOLD,
+      trippedAt: endpoint.circuitBreakerTrippedAt,
+      resetAt: endpoint.circuitBreakerResetAt,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
   // ENDPOINT MANAGEMENT
   // ---------------------------------------------------------------------------
 
@@ -424,7 +715,6 @@ export class WebhookService {
   }): Promise<WebhookDelivery> {
     const db = getDatabase();
 
-    // Check rate limit
     const endpoint = await this.getEndpoint(params.webhookEndpointId);
     if (!endpoint) {
       throw new Error(`Webhook endpoint not found: ${params.webhookEndpointId}`);
@@ -434,7 +724,37 @@ export class WebhookService {
       throw new Error(`Rate limit exceeded for webhook endpoint: ${params.webhookEndpointId}`);
     }
 
-    // Create delivery record
+    // Route through batch buffer when enabled — the buffer auto-flushes after batchWindowMs
+    if (endpoint.isBatchDeliveryEnabled) {
+      const [delivery] = await db("webhook_deliveries")
+        .insert({
+          id: crypto.randomUUID(),
+          webhook_endpoint_id: params.webhookEndpointId,
+          event_type: params.eventType,
+          payload: JSON.stringify(params.payload),
+          status: "buffered",
+          attempts: 0,
+          created_at: new Date(),
+        })
+        .returning("*");
+
+      this.batchBuffer.buffer({
+        endpointId: params.webhookEndpointId,
+        deliveryId: delivery.id,
+        eventType: params.eventType,
+        payload: params.payload,
+        windowMs: endpoint.batchWindowMs,
+      });
+
+      logger.info(
+        { deliveryId: delivery.id, webhookEndpointId: params.webhookEndpointId, eventType: params.eventType, windowMs: endpoint.batchWindowMs },
+        "Event buffered for batch delivery",
+      );
+
+      return this.mapToDelivery(delivery);
+    }
+
+    // Standard immediate delivery
     const [delivery] = await db("webhook_deliveries")
       .insert({
         id: crypto.randomUUID(),
@@ -455,20 +775,47 @@ export class WebhookService {
       attemptNumber: 0,
     };
 
-    // Add to queue with optional delay for scheduled delivery
     if (params.scheduledAt && params.scheduledAt > Date.now()) {
-      const delay = params.scheduledAt - Date.now();
-      await this.deliveryQueue.add("webhook-delivery", jobData, { delay });
+      await this.deliveryQueue.add("webhook-delivery", jobData, { delay: params.scheduledAt - Date.now() });
     } else {
       await this.deliveryQueue.add("webhook-delivery", jobData);
     }
 
     logger.info(
       { deliveryId: delivery.id, webhookEndpointId: params.webhookEndpointId, eventType: params.eventType },
-      "Webhook delivery queued"
+      "Webhook delivery queued",
     );
 
     return this.mapToDelivery(delivery);
+  }
+
+  /** Manually flush the batch buffer for a specific endpoint before the window expires. */
+  public async flushBatchBuffer(webhookEndpointId: string): Promise<{ flushed: number }> {
+    return this.batchBuffer.flush(webhookEndpointId);
+  }
+
+  private async resolveBufferedDeliveries(
+    deliveryIds: string[],
+    status: "success" | "failed",
+    errorMessage?: string,
+  ): Promise<void> {
+    if (deliveryIds.length === 0) return;
+    const db = getDatabase();
+    await db("webhook_deliveries")
+      .whereIn("id", deliveryIds)
+      .update({
+        status,
+        last_attempt_at: new Date(),
+        ...(errorMessage ? { error_message: errorMessage } : {}),
+      });
+  }
+
+  /** Return live status of batch buffer windows. */
+  public getBatchBufferStatus(webhookEndpointId?: string): BatchBufferStatus | BatchBufferStatus[] | null {
+    if (webhookEndpointId) {
+      return this.batchBuffer.getStatus(webhookEndpointId);
+    }
+    return this.batchBuffer.listAll();
   }
 
   public async queueBatchDelivery(params: {
@@ -530,6 +877,14 @@ export class WebhookService {
     const endpoint = await this.getEndpoint(webhookEndpointId);
     if (!endpoint || !endpoint.isActive) {
       throw new Error(`Webhook endpoint is not active: ${webhookEndpointId}`);
+    }
+
+    // Refuse delivery if circuit breaker is tripped
+    if (endpoint.circuitBreakerStatus === "open") {
+      throw new Error(
+        `Webhook endpoint circuit breaker is open: ${webhookEndpointId}. ` +
+        `Reset the circuit breaker in endpoint settings to resume deliveries.`
+      );
     }
 
     const payloadString = JSON.stringify(payload);
@@ -694,8 +1049,7 @@ export class WebhookService {
     errorMessage?: string;
   }): Promise<void> {
     const db = getDatabase();
-
-    await db("webhook_delivery_logs").insert({
+    const payload = {
       id: crypto.randomUUID(),
       webhook_endpoint_id: params.webhookEndpointId,
       webhook_delivery_id: params.webhookDeliveryId,
@@ -708,7 +1062,46 @@ export class WebhookService {
       attempt_number: params.attemptNumber,
       error_message: params.errorMessage || null,
       created_at: new Date(),
-    });
+    };
+
+    try {
+      await db("webhook_delivery_logs")
+        .insert(payload)
+        .onConflict(["webhook_delivery_id", "attempt_number"])
+        .merge({
+          request_headers: payload.request_headers,
+          request_body: payload.request_body,
+          response_status: payload.response_status,
+          response_body: payload.response_body,
+          duration_ms: payload.duration_ms,
+          error_message: payload.error_message,
+          created_at: payload.created_at,
+        });
+    } catch (error: any) {
+      const isUniqueViolation =
+        error?.code === "23505" || /duplicate|unique/i.test(error?.message ?? "");
+      if (isUniqueViolation) {
+        logger.warn(
+          { webhookDeliveryId: params.webhookDeliveryId, attemptNumber: params.attemptNumber },
+          "Delivery log unique collision, resolving via upsert"
+        );
+        await db("webhook_delivery_logs")
+          .where({
+            webhook_delivery_id: params.webhookDeliveryId,
+            attempt_number: params.attemptNumber,
+          })
+          .update({
+            request_headers: payload.request_headers,
+            request_body: payload.request_body,
+            response_status: payload.response_status,
+            response_body: payload.response_body,
+            duration_ms: payload.duration_ms,
+            error_message: payload.error_message,
+          });
+        return;
+      }
+      throw error;
+    }
   }
 
   public async getDeliveryLogs(
@@ -817,6 +1210,10 @@ export class WebhookService {
       filterEventTypes: typeof row.filter_event_types === "string" ? JSON.parse(row.filter_event_types) : row.filter_event_types || [],
       isBatchDeliveryEnabled: row.is_batch_delivery_enabled,
       batchWindowMs: row.batch_window_ms,
+      consecutiveFailures: row.consecutive_failures ?? 0,
+      circuitBreakerStatus: row.circuit_breaker_status ?? "closed",
+      circuitBreakerTrippedAt: row.circuit_breaker_tripped_at ?? null,
+      circuitBreakerResetAt: row.circuit_breaker_reset_at ?? null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

@@ -1,4 +1,4 @@
-import { Fragment, useMemo } from "react";
+import { Fragment } from "react";
 import { useLocation } from "react-router-dom";
 import { BreadcrumbItem } from "./BreadcrumbItem";
 import { resolveLabel } from "./routeUtils";
@@ -109,12 +109,8 @@ export function Breadcrumb({
   hideHome = false,
   className = "",
 }: BreadcrumbProps) {
-  const { pathname } = useLocation();
-
-  const items = useMemo(
-    () => manualItems ?? buildItemsFromPath(pathname),
-    [manualItems, pathname],
-  );
+  const location = useLocation();
+  const items = manualItems ?? buildItemsFromPath(location.pathname);
 
   // Don't render breadcrumbs on the root dashboard (single segment)
   if (items.length === 0) return null;

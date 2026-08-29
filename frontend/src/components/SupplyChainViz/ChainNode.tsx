@@ -11,10 +11,15 @@ interface Props {
 
 const RADIUS = 38;
 
-function healthColor(score: number): string {
-  if (score >= 85) return "#22c55e";
-  if (score >= 60) return "#f59e0b";
-  return "#ef4444";
+function healthStrokeClass(score: number): string {
+  if (score >= 85) return "stroke-status-success";
+  if (score >= 60) return "stroke-status-warning";
+  return "stroke-status-danger";
+}
+function healthFillClass(score: number): string {
+  if (score >= 85) return "fill-status-success";
+  if (score >= 60) return "fill-status-warning";
+  return "fill-status-danger";
 }
 
 function formatSupply(value: number): string {
@@ -33,7 +38,8 @@ export default function ChainNode({
 }: Props) {
   const { position: { x, y }, color, label, healthScore, totalSupplyUsd } = node;
   const ringRadius = RADIUS + 6;
-  const hc = healthColor(healthScore);
+  const hcStroke = healthStrokeClass(healthScore);
+  const hcFill = healthFillClass(healthScore);
   const opacity = isDimmed ? 0.25 : 1;
 
   return (
@@ -50,7 +56,7 @@ export default function ChainNode({
       <circle
         r={ringRadius}
         fill="none"
-        stroke={hc}
+        className={hcStroke}
         strokeWidth={isSelected || isHovered ? 3 : 1.5}
         strokeDasharray={isSelected ? "none" : "6 3"}
         style={{ transition: "stroke-width 0.15s" }}
@@ -115,13 +121,13 @@ export default function ChainNode({
 
       {/* Health score badge */}
       <g transform={`translate(${RADIUS - 4}, ${-RADIUS + 4})`}>
-        <circle r={10} fill="#1e293b" stroke={hc} strokeWidth={1.5} />
+        <circle r={10} fill="#1e293b" className={hcStroke} strokeWidth={1.5} />
         <text
           textAnchor="middle"
           dominantBaseline="central"
           fontSize={7}
           fontWeight="700"
-          fill={hc}
+          className={hcFill}
           style={{ userSelect: "none", pointerEvents: "none" }}
         >
           {healthScore}

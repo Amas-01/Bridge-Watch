@@ -194,4 +194,68 @@ describe("RuleEvaluatorService", () => {
       expect(result.executionContext).toBe("manual");
     });
   });
+
+  describe("AST pattern matching engine (AND, OR, NOT)", () => {
+    it("evaluates complex nested AST conditions: (Deviation > 2% AND TVL < 500k) OR Volume < 10k", () => {
+      const astCondition: any = {
+        op: "OR",
+        conditions: [
+          {
+            op: "AND",
+            conditions: [
+              { field: "price_deviation", operator: "gt", value: 2 },
+              { field: "tvl", operator: "lt", value: 500000 },
+            ],
+          },
+          { field: "volume", operator: "lt", value: 10000 },
+        ],
+      };
+
+      const resultPassNested = service.evaluate(
+        { ruleName: "nested-rule", assetCode: "USDC", astCondition },
+        { price_deviation: 3, tvl: 400000, volume: 50000 }
+      );
+      expect(resultPassNested.triggered).toBe(true);
+
+      const resultPassOr = service.evaluate(
+        { ruleName: "nested-rule", assetCode: "USDC", astCondition },
+        { price_deviation: 1, tvl: 600000, volume: 8000 }
+      );
+      expect(resultPassOr.triggered).toBe(true);
+
+      const resultFailBoth = service.evaluate(
+        { ruleName: "nested-rule", assetCode: "USDC", astCondition },
+        { price_deviation: 1, tvl: 600000, volume: 50000 }
+      );
+      expect(resultFailBoth.triggered).toBe(false);
+    });
+
+    it("evaluates NOT logical operator in AST condition", () => {
+      const astCondition: any = {
+        op: "NOT",
+        condition: { field: "price", operator: "lt", value: 100 },
+      };
+
+      const result = service.evaluate(
+        { ruleName: "not-test", assetCode: "XLM", astCondition },
+        { price: 150 }
+      );
+      expect(result.triggered).toBe(true);
+    });
+
+    it("rejects invalid AST condition syntax with validation error", () => {
+      const invalidAST: any = {
+        op: "AND",
+        conditions: [],
+      };
+
+      expect(() =>
+        service.evaluate(
+          { ruleName: "invalid-ast", assetCode: "USDC", astCondition: invalidAST },
+          { price: 100 }
+        )
+      ).toThrow("Logical AND group requires a non-empty conditions array");
+    });
+  });
 });
+

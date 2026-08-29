@@ -12,7 +12,21 @@ export default function AlertPlaybookViewer() {
   const { data: searchResults, isLoading } = useAlertPlaybooks(query, alertType || undefined);
   const playbooks = searchResults?.playbooks ?? [];
 
-  const activeId = selectedId ?? playbooks[0]?.id ?? null;
+  // Client-side filtering for title, alert type, and resolution steps
+  const filteredPlaybooks = useMemo(() => {
+    const lowerQuery = query.toLowerCase();
+    return playbooks.filter((pb) => {
+      const matchesTitle = pb.title.toLowerCase().includes(lowerQuery);
+      const matchesAlertType = pb.alertType.toLowerCase().includes(lowerQuery);
+      const matchesSteps = pb.steps?.some((step) =>
+        step.title.toLowerCase().includes(lowerQuery) ||
+        step.body.toLowerCase().includes(lowerQuery)
+      );
+      return matchesTitle || matchesAlertType || matchesSteps;
+    });
+  }, [playbooks, query]);
+
+  const activeId = selectedId ?? filteredPlaybooks[0]?.id ?? null;
   const { data: selectedPlaybook } = useAlertPlaybook(activeId ?? undefined);
 
   const contextLabel = useMemo(() => {
@@ -72,9 +86,11 @@ export default function AlertPlaybookViewer() {
 
           {isLoading ? (
             <p className="text-sm text-stellar-text-secondary">Loading playbooks...</p>
+          ) : filteredPlaybooks.length === 0 ? (
+            <p className="text-sm text-stellar-text-secondary">No playbooks match your search.</p>
           ) : (
             <ul className="space-y-2">
-              {playbooks.map((playbook) => (
+              {filteredPlaybooks.map((playbook) => (
                 <li key={playbook.id}>
                   <button
                     type="button"

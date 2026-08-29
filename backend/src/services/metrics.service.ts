@@ -30,6 +30,10 @@ class MetricsService {
   public queueJobsFailed: Counter;
   public queueJobDuration: Histogram;
 
+  public bullQueueWaitingTotal: Gauge;
+  public bullQueueFailedTotal: Gauge;
+  public bullQueueActiveTotal: Gauge;
+
   // Business Metrics
   public bridgeVerificationsTotal: Counter;
   public bridgeVerificationSuccess: Counter;
@@ -58,6 +62,18 @@ class MetricsService {
   public websocketConnections: Gauge;
   public websocketMessagesTotal: Counter;
 
+  // #1058 — Request Sampling Metrics
+  public samplingRuleEvaluationsTotal: Counter;
+
+  // #1059 — Error Catalog Metrics
+  public errorCatalogLookupsTotal: Counter;
+
+  // #1060 — Change Approval Metrics
+  public changeRequestsTotal: Counter;
+
+  // #1061 — Config Rollback Metrics
+  public configRollbacksTotal: Counter;
+
   constructor() {
     this.registry = new Registry();
     
@@ -77,6 +93,9 @@ class MetricsService {
     this.queueJobsCompleted = undefined as any;
     this.queueJobsFailed = undefined as any;
     this.queueJobDuration = undefined as any;
+    this.bullQueueWaitingTotal = undefined as any;
+    this.bullQueueFailedTotal = undefined as any;
+    this.bullQueueActiveTotal = undefined as any;
     this.bridgeVerificationsTotal = undefined as any;
     this.bridgeVerificationSuccess = undefined as any;
     this.bridgeVerificationFailure = undefined as any;
@@ -97,7 +116,16 @@ class MetricsService {
     this.apiKeyRateLimitHits = undefined as any;
     this.websocketConnections = undefined as any;
     this.websocketMessagesTotal = undefined as any;
-    
+
+    // #1058 — Request Sampling
+    this.samplingRuleEvaluationsTotal = undefined as any;
+    // #1059 — Error Catalog
+    this.errorCatalogLookupsTotal = undefined as any;
+    // #1060 — Change Approval
+    this.changeRequestsTotal = undefined as any;
+    // #1061 — Config Rollback
+    this.configRollbacksTotal = undefined as any;
+
     this.initializeMetrics();
   }
 
@@ -216,6 +244,27 @@ class MetricsService {
       help: "Queue job processing duration in seconds",
       labelNames: ["queue_name", "job_type"],
       buckets: [1, 5, 10, 30, 60, 120, 300, 600],
+      registers: [this.registry],
+    });
+
+    this.bullQueueWaitingTotal = new Gauge({
+      name: "bull_queue_waiting_total",
+      help: "Total number of waiting bullmq jobs",
+      labelNames: ["queue_name"],
+      registers: [this.registry],
+    });
+
+    this.bullQueueFailedTotal = new Gauge({
+      name: "bull_queue_failed_total",
+      help: "Total number of failed bullmq jobs",
+      labelNames: ["queue_name"],
+      registers: [this.registry],
+    });
+
+    this.bullQueueActiveTotal = new Gauge({
+      name: "bull_queue_active_total",
+      help: "Total number of active bullmq jobs",
+      labelNames: ["queue_name"],
       registers: [this.registry],
     });
 
@@ -363,6 +412,38 @@ class MetricsService {
       registers: [this.registry],
     });
 
+    // #1058 — Request Sampling Evaluations
+    this.samplingRuleEvaluationsTotal = new Counter({
+      name: "sampling_rule_evaluations_total",
+      help: "Total number of sampling rule evaluations",
+      labelNames: ["matched"],
+      registers: [this.registry],
+    });
+
+    // #1059 — Error Catalog Lookups
+    this.errorCatalogLookupsTotal = new Counter({
+      name: "error_catalog_lookups_total",
+      help: "Total number of error catalog lookups",
+      labelNames: ["found"],
+      registers: [this.registry],
+    });
+
+    // #1060 — Change Requests by Status
+    this.changeRequestsTotal = new Counter({
+      name: "change_requests_total",
+      help: "Total number of change request status transitions",
+      labelNames: ["status"],
+      registers: [this.registry],
+    });
+
+    // #1061 — Config Rollbacks
+    this.configRollbacksTotal = new Counter({
+      name: "config_rollbacks_total",
+      help: "Total number of config rollback applications",
+      labelNames: ["success"],
+      registers: [this.registry],
+    });
+
     this.initialized = true;
     logger.info("Metrics service initialized");
   }
@@ -456,6 +537,17 @@ class MetricsService {
     }
     
     this.queueJobDuration.observe({ queue_name: queueName, job_type: jobType }, duration);
+  }
+
+  /**
+   * Update bullmq queue metrics
+   */
+  updateBullQueueMetrics(queueCounts: Record<string, any>) {
+    for (const [queueName, counts] of Object.entries(queueCounts)) {
+      if (counts.waiting !== undefined) this.bullQueueWaitingTotal.set({ queue_name: queueName }, counts.waiting);
+      if (counts.failed !== undefined) this.bullQueueFailedTotal.set({ queue_name: queueName }, counts.failed);
+      if (counts.active !== undefined) this.bullQueueActiveTotal.set({ queue_name: queueName }, counts.active);
+    }
   }
 
   /**

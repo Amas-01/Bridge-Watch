@@ -3,14 +3,16 @@ import {
   ruleEvaluatorService,
   type RuleCondition,
   type LogicOperator,
+  type RuleASTNode,
 } from "../../services/ruleEvaluator.service.js";
 
 interface EvaluateBody {
   ruleName: string;
   ruleId?: string;
   assetCode: string;
-  conditions: RuleCondition[];
-  logicOperator: LogicOperator;
+  conditions?: RuleCondition[];
+  logicOperator?: LogicOperator;
+  astCondition?: RuleASTNode;
   metrics: Record<string, number>;
   previousMetrics?: Record<string, number>;
   previewMode?: boolean;
@@ -23,8 +25,9 @@ interface EvaluateBatchBody {
     ruleName: string;
     ruleId?: string;
     assetCode: string;
-    conditions: RuleCondition[];
-    logicOperator: LogicOperator;
+    conditions?: RuleCondition[];
+    logicOperator?: LogicOperator;
+    astCondition?: RuleASTNode;
   }>;
   metrics: Record<string, number>;
   previousMetrics?: Record<string, number>;
@@ -56,6 +59,7 @@ export async function ruleEvaluatorRoutes(server: FastifyInstance) {
           assetCode,
           conditions,
           logicOperator,
+          astCondition,
           metrics,
           previousMetrics,
           previewMode,
@@ -63,7 +67,7 @@ export async function ruleEvaluatorRoutes(server: FastifyInstance) {
           executionContext,
         } = request.body;
         const result = ruleEvaluatorService.evaluate(
-          { ruleName, ruleId, assetCode, conditions, logicOperator },
+          { ruleName, ruleId, assetCode, conditions, logicOperator, astCondition },
           metrics,
           previousMetrics,
           { previewMode, executedBy, executionContext }

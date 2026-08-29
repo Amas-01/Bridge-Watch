@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { provenanceService } from "../../services/provenance.service.js";
+import { sendApiError } from "../utils/response.js";
 
 export async function provenanceRoutes(server: FastifyInstance) {
   server.get<{
@@ -93,7 +94,7 @@ export async function provenanceRoutes(server: FastifyInstance) {
       const { metric, asset, bridge } = request.query;
       const graph = provenanceService.getLineage(metric, asset, bridge);
       if (!graph) {
-        return reply.code(404).send({ error: "No provenance graph found for the given parameters" });
+        return sendApiError(reply, 404, "No provenance graph found for the given parameters");
       }
       return graph;
     },

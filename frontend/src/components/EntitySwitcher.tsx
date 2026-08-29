@@ -147,14 +147,48 @@ export default function EntitySwitcher() {
   useEffect(() => {
     if (!open) return;
 
+    let touchStart: { x: number; y: number } | null = null;
+    let touchDragged = false;
+    let suppressMouseUntil = 0;
+
     const onPointerDown = (event: MouseEvent) => {
+      if (Date.now() < suppressMouseUntil) return;
       if (!panelRef.current?.contains(event.target as Node)) {
         setOpen(false);
       }
     };
 
+    const onTouchStart = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      touchStart = touch ? { x: touch.clientX, y: touch.clientY } : null;
+      touchDragged = false;
+    };
+
+    const onTouchMove = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (!touch || !touchStart) return;
+      touchDragged =
+        Math.hypot(touch.clientX - touchStart.x, touch.clientY - touchStart.y) > 8;
+    };
+
+    const onTouchEnd = (event: TouchEvent) => {
+      suppressMouseUntil = Date.now() + 500;
+      if (!touchDragged && !panelRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+      touchStart = null;
+    };
+
     document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onTouchStart, { passive: true });
+    document.addEventListener("touchmove", onTouchMove, { passive: true });
+    document.addEventListener("touchend", onTouchEnd, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onTouchStart);
+      document.removeEventListener("touchmove", onTouchMove);
+      document.removeEventListener("touchend", onTouchEnd);
+    };
   }, [open]);
 
   function selectItem(item: EntityItem) {

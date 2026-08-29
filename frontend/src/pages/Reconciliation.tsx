@@ -14,7 +14,9 @@ import {
   getReconciliationMismatchDetail,
   updateReconciliationTriage,
 } from "../services/api";
+import { formatUtcDate } from "../utils/formatUtcDate";
 import type {
+  CommitmentVerificationStatus,
   DriftSeverity,
   DriftTrendDirection,
   ReconciliationDriftSummary,
@@ -69,6 +71,14 @@ const triageClass: Record<ReconciliationTriageStatus, string> = {
   false_positive: "text-stellar-text-secondary",
 };
 
+const verificationStatusConfig: Record<CommitmentVerificationStatus, { cls: string; label: string; dot: string }> = {
+  verified: { cls: "border-green-500/40 bg-green-500/10 text-green-300", label: "Verified", dot: "bg-green-400" },
+  challenged: { cls: "border-orange-500/40 bg-orange-500/10 text-orange-300", label: "Challenged", dot: "bg-orange-400 animate-pulse" },
+  pending: { cls: "border-slate-500/40 bg-slate-500/10 text-slate-300", label: "Pending", dot: "bg-slate-400" },
+  invalid: { cls: "border-red-500/40 bg-red-500/10 text-red-300", label: "Invalid", dot: "bg-red-400" },
+  unknown: { cls: "border-gray-500/40 bg-gray-500/10 text-gray-400", label: "Unknown", dot: "bg-gray-500" },
+};
+
 const trendLabel: Record<DriftTrendDirection, string> = {
   new: "New",
   improving: "Improving",
@@ -117,10 +127,7 @@ function formatTime(value: string | null): string {
 }
 
 function formatDate(value: string): string {
-  return new Date(value).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
+  return formatUtcDate(value);
 }
 
 function titleCase(value: string): string {
@@ -200,6 +207,16 @@ function SourceDatumCard({ datum }: { datum: ReconciliationSourceDatum }) {
         ))}
       </dl>
     </article>
+  );
+}
+
+function VerificationStatusBadge({ status }: { status: CommitmentVerificationStatus }) {
+  const config = verificationStatusConfig[status] ?? verificationStatusConfig.unknown;
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${config.cls}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${config.dot}`} />
+      {config.label}
+    </span>
   );
 }
 
@@ -636,6 +653,74 @@ export default function Reconciliation() {
               <SourceDatumCard key={datum.id} datum={datum} />
             ))}
           </div>
+        </section>
+      )}
+
+      {detailQuery.data?.reserveCommitment && (
+        <section className="rounded-lg border border-stellar-border bg-stellar-card p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-white">Reserve Commitment</h2>
+              <p className="mt-1 text-sm text-stellar-text-secondary">
+                On-chain Merkle commitment for {detailQuery.data.reserveCommitment.bridgeId}
+              </p>
+            </div>
+            <VerificationStatusBadge status={detailQuery.data.reserveCommitment.verificationStatus} />
+          </div>
+          <dl className="mt-5 grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+            <div>
+              <dt className="text-stellar-text-secondary text-xs">Sequence</dt>
+              <dd className="mt-1 text-white font-mono">
+                {detailQuery.data.reserveCommitment.sequence ?? "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-stellar-text-secondary text-xs">Merkle Root</dt>
+              <dd className="mt-1 text-white font-mono text-xs break-all">
+                {detailQuery.data.reserveCommitment.merkleRoot || "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-stellar-text-secondary text-xs">Total Reserves</dt>
+              <dd className="mt-1 text-white font-mono">
+                {formatFullSupply(detailQuery.data.reserveCommitment.totalReserves)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-stellar-text-secondary text-xs">Status</dt>
+              <dd className="mt-1 text-white">
+                {titleCase(detailQuery.data.reserveCommitment.status)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-stellar-text-secondary text-xs">Transaction</dt>
+              <dd className="mt-1 text-white font-mono text-xs break-all max-w-[200px]">
+                {detailQuery.data.reserveCommitment.txHash || "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-stellar-text-secondary text-xs">Committed</dt>
+              <dd className="mt-1 text-white">
+                {detailQuery.data.reserveCommitment.committedAt
+                  ? formatTime(String(detailQuery.data.reserveCommitment.committedAt))
+                  : "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-stellar-text-secondary text-xs">Ledger</dt>
+              <dd className="mt-1 text-white font-mono">
+                {detailQuery.data.reserveCommitment.committedLedger > 0
+                  ? detailQuery.data.reserveCommitment.committedLedger.toLocaleString()
+                  : "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-stellar-text-secondary text-xs">Verification</dt>
+              <dd className="mt-1">
+                <VerificationStatusBadge status={detailQuery.data.reserveCommitment.verificationStatus} />
+              </dd>
+            </div>
+          </dl>
         </section>
       )}
 

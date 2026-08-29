@@ -5,6 +5,7 @@ import {
   BridgeWatchTransactionError,
 } from "./errors";
 import type {
+  BackoffState,
   BridgeWatchSdkConfig,
   EventSubscription,
   EventSubscriptionOptions,
@@ -12,6 +13,8 @@ import type {
   QueryContractParams,
   SdkHealth,
 } from "./types";
+import type { ApiCapabilities, ApiContract, ApiContractSummary, ApiVersion } from "./compatibility";
+import { compatibilityHeaders } from "./compatibility";
 
 export class BridgeWatchContractSdk {
   private readonly config: Required<BridgeWatchSdkConfig>;
@@ -24,11 +27,32 @@ export class BridgeWatchContractSdk {
       defaultFee: "100000",
       defaultTimeoutSeconds: 30,
       ...config,
+      apiUrl: config.apiUrl ?? config.rpcUrl,
     };
 
     this.server = new StellarSdk.rpc.Server(this.config.rpcUrl, {
       allowHttp: this.config.allowHttp,
     });
+  }
+
+  async getApiContract(version?: ApiVersion): Promise<ApiContract> {
+    return this.fetchCompatibility<ApiContract>(`/contract${version ? `?version=${version}` : ""}`, version);
+  }
+
+  async getApiCapabilities(version?: ApiVersion): Promise<ApiCapabilities> {
+    return this.fetchCompatibility<ApiCapabilities>("/capabilities", version);
+  }
+
+  async getApiVersions(): Promise<{ current: ApiVersion; versions: ApiContractSummary[] }> {
+    return this.fetchCompatibility<{ current: ApiVersion; versions: ApiContractSummary[] }>("/versions");
+  }
+
+  private async fetchCompatibility<T>(path: string, version?: ApiVersion): Promise<T> {
+    const response = await fetch(`${this.config.apiUrl.replace(/\/$/, "")}/api/v1/compatibility${path}`, {
+      headers: compatibilityHeaders(version),
+    });
+    if (!response.ok) throw new BridgeWatchConnectionError(`Compatibility request failed: ${response.status}`);
+    return response.json() as Promise<T>;
   }
 
   async connect(): Promise<SdkHealth> {
@@ -156,6 +180,24 @@ export class BridgeWatchContractSdk {
   subscribeToEvents(options: EventSubscriptionOptions): EventSubscription {
     let active = true;
     let cursor = options.startLedger;
+    let consecutiveFailures = 0;
+    const minBackoffMs = options.pollIntervalMs ?? 5000;
+    const maxBackoffMs = options.maxBackoffMs ?? 60000;
+    let currentBackoffMs = minBackoffMs;
+
+    const updateBackoffState = (isBackingOff: boolean) => {
+      const state: BackoffState = {
+        currentBackoffMs,
+        consecutiveFailures,
+        isBackingOff,
+      };
+      options.onBackoffStateChange?.(state);
+    };
+
+    const jitter = () => {
+      const jitterPercent = Math.random() * 0.1;
+      return currentBackoffMs * (1 + jitterPercent);
+    };
 
     const run = async () => {
       while (active) {
@@ -179,17 +221,35 @@ export class BridgeWatchContractSdk {
           if (response.latestLedger) {
             cursor = response.latestLedger + 1;
           }
+
+          if (consecutiveFailures > 0) {
+            consecutiveFailures = 0;
+            currentBackoffMs = minBackoffMs;
+            updateBackoffState(false);
+          }
+
+          await new Promise((resolve) => {
+            setTimeout(resolve, minBackoffMs);
+          });
         } catch (error) {
+          consecutiveFailures++;
+          currentBackoffMs = Math.min(
+            minBackoffMs * Math.pow(2, consecutiveFailures - 1),
+            maxBackoffMs
+          );
+          updateBackoffState(true);
+
           options.onError?.(
             error instanceof Error
               ? error
               : new BridgeWatchConnectionError("Event polling failed", error)
           );
-        }
 
-        await new Promise((resolve) => {
-          setTimeout(resolve, options.pollIntervalMs ?? 5000);
-        });
+          const delay = jitter();
+          await new Promise((resolve) => {
+            setTimeout(resolve, delay);
+          });
+        }
       }
     };
 

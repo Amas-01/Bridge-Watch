@@ -4,6 +4,7 @@
 // governance and insurance_pool are standalone contracts — only compiled for
 // tests (native target) to avoid Wasm symbol conflicts with BridgeWatchContract.
 pub mod acl;
+pub mod mmr_accumulator;
 #[cfg(test)]
 pub mod analytics_aggregator;
 #[cfg(test)]
@@ -15,6 +16,7 @@ pub mod batch_query;
 #[cfg(test)]
 pub mod circuit_breaker;
 pub mod emergency_fund_recovery;
+pub mod emergency_multisig;
 pub mod escrow_contract;
 #[cfg(test)]
 pub mod governance;
@@ -25,7 +27,9 @@ pub mod migration;
 #[cfg(test)]
 pub mod multisig_treasury;
 pub mod operator_rotation;
+pub mod oracle_hub;
 #[cfg(test)]
+
 pub mod rate_limiter;
 pub mod report_hash;
 #[cfg(test)]
@@ -37,6 +41,7 @@ pub mod source_trust;
 pub mod state_export;
 pub mod threshold_window;
 pub mod version_migration_helper;
+pub mod zk_verifier;
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env, String, Vec,
 };
@@ -49,6 +54,8 @@ use liquidity_pool::{
     DailyBucket, ImpermanentLossResult, LiquidityDepth as PoolLiquidityDepth, PoolMetrics,
     PoolSnapshot, PoolType,
 };
+
+use emergency_multisig::{EmergencyAction, MultisigActionLog, MultisigConfig, OperatorSignature};
 // Storage key constants instead of using DataKey enum for storage operations
 #[allow(dead_code)]
 mod keys {
@@ -126,6 +133,10 @@ mod keys {
     // Event Replay Helpers (issue #296)
     pub const EVENT_REPLAY_LOG: &str = "event_replay_log";
     pub const EVENT_REPLAY_CTR: &str = "event_replay_ctr";
+    // Emergency Multi-Signature Halt & Recovery (issue #794)
+    pub const EMERGENCY_MULTISIG_CONFIG: &str = "em_msig_cfg";
+    pub const EMERGENCY_MULTISIG_NONCE: &str = "em_msig_nonce";
+    pub const EMERGENCY_MULTISIG_LOG: &str = "em_msig_log";
 }
 
 #[contracttype]
@@ -3769,6 +3780,214 @@ impl BridgeWatchContract {
             .persistent()
             .get(&keys::PAUSE_HISTORY)
             .unwrap_or_else(|| Vec::new(&env))
+    }
+
+    // -----------------------------------------------------------------------
+    // Emergency Multi-Signature Halt & Recovery (issue #794)
+    // -----------------------------------------------------------------------
+    //
+    // The single-key `emergency_pause`/`unpause`/`set_mismatch_threshold`
+    // entrypoints above remain available, but they are a single point of
+    // failure: whoever holds the admin key can silence the circuit breaker.
+    // The entrypoints below require a configurable `M`-of-`N` threshold of
+    // Ed25519 signatures from independently-held operator keys, verified
+    // on-chain via `env.crypto().ed25519_verify()`, before pausing,
+    // unpausing, or overriding the mismatch threshold takes effect.
+
+    /// Register (or rotate) the emergency multisig operator set and
+    /// signature threshold. Admin only — this establishes the root of trust
+    /// that the threshold signature scheme below relies on.
+    ///
+    /// # Panics
+    /// - `caller` is not the contract admin.
+    /// - `operators` is empty, exceeds the configured maximum, or contains a
+    ///   duplicate key.
+    /// - `threshold` is zero or greater than the number of operators.
+    pub fn configure_emergency_multisig(
+        env: Env,
+        caller: Address,
+        operators: Vec<BytesN<32>>,
+        threshold: u32,
+    ) {
+        caller.require_auth();
+        let admin: Address = env.storage().instance().get(&keys::ADMIN).unwrap();
+        if caller != admin {
+            panic!("only admin can configure the emergency multisig");
+        }
+
+        let config = emergency_multisig::configure(&env, operators, threshold);
+
+        env.events()
+            .publish((symbol_short!("ems_cfg"), caller), config.threshold);
+    }
+
+    /// Return the current emergency multisig operator set/threshold, if any.
+    pub fn get_emergency_multisig_config(env: Env) -> Option<MultisigConfig> {
+        emergency_multisig::get_config(&env)
+    }
+
+    /// Return the next nonce that emergency multisig signatures must target.
+    pub fn get_emergency_multisig_nonce(env: Env) -> u64 {
+        emergency_multisig::get_nonce(&env) + 1
+    }
+
+    /// Return the emergency multisig action audit log, oldest first.
+    pub fn get_emergency_multisig_log(env: Env) -> Vec<MultisigActionLog> {
+        emergency_multisig::get_log(&env)
+    }
+
+    /// Halt all state-changing contract operations once `threshold` operators
+    /// have signed the `Pause` action for `nonce`.
+    ///
+    /// Unlike `emergency_pause()`, this does not depend on `caller` holding
+    /// any privileged role or key — authorization comes entirely from the
+    /// verified operator signatures, so a compromised admin key cannot be
+    /// used to block this recovery path.
+    ///
+    /// # Panics
+    /// - See [`emergency_multisig::verify_and_execute`].
+    pub fn emergency_pause_multisig(
+        env: Env,
+        reason: String,
+        signatures: Vec<OperatorSignature>,
+        nonce: u64,
+    ) {
+        let approvers = emergency_multisig::verify_and_execute(
+            &env,
+            EmergencyAction::Pause,
+            signatures,
+            nonce,
+        );
+
+        let now = env.ledger().timestamp();
+        env.storage().instance().set(&keys::GLOBAL_PAUSED, &true);
+        env.storage()
+            .instance()
+            .set(&keys::PAUSE_REASON, &reason);
+        env.storage().instance().set(&keys::PAUSED_AT, &now);
+        env.storage()
+            .instance()
+            .set(&keys::UNPAUSE_AVAILABLE_AT, &now);
+
+        let record = PauseRecord {
+            paused: true,
+            reason: reason.clone(),
+            caller: env.current_contract_address(),
+            timestamp: now,
+        };
+        let mut history: Vec<PauseRecord> = env
+            .storage()
+            .persistent()
+            .get(&keys::PAUSE_HISTORY)
+            .unwrap_or_else(|| Vec::new(&env));
+        history.push_back(record);
+        env.storage()
+            .persistent()
+            .set(&keys::PAUSE_HISTORY, &history);
+
+        env.events().publish(
+            (symbol_short!("ems_pause"), nonce),
+            (reason.clone(), approvers.len()),
+        );
+        Self::append_admin_activity(
+            &env,
+            AdminActivityAction::ContractPaused,
+            env.current_contract_address(),
+            reason,
+        );
+    }
+
+    /// Lift a pause once `threshold` operators have signed the `Unpause`
+    /// action for `nonce`.
+    ///
+    /// A threshold of independently-held operator keys is a stronger
+    /// guarantee than the single-admin timelock used by `unpause()`, so this
+    /// entrypoint does not additionally wait on `unpause_available_at` — the
+    /// multisig approval itself is the safety control.
+    ///
+    /// # Panics
+    /// - See [`emergency_multisig::verify_and_execute`].
+    pub fn unpause_emergency_multisig(
+        env: Env,
+        reason: String,
+        signatures: Vec<OperatorSignature>,
+        nonce: u64,
+    ) {
+        let approvers = emergency_multisig::verify_and_execute(
+            &env,
+            EmergencyAction::Unpause,
+            signatures,
+            nonce,
+        );
+
+        let now = env.ledger().timestamp();
+        env.storage().instance().set(&keys::GLOBAL_PAUSED, &false);
+
+        let record = PauseRecord {
+            paused: false,
+            reason: reason.clone(),
+            caller: env.current_contract_address(),
+            timestamp: now,
+        };
+        let mut history: Vec<PauseRecord> = env
+            .storage()
+            .persistent()
+            .get(&keys::PAUSE_HISTORY)
+            .unwrap_or_else(|| Vec::new(&env));
+        history.push_back(record);
+        env.storage()
+            .persistent()
+            .set(&keys::PAUSE_HISTORY, &history);
+
+        env.events().publish(
+            (symbol_short!("ems_unpau"), nonce),
+            (reason.clone(), approvers.len()),
+        );
+        Self::append_admin_activity(
+            &env,
+            AdminActivityAction::ContractUnpaused,
+            env.current_contract_address(),
+            reason,
+        );
+    }
+
+    /// Administrative config override: update the global supply mismatch
+    /// threshold once `threshold` operators have signed the
+    /// `SetMismatchThreshold` action for `nonce`, bypassing the single-admin
+    /// `set_mismatch_threshold()` path.
+    ///
+    /// # Panics
+    /// - See [`emergency_multisig::verify_and_execute`].
+    pub fn set_mismatch_threshold_multisig(
+        env: Env,
+        threshold_bps: i128,
+        signatures: Vec<OperatorSignature>,
+        nonce: u64,
+    ) {
+        let approvers = emergency_multisig::verify_and_execute(
+            &env,
+            EmergencyAction::SetMismatchThreshold(threshold_bps),
+            signatures,
+            nonce,
+        );
+
+        env.storage()
+            .instance()
+            .set(&keys::MISMATCH_THRESHOLD, &threshold_bps);
+
+        env.events().publish(
+            (symbol_short!("ems_thr"), nonce),
+            (threshold_bps, approvers.len()),
+        );
+        Self::emit_contract_event(
+            &env,
+            BridgeWatchEvent::ThresholdUpdated {
+                actor: env.current_contract_address(),
+                scope: String::from_str(&env, "mismatch_threshold_multisig"),
+                value: threshold_bps,
+                timestamp: env.ledger().timestamp(),
+            },
+        );
     }
 
     /// Store operator emergency contact information (e-mail, Telegram, etc.).
@@ -12845,5 +13064,239 @@ mod tests {
         let entry = page.entries.get(0).unwrap();
         assert_eq!(entry.event_type, String::from_str(&env, "rec_entr"));
         assert_eq!(entry.actor, admin);
+    }
+
+    // -----------------------------------------------------------------------
+    // Emergency Multi-Signature Halt & Recovery (issue #794)
+    // -----------------------------------------------------------------------
+
+    /// Deterministically derive an Ed25519 keypair from a single seed byte.
+    fn emergency_multisig_keypair(seed: u8) -> (ed25519_dalek::SigningKey, [u8; 32]) {
+        let signing_key = ed25519_dalek::SigningKey::from_bytes(&[seed; 32]);
+        let verifying_key = signing_key.verifying_key().to_bytes();
+        (signing_key, verifying_key)
+    }
+
+    fn emergency_multisig_sign(
+        env: &Env,
+        signing_key: &ed25519_dalek::SigningKey,
+        message: &Bytes,
+    ) -> BytesN<64> {
+        use ed25519_dalek::Signer;
+        let mut buf = [0u8; 512];
+        let len = message.len() as usize;
+        message.copy_into_slice(&mut buf[..len]);
+        let signature = signing_key.sign(&buf[..len]);
+        BytesN::from_array(env, &signature.to_bytes())
+    }
+
+    /// Configure a 2-of-3 emergency multisig and return the operators' keys.
+    fn setup_emergency_multisig(
+        env: &Env,
+        client: &BridgeWatchContractClient<'static>,
+        admin: &Address,
+    ) -> (
+        [(ed25519_dalek::SigningKey, [u8; 32]); 3],
+        Vec<BytesN<32>>,
+    ) {
+        let keys = [
+            emergency_multisig_keypair(1),
+            emergency_multisig_keypair(2),
+            emergency_multisig_keypair(3),
+        ];
+        let mut operators: Vec<BytesN<32>> = Vec::new(env);
+        for (_, raw) in keys.iter() {
+            operators.push_back(BytesN::from_array(env, raw));
+        }
+        client.configure_emergency_multisig(admin, &operators, &2);
+        (keys, operators)
+    }
+
+    #[test]
+    fn test_configure_emergency_multisig_stores_operator_set() {
+        let (env, client, admin) = setup();
+        let (_keys, operators) = setup_emergency_multisig(&env, &client, &admin);
+
+        let config = client.get_emergency_multisig_config().unwrap();
+        assert_eq!(config.threshold, 2);
+        assert_eq!(config.operators.len(), 3);
+        assert_eq!(config.operators, operators);
+        assert_eq!(client.get_emergency_multisig_nonce(), 1);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_configure_emergency_multisig_rejects_non_admin() {
+        let (env, client, _admin) = setup();
+        let attacker = Address::generate(&env);
+        let (_sk, pk) = emergency_multisig_keypair(1);
+        let mut operators: Vec<BytesN<32>> = Vec::new(&env);
+        operators.push_back(BytesN::from_array(&env, &pk));
+        client.configure_emergency_multisig(&attacker, &operators, &1);
+    }
+
+    #[test]
+    fn test_emergency_pause_multisig_halts_writes_without_admin_key() {
+        let (env, client, admin) = setup();
+        env.ledger().set_timestamp(1_000_000);
+        let (keys, _operators) = setup_emergency_multisig(&env, &client, &admin);
+
+        let nonce = client.get_emergency_multisig_nonce();
+        let message =
+            emergency_multisig::build_message(&env, &EmergencyAction::Pause, nonce);
+
+        let mut sigs: Vec<OperatorSignature> = Vec::new(&env);
+        for (sk, raw) in keys.iter().take(2) {
+            sigs.push_back(OperatorSignature {
+                operator: BytesN::from_array(&env, raw),
+                signature: emergency_multisig_sign(&env, sk, &message),
+            });
+        }
+
+        // No admin/caller identity is involved at all — approval comes purely
+        // from the verified operator signatures.
+        client.emergency_pause_multisig(&String::from_str(&env, "compromised admin key"), &sigs, &nonce);
+
+        assert!(client.is_paused());
+    }
+
+    #[test]
+    #[should_panic(expected = "contract is globally paused")]
+    fn test_emergency_pause_multisig_blocks_subsequent_writes() {
+        let (env, client, admin) = setup();
+        env.ledger().set_timestamp(1_000_000);
+        let (keys, _operators) = setup_emergency_multisig(&env, &client, &admin);
+
+        let nonce = client.get_emergency_multisig_nonce();
+        let message = emergency_multisig::build_message(&env, &EmergencyAction::Pause, nonce);
+        let mut sigs: Vec<OperatorSignature> = Vec::new(&env);
+        for (sk, raw) in keys.iter().take(2) {
+            sigs.push_back(OperatorSignature {
+                operator: BytesN::from_array(&env, raw),
+                signature: emergency_multisig_sign(&env, sk, &message),
+            });
+        }
+        client.emergency_pause_multisig(&String::from_str(&env, "incident"), &sigs, &nonce);
+
+        // Registering an asset while globally paused must fail — the
+        // multisig pause halts writes just like the single-admin path.
+        client.register_asset(&admin, &String::from_str(&env, "USDC"));
+    }
+
+    #[test]
+    fn test_unpause_emergency_multisig_recovers_without_timelock() {
+        let (env, client, admin) = setup();
+        env.ledger().set_timestamp(1_000_000);
+        let (keys, _operators) = setup_emergency_multisig(&env, &client, &admin);
+
+        let pause_nonce = client.get_emergency_multisig_nonce();
+        let pause_message =
+            emergency_multisig::build_message(&env, &EmergencyAction::Pause, pause_nonce);
+        let mut pause_sigs: Vec<OperatorSignature> = Vec::new(&env);
+        for (sk, raw) in keys.iter().take(2) {
+            pause_sigs.push_back(OperatorSignature {
+                operator: BytesN::from_array(&env, raw),
+                signature: emergency_multisig_sign(&env, sk, &pause_message),
+            });
+        }
+        client.emergency_pause_multisig(
+            &String::from_str(&env, "incident"),
+            &pause_sigs,
+            &pause_nonce,
+        );
+        assert!(client.is_paused());
+
+        // Recovery is available immediately — a fresh threshold of operator
+        // signatures is itself the safety control, unlike the single-admin
+        // `unpause()` path which additionally waits out a 24h timelock.
+        let unpause_nonce = client.get_emergency_multisig_nonce();
+        let unpause_message =
+            emergency_multisig::build_message(&env, &EmergencyAction::Unpause, unpause_nonce);
+        let mut unpause_sigs: Vec<OperatorSignature> = Vec::new(&env);
+        for (sk, raw) in keys.iter().take(2) {
+            unpause_sigs.push_back(OperatorSignature {
+                operator: BytesN::from_array(&env, raw),
+                signature: emergency_multisig_sign(&env, sk, &unpause_message),
+            });
+        }
+        client.unpause_emergency_multisig(
+            &String::from_str(&env, "resolved"),
+            &unpause_sigs,
+            &unpause_nonce,
+        );
+
+        assert!(!client.is_paused());
+    }
+
+    #[test]
+    fn test_set_mismatch_threshold_multisig_overrides_admin_path() {
+        let (env, client, admin) = setup();
+        env.ledger().set_timestamp(1_000_000);
+        let (keys, _operators) = setup_emergency_multisig(&env, &client, &admin);
+
+        let nonce = client.get_emergency_multisig_nonce();
+        let action = EmergencyAction::SetMismatchThreshold(42);
+        let message = emergency_multisig::build_message(&env, &action, nonce);
+
+        let mut sigs: Vec<OperatorSignature> = Vec::new(&env);
+        for (sk, raw) in keys.iter().take(2) {
+            sigs.push_back(OperatorSignature {
+                operator: BytesN::from_array(&env, raw),
+                signature: emergency_multisig_sign(&env, sk, &message),
+            });
+        }
+
+        client.set_mismatch_threshold_multisig(&42, &sigs, &nonce);
+
+        let bridge = String::from_str(&env, "CIRCLE_USDC");
+        let asset = String::from_str(&env, "USDC");
+        client.record_supply_mismatch(&bridge, &asset, &1_000_000, &1_005_000);
+        let m = client.get_supply_mismatches(&bridge).get(0).unwrap();
+        assert!(m.is_critical);
+    }
+
+    #[test]
+    #[should_panic(expected = "insufficient emergency multisig signatures")]
+    fn test_emergency_pause_multisig_rejects_below_threshold() {
+        let (env, client, admin) = setup();
+        let (keys, _operators) = setup_emergency_multisig(&env, &client, &admin);
+
+        let nonce = client.get_emergency_multisig_nonce();
+        let message =
+            emergency_multisig::build_message(&env, &EmergencyAction::Pause, nonce);
+        let mut sigs: Vec<OperatorSignature> = Vec::new(&env);
+        let (sk0, raw0) = &keys[0];
+        sigs.push_back(OperatorSignature {
+            operator: BytesN::from_array(&env, raw0),
+            signature: emergency_multisig_sign(&env, sk0, &message),
+        });
+
+        client.emergency_pause_multisig(&String::from_str(&env, "not enough sigs"), &sigs, &nonce);
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid emergency multisig nonce")]
+    fn test_emergency_pause_multisig_rejects_replayed_signatures() {
+        let (env, client, admin) = setup();
+        let (keys, _operators) = setup_emergency_multisig(&env, &client, &admin);
+
+        let nonce = client.get_emergency_multisig_nonce();
+        let message =
+            emergency_multisig::build_message(&env, &EmergencyAction::Pause, nonce);
+        let mut sigs: Vec<OperatorSignature> = Vec::new(&env);
+        for (sk, raw) in keys.iter().take(2) {
+            sigs.push_back(OperatorSignature {
+                operator: BytesN::from_array(&env, raw),
+                signature: emergency_multisig_sign(&env, sk, &message),
+            });
+        }
+
+        client.emergency_pause_multisig(&String::from_str(&env, "first"), &sigs, &nonce);
+        assert!(client.is_paused());
+        client.unpause(&admin, &String::from_str(&env, "not yet"));
+
+        // Replaying the exact same (already-consumed) nonce/signatures must
+        // be rejected even though the signatures were valid the first time.
+        client.emergency_pause_multisig(&String::from_str(&env, "replay"), &sigs, &nonce);
     }
 }

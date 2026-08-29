@@ -34,4 +34,16 @@ describe("Navbar", () => {
     expect(screen.queryByRole("dialog", { name: "Notifications" })).not.toBeInTheDocument();
     expect(document.activeElement).toBe(trigger);
   });
+
+  it("provides accessible aria-labels on icon navigation buttons", () => {
+    render(
+      <WatchlistProvider>
+        <Navbar />
+      </WatchlistProvider>
+    );
+
+    expect(screen.getByRole("button", { name: /open notifications/i })).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: /switch to (dark|light) theme/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /user settings/i })).toBeInTheDocument();
+  });
 });

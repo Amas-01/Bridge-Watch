@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { BridgeSummary } from "../../types";
 import SkeletonCard from "../Skeleton/SkeletonCard";
@@ -24,9 +25,9 @@ interface BridgeSummaryCardProps {
  */
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    healthy: "bg-green-500/20 text-green-400",
-    degraded: "bg-yellow-500/20 text-yellow-400",
-    down: "bg-red-500/20 text-red-400",
+    healthy: "bg-status-success/20 text-status-success",
+    degraded: "bg-status-warning/20 text-status-warning",
+    down: "bg-status-danger/20 text-status-danger",
     unknown: "bg-gray-500/20 text-gray-400",
   };
 
@@ -100,14 +101,43 @@ function MetricValue({
   );
 }
 
+type DisplayMode = "usd" | "native";
+
 /**
- * Format TVL value with proper scaling
+ * Format TVL value with proper scaling based on display mode
  */
-function formatTVL(value: number): string {
-  if (value >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(2)}B`;
-  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`;
-  if (value >= 1_000) return `$${(value / 1_000).toFixed(2)}K`;
-  return `$${value.toFixed(2)}`;
+function formatTVL(value: number, mode: DisplayMode): string {
+  const prefix = mode === "usd" ? "$" : "";
+  if (value >= 1_000_000_000) return `${prefix}${(value / 1_000_000_000).toFixed(2)}B`;
+  if (value >= 1_000_000) return `${prefix}${(value / 1_000_000).toFixed(2)}M`;
+  if (value >= 1_000) return `${prefix}${(value / 1_000).toFixed(2)}K`;
+  return `${prefix}${value.toFixed(2)}`;
+}
+
+/**
+ * Toggle button for switching between USD and Native value display
+ */
+function DisplayModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: DisplayMode;
+  onChange: (mode: DisplayMode) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(mode === "usd" ? "native" : "usd")}
+      className="text-xs text-stellar-text-secondary hover:text-stellar-text-primary transition-colors focus:outline-none"
+      aria-label={`Switch to ${mode === "usd" ? "native" : "USD"} value display`}
+    >
+      <span className="flex items-center gap-1">
+        <span className={mode === "usd" ? "font-semibold text-white" : ""}>USD</span>
+        <span className="text-stellar-border">/</span>
+        <span className={mode === "native" ? "font-semibold text-white" : ""}>Native</span>
+      </span>
+    </button>
+  );
 }
 
 /**
@@ -198,7 +228,17 @@ function CompactVariant({ summary }: { summary: BridgeSummary }) {
 /**
  * Standard variant: shows name, status, coverage, and performance
  */
-function StandardVariant({ summary }: { summary: BridgeSummary }) {
+function StandardVariant({
+  summary,
+  displayMode,
+}: {
+  summary: BridgeSummary;
+  displayMode: DisplayMode;
+}) {
+  const tvlValue = displayMode === "native" && summary.totalValueLockedNative != null
+    ? summary.totalValueLockedNative
+    : summary.totalValueLocked;
+
   return (
     <Link
       to={`/bridges?selected=${encodeURIComponent(summary.name)}`}
@@ -240,7 +280,7 @@ function StandardVariant({ summary }: { summary: BridgeSummary }) {
           <div className="text-xs font-medium text-stellar-text-secondary uppercase tracking-wide mb-2">
             Value
           </div>
-          <MetricValue label="TVL" value={formatTVL(summary.totalValueLocked)} unit="" />
+          <MetricValue label="TVL" value={formatTVL(tvlValue, displayMode)} unit="" />
         </div>
       </div>
 
@@ -257,7 +297,17 @@ function StandardVariant({ summary }: { summary: BridgeSummary }) {
 /**
  * Detailed variant: shows all available bridge data
  */
-function DetailedVariant({ summary }: { summary: BridgeSummary }) {
+function DetailedVariant({
+  summary,
+  displayMode,
+}: {
+  summary: BridgeSummary;
+  displayMode: DisplayMode;
+}) {
+  const tvlValue = displayMode === "native" && summary.totalValueLockedNative != null
+    ? summary.totalValueLockedNative
+    : summary.totalValueLocked;
+
   return (
     <Link
       to={`/bridges?selected=${encodeURIComponent(summary.name)}`}
@@ -304,7 +354,7 @@ function DetailedVariant({ summary }: { summary: BridgeSummary }) {
             Assets & Liquidity
           </div>
           <div className="space-y-2">
-            <MetricValue label="TVL" value={formatTVL(summary.totalValueLocked)} unit="" />
+            <MetricValue label="TVL" value={formatTVL(tvlValue, displayMode)} unit="" />
             <MetricValue
               label="Supply (Stellar)"
               value={summary.supplyOnStellar.toLocaleString()}
@@ -320,10 +370,10 @@ function DetailedVariant({ summary }: { summary: BridgeSummary }) {
               <span
                 className={`text-sm font-medium ${
                   summary.mismatchPercentage > 1
-                    ? "text-red-400"
+                    ? "text-status-danger"
                     : summary.mismatchPercentage > 0.5
-                      ? "text-yellow-400"
-                      : "text-green-400"
+                      ? "text-status-warning"
+                      : "text-status-success"
                 }`}
                 aria-label={`Supply mismatch: ${summary.mismatchPercentage.toFixed(2)}%`}
               >
@@ -379,6 +429,8 @@ export default function BridgeSummaryCard({
   className = "",
   "data-testid": dataTestId = "bridge-summary-card",
 }: BridgeSummaryCardProps) {
+  const [displayMode, setDisplayMode] = useState<DisplayMode>("usd");
+
   // Loading state
   if (isLoading) {
     return (
@@ -402,15 +454,20 @@ export default function BridgeSummaryCard({
       case "compact":
         return <CompactVariant summary={summary} />;
       case "detailed":
-        return <DetailedVariant summary={summary} />;
+        return <DetailedVariant summary={summary} displayMode={displayMode} />;
       case "standard":
       default:
-        return <StandardVariant summary={summary} />;
+        return <StandardVariant summary={summary} displayMode={displayMode} />;
     }
   })();
 
   return (
     <div className={className} data-testid={dataTestId}>
+      {variant !== "compact" && (
+        <div className="flex justify-end mb-1">
+          <DisplayModeToggle mode={displayMode} onChange={setDisplayMode} />
+        </div>
+      )}
       {cardElement}
     </div>
   );

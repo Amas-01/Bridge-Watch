@@ -84,6 +84,59 @@ export class ProviderHealthRegistryService {
     const updated = await this.dependencies.setMaintenanceMode(providerKey, enabled, note ?? null);
     return Boolean(updated);
   }
+
+  async flagAndSlashProvider(
+    providerKey: string,
+    deviationSigma: number,
+    reason: string,
+    slashedStake = 1.0,
+    roundId?: string,
+    assetCode = "UNKNOWN",
+    reportedValue = 0,
+    consensusValue = 0
+  ): Promise<boolean> {
+    const hasProviderTable = await this.db.schema.hasTable("bft_oracle_providers");
+    if (hasProviderTable) {
+      await this.db("bft_oracle_providers")
+        .where({ provider_key: providerKey })
+        .update({
+          status: "slashed",
+          slashed: true,
+          slashed_at: this.db.fn.now(),
+          slash_reason: reason,
+          total_slashes: this.db.raw("total_slashes + 1"),
+          updated_at: this.db.fn.now(),
+        });
+    }
+
+    const hasSlashingTable = await this.db.schema.hasTable("bft_slashing_events");
+    if (hasSlashingTable) {
+      await this.db("bft_slashing_events").insert({
+        provider_key: providerKey,
+        round_id: roundId ?? null,
+        asset_code: assetCode,
+        reported_value: reportedValue,
+        consensus_value: consensusValue,
+        deviation_sigma: deviationSigma,
+        slashed_stake: slashedStake,
+        reason,
+        created_at: this.db.fn.now(),
+      });
+    }
+
+    try {
+      await this.dependencies.setMaintenanceMode(
+        providerKey,
+        true,
+        `Slashed: ${reason} (${deviationSigma.toFixed(2)} sigma)`
+      );
+    } catch {
+      // Ignored if not in external dependencies
+    }
+
+    return true;
+  }
 }
 
 export const providerHealthRegistryService = new ProviderHealthRegistryService();
+

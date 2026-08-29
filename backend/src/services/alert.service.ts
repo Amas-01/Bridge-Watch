@@ -416,6 +416,27 @@ export class AlertService {
     return results;
   }
 
+  async batchEvaluateParallel(
+    snapshots: MetricSnapshot[],
+    batchSize: number = 10
+  ): Promise<AlertEvent[]> {
+    const results: AlertEvent[] = [];
+
+    for (let i = 0; i < snapshots.length; i += batchSize) {
+      const batch = snapshots.slice(i, i + batchSize);
+
+      const batchResults = await Promise.all(
+        batch.map((snapshot) => this.evaluateAsset(snapshot))
+      );
+
+      for (const batchResult of batchResults) {
+        results.push(...batchResult);
+      }
+    }
+
+    return results;
+  }
+
   async getAlertHistory(
     assetCode: string,
     limit = 50

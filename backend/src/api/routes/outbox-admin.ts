@@ -1,8 +1,19 @@
+import { timingSafeEqual } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { getDatabase } from "../../database/connection.js";
 import { OutboxAdminApi } from "../../outbox/adminApi.js";
 import { logger } from "../../utils/logger.js";
+
+function constantTimeEquals(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) {
+    timingSafeEqual(bufA, bufA);
+    return false;
+  }
+  return timingSafeEqual(bufA, bufB);
+}
 
 // Validation schemas
 const RetryEventSchema = z.object({
@@ -29,16 +40,14 @@ export async function outboxAdminRoutes(fastify: FastifyInstance) {
 
   // Add authentication middleware for admin routes
   fastify.addHook("preHandler", async (request, reply) => {
-    // TODO: Implement proper admin authentication
-    // For now, this is a placeholder - in production you'd check API keys, JWT tokens, etc.
     const authHeader = request.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return reply.code(401).send({ error: "Unauthorized" });
     }
-    
-    // Simple token validation (replace with proper auth)
+
+    const adminToken = process.env.ADMIN_API_TOKEN;
     const token = authHeader.substring(7);
-    if (token !== process.env.ADMIN_API_TOKEN) {
+    if (!adminToken || !constantTimeEquals(token, adminToken)) {
       return reply.code(401).send({ error: "Invalid token" });
     }
   });
@@ -211,56 +220,6 @@ export async function outboxAdminRoutes(fastify: FastifyInstance) {
       }
       logger.error({ error }, "Failed to retry events");
       return reply.code(500).send({ error: "Internal server error" });
-    }
-  });
-
-  // GET /admin/outbox/health - Health check endpoint
-  fastify.get("/health", {
-    schema: {
-      description: "Health check for outbox system",
-      tags: ["outbox-admin"],
-      response: {
-        200: {
-          type: "object",
-          properties: {
-            status: { type: "string" },
-            pending: { type: "number" },
-            processing: { type: "number" },
-            failed: { type: "number" },
-            deadLetter: { type: "number" },
-            timestamp: { type: "string" },
-          },
-        },
-      },
-    },
-  }, async (request, reply) => {
-    try {
-      const stats = await adminApi.getStats();
-      
-      // Determine health status based on metrics
-      let status = "healthy";
-      if (stats.outbox.failed > 100) {
-        status = "degraded";
-      }
-      if (stats.deadLetter.total > 50) {
-        status = "unhealthy";
-      }
-
-      return reply.send({
-        status,
-        pending: stats.outbox.pending,
-        processing: stats.outbox.processing,
-        failed: stats.outbox.failed,
-        deadLetter: stats.deadLetter.total,
-        timestamp: new Date().toISOString(),
-      });
-    } catch (error) {
-      logger.error({ error }, "Health check failed");
-      return reply.code(200 as any).send({
-        status: "error",
-        error: "Health check failed",
-        timestamp: new Date().toISOString(),
-      });
     }
   });
 

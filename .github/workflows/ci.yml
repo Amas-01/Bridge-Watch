@@ -77,6 +77,9 @@ jobs:
           printf 'install-dependencies\tnpm ci\tnpm-ci.log\n' >> "$COMMAND_LOG_DIR/COMMANDS.tsv"
           npm ci 2>&1 | tee "$COMMAND_LOG_DIR/npm-ci.log"
 
+      - name: Validate API compatibility contract
+        run: npm run check:api-contract
+
       - name: Lint backend
         run: |
           set -o pipefail
@@ -146,6 +149,60 @@ jobs:
           flags: backend
           token: ${{ secrets.CODECOV_TOKEN }}
         continue-on-error: true
+
+      - name: Compress command logs
+        if: always()
+        id: archive-command-logs
+        run: bash scripts/archive-command-logs.sh
+
+      - name: Upload command log archive
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.COMMAND_LOG_ARCHIVE_NAME }}
+          path: ${{ env.COMMAND_LOG_ARCHIVE }}
+          retention-days: 30
+          if-no-files-found: warn
+
+  sdk:
+    name: SDK Build & Test
+    runs-on: ubuntu-latest
+    env:
+      COMMAND_LOG_DIR: ${{ runner.temp }}/bridge-watch-command-logs/sdk
+      COMMAND_LOG_ARCHIVE_DIR: ${{ runner.temp }}/bridge-watch-command-log-archives
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize command log archive
+        run: |
+          mkdir -p "$COMMAND_LOG_DIR"
+          printf 'label\tcommand\tlog_file\n' > "$COMMAND_LOG_DIR/COMMANDS.tsv"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: |
+          set -o pipefail
+          printf 'install-dependencies\tnpm ci\tnpm-ci.log\n' >> "$COMMAND_LOG_DIR/COMMANDS.tsv"
+          npm ci 2>&1 | tee "$COMMAND_LOG_DIR/npm-ci.log"
+
+      - name: Build SDK
+        run: |
+          set -o pipefail
+          printf 'build-sdk\tnpm --workspace=sdk run build\tsdk-build.log\n' >> "$COMMAND_LOG_DIR/COMMANDS.tsv"
+          npm --workspace=sdk run build 2>&1 | tee "$COMMAND_LOG_DIR/sdk-build.log"
+
+      - name: Test SDK
+        run: |
+          set -o pipefail
+          printf 'test-sdk\tnpm --workspace=sdk run test\tsdk-test.log\n' >> "$COMMAND_LOG_DIR/COMMANDS.tsv"
+          npm --workspace=sdk run test 2>&1 | tee "$COMMAND_LOG_DIR/sdk-test.log"
 
       - name: Compress command logs
         if: always()

@@ -11,4 +11,6 @@ export interface AuditEvent {
   createdAt: Date;
   checksum: string;
   previousChecksum?: string;
+  /** Tenant identifier for multi-tenant audit trail. */
+  tenantId?: string;
 }

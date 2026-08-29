@@ -24,8 +24,10 @@ export default function TransactionHistory({
     error,
     filters,
     page,
+    pageSize,
     totalPages,
     setPage,
+    updatePageSize,
     updateFilters,
     resetFilters,
   } = useTransactions({
@@ -59,11 +61,27 @@ export default function TransactionHistory({
           <p className="text-sm text-stellar-text-secondary">
             {total === 0
               ? "No transactions found"
-              : `Showing ${(page - 1) * 10 + 1}–${Math.min(
-                  page * 10,
+              : `Showing ${(page - 1) * pageSize + 1}–${Math.min(
+                  page * pageSize,
                   total
                 )} of ${total.toLocaleString()} transactions`}
           </p>
+          <div className="flex items-center gap-2">
+            <label htmlFor="pageSize" className="text-sm text-stellar-text-secondary">
+              Items per page:
+            </label>
+            <select
+              id="pageSize"
+              value={pageSize}
+              onChange={(e) => updatePageSize(parseInt(e.target.value))}
+              className="rounded-md border border-stellar-border bg-stellar-dark px-3 py-2 text-sm text-white hover:bg-stellar-border transition-colors"
+            >
+              <option value="15">15</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
         </div>
       )}
 

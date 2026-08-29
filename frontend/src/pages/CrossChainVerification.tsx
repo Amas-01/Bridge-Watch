@@ -42,9 +42,62 @@ function StatusBadge({ status }: { status: string }) {
 function MerkleProofBadge({ valid }: { valid: boolean | null }) {
   if (valid === null) return <span className="text-slate-500 text-sm">—</span>;
   return valid ? (
-    <span className="text-green-400 text-sm font-medium">Valid</span>
+    <span className="inline-flex items-center gap-1 rounded-full border border-green-500/40 bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-300">
+      <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+      Valid
+    </span>
   ) : (
-    <span className="text-red-400 text-sm font-medium">Invalid</span>
+    <span className="inline-flex items-center gap-1 rounded-full border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-300">
+      <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+      Invalid
+    </span>
+  );
+}
+
+function ProofDepthIndicator({
+  depth,
+  leafCount,
+}: {
+  depth: number | null;
+  leafCount: number | null;
+}) {
+  if (depth === null && leafCount === null) return <span className="text-slate-500 text-sm">—</span>;
+
+  const bars = depth ?? 0;
+  return (
+    <div className="flex items-center gap-1.5" title={`Merkle proof depth: ${depth ?? "?"} levels, ${leafCount ?? "?"} leaves`}>
+      {Array.from({ length: Math.min(bars, 8) }).map((_, i) => (
+        <span
+          key={i}
+          className={`h-3 w-1.5 rounded-sm ${
+            i < (bars > 4 ? 4 : bars)
+              ? "bg-blue-400"
+              : "bg-blue-400/40"
+          }`}
+        />
+      ))}
+      {bars > 8 && <span className="text-xs text-stellar-text-secondary">+{bars - 8}</span>}
+      <span className="text-xs text-stellar-text-secondary ml-1">
+        depth {depth ?? "?"}{leafCount !== null ? ` · ${leafCount} leaves` : ""}
+      </span>
+    </div>
+  );
+}
+
+function VerificationStatusBadge({ status }: { status: string }) {
+  const config: Record<string, { cls: string; label: string; dot: string }> = {
+    verified: { cls: "border-green-500/40 bg-green-500/10 text-green-300", label: "Verified", dot: "bg-green-400" },
+    challenged: { cls: "border-orange-500/40 bg-orange-500/10 text-orange-300", label: "Challenged", dot: "bg-orange-400 animate-pulse" },
+    pending: { cls: "border-slate-500/40 bg-slate-500/10 text-slate-300", label: "Pending", dot: "bg-slate-400" },
+    invalid: { cls: "border-red-500/40 bg-red-500/10 text-red-300", label: "Invalid", dot: "bg-red-400" },
+    unknown: { cls: "border-gray-500/40 bg-gray-500/10 text-gray-400", label: "Unknown", dot: "bg-gray-500" },
+  };
+  const { cls, label, dot } = config[status] ?? config.unknown;
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${cls}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
+      {label}
+    </span>
   );
 }
 
@@ -172,9 +225,20 @@ function BridgeVerificationRow({
           </div>
 
           <div className="rounded-lg bg-stellar-dark p-3 space-y-2">
-            <p className="text-xs font-semibold text-stellar-text-secondary uppercase tracking-wider">
-              Reserve Commitment
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-stellar-text-secondary uppercase tracking-wider">
+                Reserve Commitment
+              </p>
+              <VerificationStatusBadge
+                status={
+                  result.merkleProofValid === null
+                    ? "unknown"
+                    : result.merkleProofValid
+                      ? "verified"
+                      : "challenged"
+                }
+              />
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
               <div>
                 <p className="text-stellar-text-secondary text-xs">Sequence</p>
@@ -195,6 +259,16 @@ function BridgeVerificationRow({
               <div>
                 <p className="text-stellar-text-secondary text-xs">Threshold</p>
                 <p className="text-stellar-text-primary">{pct(result.mismatchThreshold)}</p>
+              </div>
+              <div>
+                <p className="text-stellar-text-secondary text-xs">Proof Depth</p>
+                <ProofDepthIndicator depth={result.proofDepth} leafCount={result.leafCount} />
+              </div>
+              <div className="sm:col-span-3">
+                <p className="text-stellar-text-secondary text-xs">Proof Leaf Hash</p>
+                <p className="text-stellar-text-primary font-mono text-xs break-all">
+                  {result.proofLeafHash ?? "—"}
+                </p>
               </div>
             </div>
           </div>

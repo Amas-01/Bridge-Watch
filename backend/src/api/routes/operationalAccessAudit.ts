@@ -122,4 +122,48 @@ export async function operationalAccessAuditRoutes(server: FastifyInstance) {
     reply.header("Content-Disposition", "attachment; filename=access-audit.csv");
     return header + rows;
   });
+
+  server.get("/audit-logs", {
+    schema: {
+      tags: ["Admin"],
+      summary: "List RBAC admin audit logs",
+      querystring: {
+        type: "object",
+        properties: {
+          page: { type: "integer", minimum: 1, default: 1 },
+          limit: { type: "integer", minimum: 1, maximum: 200, default: 50 },
+          action: { type: "string" },
+          actor_id: { type: "string" },
+          resource_type: { type: "string" },
+        },
+      },
+      response: { 200: { type: "object", additionalProperties: true } },
+    },
+  }, async (request) => {
+    const { page = 1, limit = 50, action, actor_id, resource_type } = request.query as Record<string, any>;
+    const offset = (page - 1) * limit;
+
+    let query = getDatabase()("audit_logs").orderBy("created_at", "desc").limit(limit).offset(offset);
+    let countQuery = getDatabase()("audit_logs");
+
+    if (action) {
+      query = query.where("action", action);
+      countQuery = countQuery.where("action", action);
+    }
+    if (actor_id) {
+      query = query.where("actor_id", actor_id);
+      countQuery = countQuery.where("actor_id", actor_id);
+    }
+    if (resource_type) {
+      query = query.where("resource_type", resource_type);
+      countQuery = countQuery.where("resource_type", resource_type);
+    }
+
+    const [entries, countResult] = await Promise.all([
+      query,
+      countQuery.count("* as count").first(),
+    ]);
+
+    return { logs: entries, entries, total: Number(countResult?.count ?? 0), page, limit };
+  });
 }

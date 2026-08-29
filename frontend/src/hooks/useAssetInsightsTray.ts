@@ -1,13 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { getAssetHealth, getAssetAlerts, getAssetVolume, getAssetHealthHistory } from "../services/api";
+import type { AssetAlert } from "../types";
 
-export interface AssetAlert {
-  id: string;
-  type: string;
-  severity: "info" | "warning" | "critical";
-  message: string;
-  createdAt: string;
-}
+export type { AssetAlert };
 
 export function useAssetInsightsTray(symbol: string | null) {
   const enabled = !!symbol;

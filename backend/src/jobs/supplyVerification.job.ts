@@ -54,6 +54,7 @@
 import { Queue, Worker, Job, ConnectionOptions } from "bullmq";
 import { BridgeService } from "../services/bridge.service.js";
 import { AlertService } from "../services/alert.service.js";
+import { scheduleAlertEvaluation } from "../workers/alertEvaluation.worker.js";
 import { getMetricsService } from "../services/metrics.service.js";
 import { SUPPORTED_ASSETS } from "../config/index.js";
 import { config } from "../config/index.js";
@@ -489,18 +490,17 @@ export class SupplyVerificationQueue {
     logger.warn({ assetCode, jobId: job.id }, "Triggering failure alert after max retries");
 
     try {
-      // Create alert for supply verification failure
-      await this.alertService.evaluateAsset({
+      await scheduleAlertEvaluation([{
         assetCode,
         metrics: {
           verification_failure: 1,
           consecutive_failures: job.attemptsMade,
         },
-      });
+      }]);
 
-      logger.info({ assetCode }, "Failure alert triggered");
+      logger.info({ assetCode }, "Failure alert scheduled");
     } catch (alertError) {
-      logger.error({ assetCode, error: alertError }, "Failed to trigger failure alert");
+      logger.error({ assetCode, error: alertError }, "Failed to schedule failure alert");
     }
   }
 
@@ -517,18 +517,18 @@ export class SupplyVerificationQueue {
     );
 
     try {
-      await this.alertService.evaluateAsset({
+      await scheduleAlertEvaluation([{
         assetCode,
         metrics: {
           supply_mismatch_percentage: result.mismatchPercentage,
           stellar_supply: result.stellarSupply,
           ethereum_reserves: result.ethereumReserves,
         },
-      });
+      }]);
 
-      logger.info({ assetCode }, "Supply mismatch alert triggered");
+      logger.info({ assetCode }, "Supply mismatch alert scheduled");
     } catch (alertError) {
-      logger.error({ assetCode, error: alertError }, "Failed to trigger supply mismatch alert");
+      logger.error({ assetCode, error: alertError }, "Failed to schedule supply mismatch alert");
     }
   }
 

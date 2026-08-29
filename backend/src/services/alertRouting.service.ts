@@ -4,11 +4,12 @@ import { redis } from "../utils/redis.js";
 import { REDIS_WS_CHANNELS } from "../api/websocket/types.js";
 import { webhookService } from "./webhook.service.js";
 import { emailNotificationService } from "./email.service.js";
+import { slackNotificationService } from "./slack.notification.service.js";
 import { PreferencesService } from "./preferences.service.js";
 
 const fetch = globalThis.fetch;
 
-export type RoutingChannel = "in_app" | "webhook" | "email";
+export type RoutingChannel = "in_app" | "webhook" | "email" | "slack";
 export type RoutingSeverity = "critical" | "high" | "medium" | "low";
 export type RoutingAuditStatus =
   | "queued"
@@ -148,7 +149,7 @@ function sanitizeSourceTypes(items: string[] | undefined): string[] {
 }
 
 function sanitizeChannels(items: RoutingChannel[] | undefined): RoutingChannel[] {
-  const allowed = new Set<RoutingChannel>(["in_app", "webhook", "email"]);
+  const allowed = new Set<RoutingChannel>(["in_app", "webhook", "email", "slack"]);
   return unique((items ?? []).filter((channel): channel is RoutingChannel => allowed.has(channel)));
 }
 
@@ -262,6 +263,17 @@ export class AlertRoutingService {
 
     if (!row) return null;
     return mapRowToRule(row as Record<string, unknown>);
+  }
+
+  async bulkUpdateRules(ids: string[], isActive: boolean): Promise<AlertRoutingRule[]> {
+    if (!ids || ids.length === 0) return [];
+    const db = getDatabase();
+    const rows = await db("alert_routing_rules")
+      .whereIn("id", ids)
+      .update({ is_active: isActive, updated_at: new Date() })
+      .returning("*");
+
+    return (rows ?? []).map((row: Record<string, unknown>) => mapRowToRule(row));
   }
 
   async deleteRule(id: string): Promise<boolean> {
@@ -537,50 +549,91 @@ export class AlertRoutingService {
       }
     }
 
-    if (!alert.ownerAddress.includes("@")) {
-      return {
-        channel,
-        status: "failed",
-        reason: "email channel requested but owner address is not an email recipient",
-        attemptCount: 0,
-        latencyMs: Date.now() - started,
-      };
+    if (channel === "email") {
+      if (!alert.ownerAddress.includes("@")) {
+        return {
+          channel,
+          status: "failed",
+          reason: "email channel requested but owner address is not an email recipient",
+          attemptCount: 0,
+          latencyMs: Date.now() - started,
+        };
+      }
+
+      try {
+        await emailNotificationService.sendAlertEmail(
+          { email: alert.ownerAddress },
+          {
+            alertType: alert.sourceType,
+            severity: alert.severity,
+            assetCode: alert.assetCode,
+            message: `${alert.assetCode} ${alert.sourceType} exceeded threshold`,
+            triggeredAt: alert.eventTime.toISOString(),
+            metadata: {
+              ruleId: alert.alertRuleId,
+              ruleName: alert.ruleName,
+              metric: alert.metric,
+              triggeredValue: alert.triggeredValue,
+              threshold: alert.threshold,
+            },
+          }
+        );
+
+        return {
+          channel,
+          status: "queued",
+          attemptCount: 1,
+          latencyMs: Date.now() - started,
+        };
+      } catch (error) {
+        return {
+          channel,
+          status: "failed",
+          reason: error instanceof Error ? error.message : "failed to queue alert email",
+          attemptCount: 1,
+          latencyMs: Date.now() - started,
+        };
+      }
     }
 
-    try {
-      await emailNotificationService.sendAlertEmail(
-        { email: alert.ownerAddress },
-        {
-          alertType: alert.sourceType,
-          severity: alert.severity,
-          assetCode: alert.assetCode,
-          message: `${alert.assetCode} ${alert.sourceType} exceeded threshold`,
-          triggeredAt: alert.eventTime.toISOString(),
-          metadata: {
-            ruleId: alert.alertRuleId,
-            ruleName: alert.ruleName,
-            metric: alert.metric,
-            triggeredValue: alert.triggeredValue,
-            threshold: alert.threshold,
-          },
-        }
-      );
+    if (channel === "slack") {
+      if (!slackNotificationService.isConfigured()) {
+        return {
+          channel,
+          status: "failed",
+          reason: "SLACK_WEBHOOK_URL not configured",
+          attemptCount: 0,
+          latencyMs: Date.now() - started,
+        };
+      }
 
-      return {
-        channel,
-        status: "queued",
-        attemptCount: 1,
-        latencyMs: Date.now() - started,
-      };
-    } catch (error) {
-      return {
-        channel,
-        status: "failed",
-        reason: error instanceof Error ? error.message : "failed to queue alert email",
-        attemptCount: 1,
-        latencyMs: Date.now() - started,
-      };
+      try {
+        await slackNotificationService.sendAlert(alert);
+        return {
+          channel,
+          status: "delivered",
+          attemptCount: 1,
+          latencyMs: Date.now() - started,
+        };
+      } catch (error) {
+        return {
+          channel,
+          status: "failed",
+          reason: error instanceof Error ? error.message : "failed to send Slack notification",
+          attemptCount: 1,
+          latencyMs: Date.now() - started,
+        };
+      }
     }
+
+    // Unknown channel type
+    return {
+      channel,
+      status: "failed",
+      reason: `unsupported channel type: ${channel}`,
+      attemptCount: 0,
+      latencyMs: Date.now() - started,
+    };
   }
 
   private async recordAudit(params: {

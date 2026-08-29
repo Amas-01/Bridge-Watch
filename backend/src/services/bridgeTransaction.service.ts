@@ -97,7 +97,10 @@ export class BridgeTransactionService {
     return transaction;
   }
 
-  async getBridgeTransactionSummary(bridgeName: string): Promise<BridgeTransactionSummary> {
+  async getBridgeTransactionSummary(
+    bridgeName: string,
+    options?: { startDate?: Date | string; endDate?: Date | string }
+  ): Promise<BridgeTransactionSummary> {
     const db = getDatabase();
 
     type SummaryRow = {
@@ -105,15 +108,24 @@ export class BridgeTransactionService {
       total_volume: string | number;
     };
 
+    const applyDateFilters = (builder: any) => {
+      let b = builder.where({ bridge_name: bridgeName });
+      if (options?.startDate) {
+        b = b.where("submitted_at", ">=", new Date(options.startDate));
+      }
+      if (options?.endDate) {
+        b = b.where("submitted_at", "<=", new Date(options.endDate));
+      }
+      return b;
+    };
+
     const [counts, timing] = await Promise.all([
-      db("bridge_transactions")
-        .where({ bridge_name: bridgeName })
+      applyDateFilters(db("bridge_transactions"))
         .first(
           db.raw("COUNT(DISTINCT id) AS total_transactions"),
           db.raw("COALESCE(SUM(amount::numeric), 0) AS total_volume")
         ) as unknown as Promise<SummaryRow | undefined>,
-      db("bridge_transactions")
-        .where({ bridge_name: bridgeName, status: "confirmed" })
+      applyDateFilters(db("bridge_transactions").where({ status: "confirmed" }))
         .select(db.raw("AVG(EXTRACT(EPOCH FROM (confirmed_at - submitted_at))) as avg"))
         .first() as unknown as Promise<{ avg: string | null } | undefined>,
     ]);
@@ -124,13 +136,13 @@ export class BridgeTransactionService {
       totalVolume: counts?.total_volume ? String(counts.total_volume) : "0",
       averageConfirmationTimeSeconds: Number((timing as any)?.avg || 0),
       pendingTransactions: Number(
-        await db("bridge_transactions").where({ bridge_name: bridgeName, status: "pending" }).count("id as count").first().then((row: any) => Number(row?.count || 0)),
+        await applyDateFilters(db("bridge_transactions")).andWhere({ status: "pending" }).count("id as count").first().then((row: any) => Number(row?.count || 0)),
       ),
       failedTransactions: Number(
-        await db("bridge_transactions").where({ bridge_name: bridgeName, status: "failed" }).count("id as count").first().then((row: any) => Number(row?.count || 0)),
+        await applyDateFilters(db("bridge_transactions")).andWhere({ status: "failed" }).count("id as count").first().then((row: any) => Number(row?.count || 0)),
       ),
       confirmedTransactions: Number(
-        await db("bridge_transactions").where({ bridge_name: bridgeName, status: "confirmed" }).count("id as count").first().then((row: any) => Number(row?.count || 0)),
+        await applyDateFilters(db("bridge_transactions")).andWhere({ status: "confirmed" }).count("id as count").first().then((row: any) => Number(row?.count || 0)),
       ),
     };
   }

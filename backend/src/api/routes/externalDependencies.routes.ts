@@ -3,6 +3,7 @@ import { z } from "zod";
 import { authMiddleware } from "../middleware/auth.js";
 import { ExternalDependencyMonitorService } from "../../services/externalDependencyMonitor.service.js";
 import { logger } from "../../utils/logger.js";
+import { sendApiError } from "../utils/response.js";
 
 const monitorService = new ExternalDependencyMonitorService();
 
@@ -32,8 +33,7 @@ export async function externalDependenciesRoutes(server: FastifyInstance) {
         return await monitorService.listDependencies(query);
       } catch (error) {
         logger.error(error, "Failed to list external dependencies");
-        reply.code(500);
-        return { error: "Failed to list external dependencies" };
+        return sendApiError(reply, 500, "Failed to list external dependencies");
       }
     }
   );
@@ -56,8 +56,7 @@ export async function externalDependenciesRoutes(server: FastifyInstance) {
         return { providerKey: request.params.providerKey, history };
       } catch (error) {
         logger.error(error, "Failed to load dependency history");
-        reply.code(500);
-        return { error: "Failed to load dependency history" };
+        return sendApiError(reply, 500, "Failed to load dependency history");
       }
     }
   );
@@ -73,8 +72,7 @@ export async function externalDependenciesRoutes(server: FastifyInstance) {
         return { success: true, results };
       } catch (error) {
         logger.error(error, "Failed to run external dependency checks");
-        reply.code(500);
-        return { success: false, error: "Failed to run external dependency checks" };
+        return sendApiError(reply, 500, "Failed to run external dependency checks");
       }
     }
   );
@@ -100,15 +98,13 @@ export async function externalDependenciesRoutes(server: FastifyInstance) {
         );
 
         if (!dependency) {
-          reply.code(404);
-          return { error: "Dependency not found" };
+          return sendApiError(reply, 404, "Dependency not found");
         }
 
         return { success: true, dependency };
       } catch (error) {
         logger.error(error, "Failed to update dependency maintenance mode");
-        reply.code(500);
-        return { success: false, error: "Failed to update dependency maintenance mode" };
+        return sendApiError(reply, 500, "Failed to update dependency maintenance mode");
       }
     }
   );

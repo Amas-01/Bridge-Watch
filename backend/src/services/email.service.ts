@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
 import { config } from "../config/index.js";
+import { formatEmailDate } from "../utils/email.js";
 import { logger } from "../utils/logger.js";
 
 type EmailTemplateType = "alert" | "digest";
@@ -106,9 +107,7 @@ export class EmailNotificationService {
   ): Promise<string> {
     // Use a simple renderer that wraps htmlContent into a basic template
     const renderer = (p: EmailReportPayload, ctx: EmailTemplateContext) => {
-      const subject = `Bridge Watch Report (${p.periodStart.toISOString().slice(0, 10)} - ${p.periodEnd
-        .toISOString()
-        .slice(0, 10)})`;
+      const subject = `Bridge Watch Report (${formatEmailDate(p.periodStart)} - ${formatEmailDate(p.periodEnd)})`;
       const html = `
       <html>
         <body style="font-family: Arial, sans-serif; line-height: 1.5;">
@@ -481,7 +480,7 @@ export class EmailNotificationService {
       <li>
         <strong>${item.title}</strong><br />
         ${item.summary}<br />
-        <small>${item.timestamp}</small>
+        <small>${formatEmailDate(item.timestamp)}</small>
       </li>`
         )
         .join("");
@@ -489,7 +488,7 @@ export class EmailNotificationService {
       const itemsText = payload.items
         .map(
           (item) =>
-            `- ${item.title}\n  ${item.summary}\n  ${item.timestamp}`
+            `- ${item.title}\n  ${item.summary}\n  ${formatEmailDate(item.timestamp)}`
         )
         .join("\n");
 
@@ -498,7 +497,7 @@ export class EmailNotificationService {
   <body style="font-family: Arial, sans-serif; line-height: 1.5;">
     <h2>${subject}</h2>
     <p>Hello ${context.recipientName ?? "Subscriber"},</p>
-    <p>Digest generated at ${payload.generatedAt}.</p>
+    <p>Digest generated at ${formatEmailDate(payload.generatedAt)}.</p>
     <ul>${itemsHtml}</ul>
     <p><a href="${context.unsubscribeUrl ?? "#"}">Unsubscribe</a></p>
   </body>
@@ -508,7 +507,7 @@ export class EmailNotificationService {
         subject,
         "",
         `Hello ${context.recipientName ?? "Subscriber"},`,
-        `Digest generated at ${payload.generatedAt}.`,
+        `Digest generated at ${formatEmailDate(payload.generatedAt)}.`,
         "",
         itemsText || "No digest items.",
         "",

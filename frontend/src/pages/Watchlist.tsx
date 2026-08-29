@@ -19,10 +19,56 @@ interface AssetDetails {
 }
 
 export default function WatchlistPage() {
-  const { activeWatchlist, importWatchlists } = useWatchlist();
+  const { activeWatchlist, watchlists, addAsset, removeAsset, importWatchlists } =
+    useWatchlist();
   const [searchParams, setSearchParams] = useSearchParams();
   const [assetDetails, setAssetDetails] = useState<Record<string, AssetDetails>>({});
   const [isLoading, setIsLoading] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [moveTargetId, setMoveTargetId] = useState("");
+
+  useEffect(() => {
+    setSelected(new Set());
+  }, [activeWatchlist?.id]);
+
+  const toggleSelected = (symbol: string) => {
+    setSelected((previous) => {
+      const next = new Set(previous);
+      if (next.has(symbol)) {
+        next.delete(symbol);
+      } else {
+        next.add(symbol);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (!activeWatchlist) return;
+    setSelected((previous) =>
+      previous.size === activeWatchlist.assets.length
+        ? new Set()
+        : new Set(activeWatchlist.assets)
+    );
+  };
+
+  const handleRemoveSelected = () => {
+    if (!activeWatchlist) return;
+    for (const symbol of selected) {
+      removeAsset(symbol, activeWatchlist.id);
+    }
+    setSelected(new Set());
+  };
+
+  const handleMoveSelected = () => {
+    if (!activeWatchlist || !moveTargetId) return;
+    for (const symbol of selected) {
+      addAsset(symbol, moveTargetId);
+      removeAsset(symbol, activeWatchlist.id);
+    }
+    setSelected(new Set());
+    setMoveTargetId("");
+  };
 
   // Handle shared link import
   useEffect(() => {
@@ -92,6 +138,47 @@ export default function WatchlistPage() {
             </h2>
           </div>
 
+          {selected.size > 0 && (
+            <div
+              className="flex flex-wrap items-center gap-3 px-6 py-3 border-b border-stellar-border bg-stellar-dark/60"
+              role="toolbar"
+              aria-label="Bulk watchlist actions"
+            >
+              <span className="text-sm text-stellar-text-secondary">
+                {selected.size} selected
+              </span>
+              <button
+                onClick={handleRemoveSelected}
+                className="text-sm text-red-500 hover:text-red-400 transition-colors"
+              >
+                Remove Selected
+              </button>
+              <div className="flex items-center gap-2">
+                <select
+                  value={moveTargetId}
+                  onChange={(e) => setMoveTargetId(e.target.value)}
+                  className="bg-stellar-card border border-stellar-border text-white text-sm rounded-lg px-2 py-1"
+                >
+                  <option value="">Move to watchlist…</option>
+                  {watchlists
+                    .filter((list) => list.id !== activeWatchlist.id)
+                    .map((list) => (
+                      <option key={list.id} value={list.id}>
+                        {list.name}
+                      </option>
+                    ))}
+                </select>
+                <button
+                  onClick={handleMoveSelected}
+                  disabled={!moveTargetId}
+                  className="text-sm text-gray-400 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Move
+                </button>
+              </div>
+            </div>
+          )}
+
           {activeWatchlist.assets.length === 0 ? (
             <div className="p-12 text-center text-gray-400">
               <div className="inline-block p-4 rounded-full bg-stellar-dark mb-4">
@@ -110,6 +197,18 @@ export default function WatchlistPage() {
               <table className="w-full">
                 <thead className="bg-stellar-dark border-b border-stellar-border">
                   <tr>
+                    <th className="px-6 py-4 text-left w-10">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all assets"
+                        checked={
+                          activeWatchlist.assets.length > 0 &&
+                          selected.size === activeWatchlist.assets.length
+                        }
+                        onChange={toggleSelectAll}
+                        className="rounded border-stellar-border"
+                      />
+                    </th>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-stellar-text-secondary uppercase tracking-wider">
                       Asset
                     </th>
@@ -130,6 +229,15 @@ export default function WatchlistPage() {
                     const healthScore = data?.health?.overallScore;
                     return (
                       <tr key={symbol} className="hover:bg-stellar-dark/50 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${symbol}`}
+                            checked={selected.has(symbol)}
+                            onChange={() => toggleSelected(symbol)}
+                            className="rounded border-stellar-border"
+                          />
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <Link to={`/assets/${symbol}`} className="flex items-center gap-3 group">
                             <div className="w-8 h-8 rounded-full bg-stellar-blue/10 flex items-center justify-center border border-stellar-blue/20 group-hover:border-stellar-blue transition-colors">

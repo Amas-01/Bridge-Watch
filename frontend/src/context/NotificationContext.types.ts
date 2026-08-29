@@ -21,6 +21,7 @@ export interface NotificationContextType {
   markAsRead: (id: string) => void;
   markAllAsRead: () => void;
   clearAll: () => void;
+  clearRead: () => void;
   updatePreferences: (prefs: Partial<NotificationPreferences>) => void;
   unreadCount: number;
 }

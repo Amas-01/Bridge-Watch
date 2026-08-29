@@ -341,6 +341,10 @@ export class OutboxWebhookService {
       filterEventTypes: JSON.parse(row.filter_event_types || "[]"),
       isBatchDeliveryEnabled: row.is_batch_delivery_enabled,
       batchWindowMs: row.batch_window_ms,
+      consecutiveFailures: row.consecutive_failures ?? 0,
+      circuitBreakerStatus: row.circuit_breaker_status ?? "closed",
+      circuitBreakerTrippedAt: row.circuit_breaker_tripped_at ?? null,
+      circuitBreakerResetAt: row.circuit_breaker_reset_at ?? null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

@@ -130,7 +130,7 @@ This document summarizes the complete implementation of the Transactional Outbox
    ├── Monitor Statistics (/api/v1/admin/outbox/stats)
    ├── Retry Failed Events (/api/v1/admin/outbox/retry/:id)
    ├── Inspect DLQ (/api/v1/admin/outbox/dlq)
-   └── Health Checks (/api/v1/health/outbox)
+   └── Official health endpoint (/api/v1/health/outbox)
 ```
 
 ## 🔧 Configuration

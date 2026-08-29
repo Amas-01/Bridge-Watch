@@ -1,3 +1,4 @@
+import type { Knex } from "knex";
 import { getDatabase } from "../database/connection.js";
 import { logger } from "../utils/logger.js";
 import type { CustomMetric } from "./analytics.service.js";
@@ -52,6 +53,10 @@ export class SavedMetricService {
   private db = getDatabase();
   private analytics = new AnalyticsService();
 
+  private ownedOrShared(qb: Knex.QueryBuilder, userId: string): Knex.QueryBuilder {
+    return qb.where("created_by", userId).orWhere("is_shared", true);
+  }
+
   validateFormula(formula: string): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
     const trimmed = formula.trim();
@@ -105,8 +110,7 @@ export class SavedMetricService {
 
   async listMetrics(userId: string): Promise<SavedMetric[]> {
     const rows = await this.db("user_saved_metrics")
-      .where("created_by", userId)
-      .orWhere("is_shared", true)
+      .where((qb) => this.ownedOrShared(qb, userId))
       .orderBy("updated_at", "desc");
 
     return rows.map(this.mapRow);
@@ -115,9 +119,7 @@ export class SavedMetricService {
   async getMetric(id: string, userId: string): Promise<SavedMetric | null> {
     const row = await this.db("user_saved_metrics")
       .where("id", id)
-      .andWhere((qb) => {
-        qb.where("created_by", userId).orWhere("is_shared", true);
-      })
+      .andWhere((qb) => this.ownedOrShared(qb, userId))
       .first();
 
     return row ? this.mapRow(row) : null;

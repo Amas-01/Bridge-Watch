@@ -22,6 +22,11 @@ on:
         required: false
         default: true
         type: boolean
+      report_only:
+        description: Report gate status without blocking the caller
+        required: false
+        default: false
+        type: boolean
       override:
         description: Allow an authorized maintainer to bypass failed gates
         required: false
@@ -226,6 +231,7 @@ jobs:
           OVERRIDE_REQUESTED: ${{ inputs.override }}
           OVERRIDE_REASON: ${{ inputs.override_reason }}
           OVERRIDE_AUTHORIZED: ${{ steps.override.outputs.authorized }}
+          ENFORCE_EXTERNAL_GATES: ${{ inputs.enforce_external_gates }}
           METADATA_RESULT: ${{ steps.metadata.outcome }}
           HEALTH_RESULT: ${{ steps.health.outcome }}
           TEST_RESULT: ${{ steps.tests.outcome }}
@@ -253,14 +259,29 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           failed=0
-          for result in \
-            "$METADATA_RESULT" "$HEALTH_RESULT" "$TEST_RESULT" "$DEPENDENCIES_RESULT" \
-            "$BACKEND_RESULT" "$FRONTEND_RESULT" "$CONTRACTS_RESULT"; do
-            [ "$result" = "success" ] || failed=1
-          done
+          
+          # For dry-runs with enforce_external_gates=false, only check metadata
+          if [ "$ENFORCE_EXTERNAL_GATES" != "true" ]; then
+            echo "Running in dry-run mode with relaxed validation" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$METADATA_RESULT" != "success" ]; then
+              failed=1
+            fi
+          else
+            # Full validation for actual releases
+            for result in \
+              "$METADATA_RESULT" "$HEALTH_RESULT" "$TEST_RESULT" "$DEPENDENCIES_RESULT" \
+              "$BACKEND_RESULT" "$FRONTEND_RESULT" "$CONTRACTS_RESULT"; do
+              [ "$result" = "success" ] || failed=1
+            done
+          fi
 
           if [ "$failed" -eq 0 ]; then
             echo "Decision: **PROMOTION APPROVED**" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "$REPORT_ONLY" = "true" ]; then
+            echo "Decision: **PROMOTION WOULD BE BLOCKED (REPORT ONLY)**" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 

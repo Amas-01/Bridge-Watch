@@ -20,6 +20,10 @@ describe("OnboardingDialog", () => {
     expect(results).toHaveNoViolations();
 
     expect(screen.getByRole("heading", { name: "Welcome to Bridge Watch" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Developer Help" })).toHaveAttribute(
+      "href",
+      "https://developers.stellar.org/docs/build/smart-contracts"
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(screen.getByRole("heading", { name: "Start on the Dashboard" })).toBeInTheDocument();

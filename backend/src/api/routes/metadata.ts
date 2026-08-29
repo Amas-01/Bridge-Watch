@@ -383,6 +383,96 @@ export async function metadataRoutes(server: FastifyInstance) {
     },
   );
 
+  server.post<{
+    Body: {
+      items: Array<{
+        assetId: string;
+        symbol: string;
+        metadata: Record<string, unknown>;
+      }>;
+      updatedBy: string;
+    };
+  }>(
+    "/bulk",
+    {
+      schema: {
+        tags: ["Metadata"],
+        summary: "Edit metadata for multiple assets in a single batch",
+        body: {
+          type: "object",
+          required: ["items", "updatedBy"],
+          properties: {
+            items: {
+              type: "array",
+              minItems: 1,
+              items: {
+                type: "object",
+                required: ["assetId", "symbol", "metadata"],
+                properties: {
+                  assetId: { type: "string" },
+                  symbol: { type: "string" },
+                  metadata: metadataBodySchema,
+                },
+              },
+            },
+            updatedBy: { type: "string" },
+          },
+        },
+        response: {
+          200: {
+            type: "object",
+            properties: {
+              batchId: { type: "string" },
+              total: { type: "integer" },
+              succeeded: { type: "integer" },
+              failed: { type: "integer" },
+              results: { type: "array", items: { type: "object", additionalProperties: true } },
+            },
+          },
+          400: { $ref: "Error#" },
+        },
+      },
+    },
+    async (request, reply) => {
+      const { items, updatedBy } = request.body;
+      if (!Array.isArray(items) || items.length === 0) {
+        return reply.code(400).send({ error: "items must be a non-empty array" });
+      }
+
+      const result = await assetMetadataService.bulkUpsertMetadata(
+        items as any,
+        updatedBy,
+      );
+      return reply.code(200).send(result);
+    },
+  );
+
+  server.get<{ Params: { batchId: string } }>(
+    "/bulk/:batchId",
+    {
+      schema: {
+        tags: ["Metadata"],
+        summary: "Get a previously recorded bulk metadata edit batch",
+        params: {
+          type: "object",
+          required: ["batchId"],
+          properties: { batchId: { type: "string" } },
+        },
+        response: {
+          200: { type: "object", additionalProperties: true },
+          404: { $ref: "Error#" },
+        },
+      },
+    },
+    async (request, reply) => {
+      const batch = await assetMetadataService.getBulkEditBatch(request.params.batchId);
+      if (!batch) {
+        return reply.code(404).send({ error: "Batch not found" });
+      }
+      return batch;
+    },
+  );
+
   server.patch<{
     Params: { assetId: string };
     Body: { logoUrl: string; updatedBy: string };

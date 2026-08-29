@@ -9,9 +9,6 @@
   --stellar-border: 226 232 240;
   --stellar-text-primary: 15 23 42;
   --stellar-text-secondary: 71 85 105;
-  --spacing-base: 1rem;
-  --card-padding: 1.5rem;
-  --section-gap: 2rem;
 }
 
 .dark {
@@ -24,14 +21,10 @@
 }
 
 [data-density="compact"] {
-  --spacing-base: 0.5rem;
-  --card-padding: 0.75rem;
   --section-gap: 1rem;
 }
 
 [data-density="spacious"] {
-  --spacing-base: 1.5rem;
-  --card-padding: 2.5rem;
   --section-gap: 3rem;
 }
 
@@ -64,22 +57,10 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ===================================================================
-   Tooltip animations
-   =================================================================== */
-@keyframes fadeInTooltip {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
+
 
 /* ===================================================================
-   Print / PDF stylesheet (Issue #105)
+   Print / PDF stylesheet (Issue #819 & #105)
    =================================================================== */
 @media print {
   /* Reset page dimensions and margins for clean printing */
@@ -90,26 +71,42 @@ body {
 
   /* Hide non-report UI chrome */
   nav,
+  aside,
+  header.no-print,
   .no-print,
   button:not(.print-include),
   select,
   input,
-  .onboarding-dialog {
+  .onboarding-dialog,
+  [role="navigation"] {
     display: none !important;
   }
 
-  /* White background, black text for ink savings */
+  /* White background, black text for ink savings & standard printable sizing */
   body,
-  html {
+  html,
+  #root,
+  main,
+  #report-content {
     background: #ffffff !important;
     color: #000000 !important;
-    font-size: 11pt;
+    font-size: 11pt !important;
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    position: static !important;
+    overflow: visible !important;
+    transform: none !important;
+    box-sizing: border-box !important;
   }
 
-  /* Remove dark card backgrounds */
+  /* Remove dark card backgrounds & reset mobile paddings */
   .bg-stellar-dark,
   .bg-stellar-card {
     background: #ffffff !important;
+    box-shadow: none !important;
   }
 
   /* Force borders to be visible on white paper */
@@ -129,52 +126,84 @@ body {
     color: #0057ff !important;
   }
 
+  /* Reset overflow clipping wrappers (prevents mobile cutoff) */
+  .overflow-x-auto,
+  .overflow-y-auto,
+  .overflow-auto,
+  .overflow-hidden {
+    overflow: visible !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* Table styling for mobile viewport print exports */
+  table {
+    width: 100% !important;
+    max-width: 100% !important;
+    table-layout: auto !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto !important;
+  }
+
+  tr, td, th {
+    page-break-inside: avoid !important;
+    page-break-after: auto !important;
+  }
+
   /* Page break helpers */
   .print-break-before {
-    page-break-before: always;
-    break-before: page;
+    page-break-before: always !important;
+    break-before: page !important;
   }
   .print-break-after {
-    page-break-after: always;
-    break-after: page;
+    page-break-after: always !important;
+    break-after: page !important;
   }
   .print-avoid-break {
-    page-break-inside: avoid;
-    break-inside: avoid;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 
   /* Printed report header / footer */
   .print-header {
     display: block !important;
-    border-bottom: 2px solid #0057ff;
-    padding-bottom: 8pt;
-    margin-bottom: 16pt;
+    border-bottom: 2px solid #0057ff !important;
+    padding-bottom: 8pt !important;
+    margin-bottom: 16pt !important;
+    width: 100% !important;
   }
   .print-footer {
     display: block !important;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    border-top: 1px solid #cccccc;
-    padding-top: 4pt;
-    font-size: 8pt;
-    color: #666666;
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    border-top: 1px solid #cccccc !important;
+    padding-top: 4pt !important;
+    font-size: 8pt !important;
+    color: #666666 !important;
   }
 
-  /* Charts: allow SVG/canvas elements to print */
+  /* Charts: allow SVG/canvas elements to print cleanly without overlapping */
   svg,
   canvas {
     max-width: 100% !important;
+    width: 100% !important;
+    height: auto !important;
+    position: static !important;
+    overflow: visible !important;
   }
 
-  /* Expand grids to full width on print */
+  /* Expand grids to full width on print without overlapping items */
   .grid {
     display: block !important;
+    width: 100% !important;
   }
   .grid > * {
-    margin-bottom: 12pt;
+    margin-bottom: 12pt !important;
     width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
   }
 
   /* Show print-only elements */
@@ -187,13 +216,7 @@ body {
   margin-top: var(--section-gap);
 }
 
-.p-density {
-  padding: var(--card-padding);
-}
 
-.gap-density {
-  gap: var(--spacing-base);
-}
 @keyframes skeleton-shimmer {
   0% {
     transform: translateX(-100%);

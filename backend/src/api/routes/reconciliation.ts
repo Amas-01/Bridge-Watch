@@ -5,6 +5,7 @@ import {
   type ReconciliationRange,
   type ReconciliationTriageStatus,
 } from "../../services/reconciliation.service.js";
+import { ZkReserveProofService, type ZkProofPayload } from "../../services/zkReserveProof.service.js";
 import { logger } from "../../utils/logger.js";
 
 const listQuerySchema = z.object({
@@ -33,6 +34,40 @@ const triageBodySchema = z.object({
   owner: z.string().trim().max(120).nullable().optional(),
   note: z.string().trim().max(2000).nullable().optional(),
 });
+
+const verifyZkProofBodySchema = z.object({
+  bridgeId: z.string().trim().min(1),
+  assetCode: z.string().trim().min(1),
+  scheme: z.enum(["groth16", "plonk"]).optional().default("groth16"),
+  curve: z.enum(["bn254", "bls12_381"]).optional().default("bn254"),
+  totalReserves: z.string().trim().min(1),
+  onChainSupply: z.string().trim().min(1),
+  minReserveRatioBps: z.number().int().min(0).max(100000).optional().default(10000),
+  commitmentHash: z.string().trim().min(1),
+  piA: z.string().trim().min(1),
+  piB: z.string().trim().min(1),
+  piC: z.string().trim().min(1),
+  timestamp: z.number().int().optional(),
+  submitOnChain: z.boolean().optional().default(false),
+  operatorSecret: z.string().trim().optional(),
+});
+
+const generateZkProofBodySchema = z.object({
+  bridgeId: z.string().trim().min(1),
+  assetCode: z.string().trim().min(1),
+  totalReserves: z.string().trim().min(1),
+  onChainSupply: z.string().trim().min(1),
+  minReserveRatioBps: z.number().int().min(0).max(100000).optional().default(10000),
+  scheme: z.enum(["groth16", "plonk"]).optional().default("groth16"),
+  curve: z.enum(["bn254", "bls12_381"]).optional().default("bn254"),
+  custodianLeaves: z.array(z.object({
+    accountId: z.string(),
+    balance: z.string(),
+    nonce: z.string().optional(),
+    salt: z.string().optional(),
+  })).optional(),
+});
+
 
 export async function reconciliationRoutes(
   fastify: FastifyInstance,
@@ -153,4 +188,108 @@ export async function reconciliationRoutes(
       }
     }
   );
+
+  const zkSvc = new ZkReserveProofService();
+
+  fastify.post(
+    "/verify-zk-proof",
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const parsed = verifyZkProofBodySchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "Invalid ZK proof payload", details: parsed.error.flatten() });
+      }
+
+      try {
+        const payload: ZkProofPayload = {
+          bridgeId: parsed.data.bridgeId,
+          assetCode: parsed.data.assetCode,
+          scheme: parsed.data.scheme,
+          curve: parsed.data.curve,
+          totalReserves: parsed.data.totalReserves,
+          onChainSupply: parsed.data.onChainSupply,
+          minReserveRatioBps: parsed.data.minReserveRatioBps,
+          commitmentHash: parsed.data.commitmentHash,
+          piA: parsed.data.piA,
+          piB: parsed.data.piB,
+          piC: parsed.data.piC,
+          timestamp: parsed.data.timestamp ?? Math.floor(Date.now() / 1000),
+        };
+
+        const result = await zkSvc.verifyReserveProofOffChain(payload);
+
+        let onChainResult = null;
+        if (result.isValid && parsed.data.submitOnChain) {
+          onChainResult = await zkSvc.submitProofToSoroban(payload, parsed.data.operatorSecret);
+        }
+
+        if (!result.isValid) {
+          return reply.code(400).send({
+            error: "ZK proof verification failed",
+            verification: result,
+          });
+        }
+
+        return {
+          verified: true,
+          verification: result,
+          onChainSubmission: onChainResult,
+        };
+      } catch (error) {
+        logger.error({ error }, "Failed to evaluate ZK proof attestation");
+        return reply.code(500).send({ error: "Failed to evaluate ZK proof attestation" });
+      }
+    }
+  );
+
+  fastify.post(
+    "/generate-zk-proof",
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const parsed = generateZkProofBodySchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "Invalid reserve proof inputs", details: parsed.error.flatten() });
+      }
+
+      try {
+        const proofPayload = zkSvc.generateReserveProof(parsed.data);
+        return { proofPayload };
+      } catch (error) {
+        logger.error({ error }, "Failed to generate ZK reserve proof");
+        return reply.code(400).send({ error: error instanceof Error ? error.message : "Failed to generate ZK reserve proof" });
+      }
+    }
+  );
+
+  fastify.get(
+    "/zk-proofs",
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { bridgeId, limit } = request.query as { bridgeId?: string; limit?: string };
+      const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : 50;
+
+      try {
+        const history = await zkSvc.getVerificationHistory(bridgeId, parsedLimit);
+        return { verifications: history };
+      } catch (error) {
+        logger.error({ error, bridgeId }, "Failed to fetch ZK verification history");
+        return reply.code(500).send({ error: "Failed to fetch ZK verification history" });
+      }
+    }
+  );
+
+  fastify.get(
+    "/zk-proofs/:id",
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { id } = request.params as { id: string };
+      if (!id) return reply.code(400).send({ error: "Verification ID required" });
+
+      try {
+        const record = await zkSvc.getVerificationById(id);
+        if (!record) return reply.code(404).send({ error: "ZK proof record not found" });
+        return record;
+      } catch (error) {
+        logger.error({ error, id }, "Failed to fetch ZK proof record");
+        return reply.code(500).send({ error: "Failed to fetch ZK proof record" });
+      }
+    }
+  );
 }
+

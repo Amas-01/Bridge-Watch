@@ -1,7 +1,7 @@
 import { logger } from "../utils/logger.js";
 import { getDatabase } from "../database/connection.js";
-import Redis from "ioredis";
 import { config } from "../config/index.js";
+import { factory } from "../utils/redis.js";
 import os from "os";
 import fs from "fs";
 
@@ -54,17 +54,8 @@ export interface ReadinessResponse {
 
 export class HealthCheckService {
   private startTime = Date.now();
-  private redisClient: Redis;
 
   constructor() {
-    this.redisClient = new Redis({
-      host: config.REDIS_HOST,
-      port: config.REDIS_PORT,
-      password: config.REDIS_PASSWORD || undefined,
-      maxRetriesPerRequest: 3,
-      lazyConnect: true,
-      retryStrategy: (times: number) => Math.min(times * 100, 2_000),
-    });
   }
 
   /**
@@ -205,12 +196,12 @@ export class HealthCheckService {
    */
   private async checkRedis(): Promise<HealthCheckResult> {
     const startTime = Date.now();
+    const redisClient = factory.getClient();
 
     try {
-      await this.redisClient.ping();
+      await redisClient.ping();
       
-      // Get Redis info
-      const info = await this.redisClient.info("memory");
+      const info = await redisClient.info("memory");
       const memoryMatch = info.match(/used_memory:(\d+)/);
       const usedMemory = memoryMatch ? parseInt(memoryMatch[1]) : 0;
 
@@ -394,8 +385,6 @@ export class HealthCheckService {
    * Cleanup Redis connection
    */
   async disconnect(): Promise<void> {
-    if (this.redisClient) {
-      await this.redisClient.quit();
-    }
+    await factory.shutdown();
   }
 }

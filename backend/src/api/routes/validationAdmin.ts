@@ -14,8 +14,15 @@ export async function validationAdminRoutes(server: FastifyInstance) {
   // Admin authentication middleware
   server.addHook("preHandler", async (request: FastifyRequest, reply: FastifyReply) => {
     const apiKey = request.headers["x-api-key"] as string;
-    
-    if (!apiKey || !apiKey.startsWith(config.RATE_LIMIT_ADMIN_API_KEY_PREFIX)) {
+
+    if (!apiKey) {
+      return reply.status(401).send({
+        error: "Unauthorized",
+        message: "Admin API key required for validation management",
+      });
+    }
+
+    if (!apiKey.startsWith(config.RATE_LIMIT_ADMIN_API_KEY_PREFIX)) {
       return reply.status(403).send({
         error: "Forbidden",
         message: "Admin API key required for validation management",

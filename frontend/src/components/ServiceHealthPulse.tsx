@@ -182,6 +182,11 @@ export default function ServiceHealthPulse({
             <span>{data.totalServices} service{data.totalServices !== 1 ? "s" : ""}</span>
             <span aria-hidden="true">•</span>
             <span>Updated {relativeTime}</span>
+            <span aria-hidden="true">•</span>
+            <span className="inline-flex items-center gap-1 font-mono text-[11px] text-emerald-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Horizon Stream Node: Active
+            </span>
           </div>
         </div>
       </div>

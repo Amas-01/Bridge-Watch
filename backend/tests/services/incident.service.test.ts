@@ -8,6 +8,9 @@ function makeChainable(rows: unknown[] = []) {
     limit: vi.fn().mockReturnThis(),
     first: vi.fn().mockImplementation(() => Promise.resolve(rows[0] ?? null)),
     select: vi.fn().mockReturnThis(),
+    clone: vi.fn().mockReturnThis(),
+    count: vi.fn().mockImplementation(() => Promise.resolve([{ count: String(rows.length) }])),
+    offset: vi.fn().mockReturnThis(),
   };
   chain.then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) => {
     return Promise.resolve(rows).then(resolve, reject);

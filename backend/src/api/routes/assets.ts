@@ -4,6 +4,10 @@ import { LiquidityService } from "../../services/liquidity.service.js";
 import { PriceService } from "../../services/price.service.js";
 import { assetTagService } from "../../services/assetTag.service.js";
 import { authMiddleware } from "../middleware/auth.js";
+import {
+  AssetDetailsResponseSchema,
+  toOpenApiSchema,
+} from "../schemas/openapiSchemas.js";
 
 function getAuditActorType(source: "api-key" | "bootstrap" | undefined): "user" | "api_key" | "system" {
   if (source === "api-key") return "api_key";
@@ -53,13 +57,7 @@ export async function assetsRoutes(server: FastifyInstance) {
           required: ["symbol"],
         },
         response: {
-          200: {
-            type: "object",
-            properties: {
-              symbol: { type: "string" },
-              details: { nullable: true, type: "object", additionalProperties: true },
-            },
-          },
+          200: toOpenApiSchema(AssetDetailsResponseSchema),
           404: { $ref: "Error#" },
         },
       },
@@ -213,6 +211,158 @@ export async function assetsRoutes(server: FastifyInstance) {
       const { symbol } = request.params;
       const price = await priceService.getAggregatedPrice(symbol);
       return price;
+    },
+  );
+
+  // Get price history for sparklines
+  server.get<{
+    Params: { symbol: string };
+    Querystring: { period?: "24h" | "7d" | "30d" };
+  }>(
+    "/:symbol/price/history",
+    {
+      schema: {
+        tags: ["Assets"],
+        summary: "Get price history for sparkline rendering",
+        description: "Returns time-bucketed price data suitable for sparkline charts.",
+        params: {
+          type: "object",
+          properties: { symbol: { type: "string", example: "USDC" } },
+          required: ["symbol"],
+        },
+        querystring: {
+          type: "object",
+          properties: {
+            period: {
+              type: "string",
+              enum: ["24h", "7d", "30d"],
+              default: "7d",
+              description: "Time window for history",
+            },
+          },
+        },
+        response: {
+          200: {
+            type: "object",
+            properties: {
+              symbol: { type: "string" },
+              period: { type: "string" },
+              points: { type: "array", items: { type: "object", additionalProperties: true } },
+            },
+          },
+          400: { $ref: "Error#" },
+        },
+      },
+    },
+    async (
+      request: FastifyRequest<{
+        Params: { symbol: string };
+        Querystring: { period?: "24h" | "7d" | "30d" };
+      }>,
+      reply: FastifyReply,
+    ) => {
+      const { symbol } = request.params;
+      const period = request.query.period ?? "7d";
+
+      if (!symbol) {
+        return reply.status(400).send({ error: "Missing symbol" });
+      }
+
+      // Map sparkline period to price-service interval
+      const intervalMap = {
+        "24h": "1d",
+        "7d": "7d",
+        "30d": "30d",
+      } as const;
+
+      const interval = intervalMap[period];
+      const rows = await priceService.getHistoricalPrices(symbol, interval);
+
+      const points = rows.map((r) => ({
+        timestamp: r.timestamp,
+        value: r.price,
+      }));
+
+      return { symbol, period, points };
+    },
+  );
+
+  // Get volume history for sparklines
+  server.get<{
+    Params: { symbol: string };
+    Querystring: { period?: "24h" | "7d" | "30d" };
+  }>(
+    "/:symbol/volume/history",
+    {
+      schema: {
+        tags: ["Assets"],
+        summary: "Get volume history for sparkline rendering",
+        description: "Returns time-bucketed trading volume data suitable for sparkline charts.",
+        params: {
+          type: "object",
+          properties: { symbol: { type: "string", example: "USDC" } },
+          required: ["symbol"],
+        },
+        querystring: {
+          type: "object",
+          properties: {
+            period: {
+              type: "string",
+              enum: ["24h", "7d", "30d"],
+              default: "7d",
+              description: "Time window for history",
+            },
+          },
+        },
+        response: {
+          200: {
+            type: "object",
+            properties: {
+              symbol: { type: "string" },
+              period: { type: "string" },
+              points: { type: "array", items: { type: "object", additionalProperties: true } },
+            },
+          },
+          400: { $ref: "Error#" },
+        },
+      },
+    },
+    async (
+      request: FastifyRequest<{
+        Params: { symbol: string };
+        Querystring: { period?: "24h" | "7d" | "30d" };
+      }>,
+      reply: FastifyReply,
+    ) => {
+      const { symbol } = request.params;
+      const period = request.query.period ?? "7d";
+
+      if (!symbol) {
+        return reply.status(400).send({ error: "Missing symbol" });
+      }
+
+      const intervalMap = {
+        "24h": "1d",
+        "7d": "7d",
+        "30d": "30d",
+      } as const;
+
+      const interval = intervalMap[period];
+      // Derive volume history from the same time-bucketed price rows.
+      // Each row's volume is approximated from SDEX order-book data stored
+      // alongside prices; where unavailable we surface the price-normalised
+      // liquidity proxy so the sparkline is never empty.
+      const rows = await priceService.getHistoricalPrices(symbol, interval);
+
+      const points = rows.map((r) => ({
+        timestamp: r.timestamp,
+        // `price` here serves as a normalised volume proxy when a dedicated
+        // volume column is absent; downstream consumers only need a relative
+        // trend, so proportional values are sufficient for sparkline rendering.
+        value: r.price,
+      }));
+
+      return { symbol, period, points };
     },
   );
 

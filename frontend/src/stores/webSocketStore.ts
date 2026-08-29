@@ -54,6 +54,7 @@ export interface WebSocketActions {
   unsubscribe: (channel: string) => void;
   confirmSubscription: (channel: string) => void;
   clearPendingSubscriptions: () => void;
+  flushPendingSubscriptions: () => void;
   isSubscribed: (channel: string) => boolean;
 
   // Message actions
@@ -106,6 +107,7 @@ export const useWebSocketStore = create<WebSocketState & WebSocketActions>()(
       },
 
       markConnected: () => {
+        const { pendingSubscriptions } = get();
         set(
           {
             status: "connected",
@@ -115,6 +117,10 @@ export const useWebSocketStore = create<WebSocketState & WebSocketActions>()(
           false,
           "markConnected"
         );
+        // Flush any pending subscriptions that were queued while connecting
+        if (pendingSubscriptions.size > 0) {
+          get().flushPendingSubscriptions();
+        }
       },
 
       markDisconnected: () => {
@@ -189,6 +195,14 @@ export const useWebSocketStore = create<WebSocketState & WebSocketActions>()(
 
       clearPendingSubscriptions: () => {
         set({ pendingSubscriptions: new Set() }, false, "clearPendingSubscriptions");
+      },
+
+      flushPendingSubscriptions: () => {
+        const { pendingSubscriptions, confirmSubscription } = get();
+        // Emit subscription confirmations for all pending subscriptions
+        pendingSubscriptions.forEach((channel) => {
+          confirmSubscription(channel);
+        });
       },
 
       isSubscribed: (channel) => {

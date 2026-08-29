@@ -4,6 +4,13 @@ import {
   type RawAlertHistoryQuery,
 } from "../../services/alertHistorySearch.service.js";
 import { logger } from "../../utils/logger.js";
+import { validateRequest } from "../middleware/validation.js";
+import {
+  AlertHistoryRouteQuerySchema,
+  AlertHistorySuccessSchema,
+  ApiErrorSchema,
+  toOpenApiSchema,
+} from "../schemas/openapiSchemas.js";
 
 const service = new AlertHistorySearchService();
 
@@ -11,6 +18,18 @@ export async function alertHistoryRoutes(server: FastifyInstance) {
   // GET / — paginated, filtered search over historical alerts.
   server.get(
     "/",
+    {
+      preHandler: validateRequest({ query: AlertHistoryRouteQuerySchema }),
+      schema: {
+        tags: ["Alerts"],
+        summary: "Search alert history",
+        querystring: toOpenApiSchema(AlertHistoryRouteQuerySchema),
+        response: {
+          200: toOpenApiSchema(AlertHistorySuccessSchema),
+          400: toOpenApiSchema(ApiErrorSchema),
+        },
+      },
+    },
     async (
       request: FastifyRequest<{ Querystring: RawAlertHistoryQuery }>,
       reply: FastifyReply,
@@ -31,6 +50,18 @@ export async function alertHistoryRoutes(server: FastifyInstance) {
   // GET /export — same filters, returned as a CSV attachment.
   server.get(
     "/export",
+    {
+      preHandler: validateRequest({ query: AlertHistoryRouteQuerySchema }),
+      schema: {
+        tags: ["Alerts"],
+        summary: "Export alert history as CSV",
+        querystring: toOpenApiSchema(AlertHistoryRouteQuerySchema),
+        response: {
+          200: { type: "string", description: "CSV alert history export" },
+          400: toOpenApiSchema(ApiErrorSchema),
+        },
+      },
+    },
     async (
       request: FastifyRequest<{ Querystring: RawAlertHistoryQuery }>,
       reply: FastifyReply,

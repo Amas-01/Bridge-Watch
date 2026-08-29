@@ -231,4 +231,266 @@ describe("AssetMetadataSyncService", () => {
       "system",
     );
   });
+
+  it("continues and succeeds when one adapter throws but another returns data", async () => {
+    const failing: MetadataSourceAdapter = {
+      source: "flaky-source",
+      supports: () => true,
+      fetch: async () => {
+        throw new Error("upstream timeout");
+      },
+    };
+
+    const healthy: MetadataSourceAdapter = {
+      source: "healthy-source",
+      supports: () => true,
+      fetch: async () => ({
+        source: "healthy-source",
+        confidence: 0.6,
+        data: { description: "from healthy source" },
+      }),
+    };
+
+    const service = new AssetMetadataSyncService([failing, healthy]);
+    const result = await service.syncSingleAsset({
+      assetId: "asset-1",
+      symbol: "USDC",
+      force: true,
+      fields: ["description"],
+    });
+
+    expect(result.status).toBe("success");
+    expect(result.source).toBe("healthy-source");
+    expect(upsertMetadataMock).toHaveBeenCalledWith(
+      "asset-1",
+      "USDC",
+      expect.objectContaining({ description: "from healthy source" }),
+      "system",
+    );
+  });
+
+  it("fails the sync and records the error when every adapter throws", async () => {
+    const failing: MetadataSourceAdapter = {
+      source: "source-a",
+      supports: () => true,
+      fetch: async () => {
+        throw new Error("connection refused");
+      },
+    };
+
+    const service = new AssetMetadataSyncService([failing]);
+    const result = await service.syncSingleAsset({
+      assetId: "asset-1",
+      symbol: "USDC",
+      force: true,
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toContain("connection refused");
+    expect(upsertMetadataMock).not.toHaveBeenCalled();
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        last_sync_status: "failed",
+        last_sync_error: expect.stringContaining("connection refused"),
+      }),
+    );
+    expect(insertMock).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "failed", asset_id: "asset-1" }),
+    );
+  });
+
+  it("fails the sync when metadata validation rejects the resolved fields", async () => {
+    validateMetadataMock.mockReturnValue({
+      valid: false,
+      errors: ["description exceeds max length"],
+    });
+
+    const adapter: MetadataSourceAdapter = {
+      source: "test-source",
+      supports: () => true,
+      fetch: async () => ({
+        source: "test-source",
+        confidence: 1,
+        data: { description: "x".repeat(10_000) },
+      }),
+    };
+
+    const service = new AssetMetadataSyncService([adapter]);
+    const result = await service.syncSingleAsset({
+      assetId: "asset-1",
+      symbol: "USDC",
+      force: true,
+      fields: ["description"],
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toContain("description exceeds max length");
+    expect(upsertMetadataMock).not.toHaveBeenCalled();
+  });
+
+  it("drops logo_url but still succeeds when the image URL fails validation", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        headers: { get: () => "text/html" },
+      }),
+    );
+
+    const adapter: MetadataSourceAdapter = {
+      source: "test-source",
+      supports: () => true,
+      fetch: async () => ({
+        source: "test-source",
+        confidence: 1,
+        data: {
+          logo_url: "https://example.com/not-an-image",
+          description: "valid description",
+        },
+      }),
+    };
+
+    const service = new AssetMetadataSyncService([adapter]);
+    const result = await service.syncSingleAsset({
+      assetId: "asset-1",
+      symbol: "USDC",
+      force: true,
+      fields: ["logo_url", "description"],
+    });
+
+    expect(result.status).toBe("success");
+    expect(upsertMetadataMock).toHaveBeenCalledWith(
+      "asset-1",
+      "USDC",
+      expect.objectContaining({ description: "valid description" }),
+      "system",
+    );
+    const upsertedPayload = upsertMetadataMock.mock.calls[0][2];
+    expect(upsertedPayload).not.toHaveProperty("logo_url");
+  });
+
+  it("skips adapters that do not support the asset's symbol", async () => {
+    const unsupported: MetadataSourceAdapter = {
+      source: "unsupported-source",
+      supports: () => false,
+      fetch: vi.fn(),
+    };
+
+    const supported: MetadataSourceAdapter = {
+      source: "supported-source",
+      supports: () => true,
+      fetch: async () => ({
+        source: "supported-source",
+        confidence: 1,
+        data: { description: "from supported source" },
+      }),
+    };
+
+    const service = new AssetMetadataSyncService([unsupported, supported]);
+    const result = await service.syncSingleAsset({
+      assetId: "asset-1",
+      symbol: "USDC",
+      force: true,
+      fields: ["description"],
+    });
+
+    expect(result.status).toBe("success");
+    expect(unsupported.fetch).not.toHaveBeenCalled();
+  });
+
+  describe("syncAll", () => {
+    it("syncs every asset returned by the assets query and reports totals", async () => {
+      const adapter: MetadataSourceAdapter = {
+        source: "test-source",
+        supports: () => true,
+        fetch: async () => ({
+          source: "test-source",
+          confidence: 1,
+          data: { description: "batch sync" },
+        }),
+      };
+
+      const service = new AssetMetadataSyncService([adapter]);
+      const { results, total } = await service.syncAll({ force: true, fields: ["description"] });
+
+      expect(total).toBe(1);
+      expect(results).toHaveLength(1);
+      expect(results[0]).toMatchObject({ symbol: "USDC", status: "success" });
+    });
+
+    it("uppercases requested symbols before querying assets", async () => {
+      const adapter: MetadataSourceAdapter = {
+        source: "test-source",
+        supports: () => true,
+        fetch: async () => ({
+          source: "test-source",
+          confidence: 1,
+          data: { description: "scoped sync" },
+        }),
+      };
+
+      const service = new AssetMetadataSyncService([adapter]);
+      const modifyCallback = vi.fn();
+      dbMock.mockImplementationOnce((table: string) => {
+        if (table === "assets") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            modify: vi.fn((cb: (qb: any) => void) => {
+              modifyCallback(cb);
+              return { orderBy: vi.fn().mockResolvedValue([{ id: "asset-1", symbol: "USDC" }]) };
+            }),
+          };
+        }
+        return dbMock.getMockImplementation()!(table);
+      });
+
+      await service.syncAll({ symbols: ["usdc"], force: true });
+
+      const qb = { whereIn: vi.fn() };
+      modifyCallback.mock.calls[0][0](qb);
+      expect(qb.whereIn).toHaveBeenCalledWith("symbol", ["USDC"]);
+    });
+  });
+
+  describe("getSyncHistory", () => {
+    it("queries sync runs for the given symbol, uppercased, ordered by most recent", async () => {
+      const service = new AssetMetadataSyncService([]);
+      await service.getSyncHistory("usdc");
+
+      expect(orderByMock).toHaveBeenCalledWith("started_at", "desc");
+    });
+
+    it("caps the requested limit at 200", async () => {
+      const limitMock = vi.fn().mockResolvedValue([]);
+      dbMock.mockImplementationOnce((table: string) => {
+        if (table === "asset_metadata_sync_runs") {
+          return {
+            where: vi.fn().mockReturnThis(),
+            orderBy: vi.fn().mockReturnThis(),
+            limit: limitMock,
+          };
+        }
+        return dbMock.getMockImplementation()!(table);
+      });
+
+      const service = new AssetMetadataSyncService([]);
+      await service.getSyncHistory("usdc", 10_000);
+
+      expect(limitMock).toHaveBeenCalledWith(200);
+    });
+  });
+
+  describe("setManualOverride", () => {
+    it("delegates to assetMetadataService.setManualOverride with the given arguments", async () => {
+      const service = new AssetMetadataSyncService([]);
+      await service.setManualOverride("asset-1", true, "manually curated", "admin-1");
+
+      expect(setManualOverrideMock).toHaveBeenCalledWith(
+        "asset-1",
+        true,
+        "manually curated",
+        "admin-1",
+      );
+    });
+  });
 });

@@ -2,7 +2,7 @@ import { Telegraf, Context, Markup } from "telegraf";
 import { config } from "../config/index.js";
 import { logger } from "../utils/logger.js";
 import { getDatabase } from "../database/connection.js";
-import Redis from "ioredis";
+import { factory } from "../utils/redis.js";
 import { formatAlertMessage, escapeTelegramMarkdown } from "./formatters/telegram.formatter.js";
 
 export interface AlertEvent {
@@ -37,18 +37,14 @@ interface RateLimitEntry {
 export class TelegramBotService {
   private bot: Telegraf<Context>;
   private db = getDatabase();
-  private redis: Redis;
+  private redis: any;
   private isRunningFlag = false;
   private chatRateLimiters: Map<string, RateLimitEntry> = new Map();
   private alertSubscriptions: Map<string, TelegramSubscription> = new Map();
   private deliveryPaused = false;
 
-  constructor(redisClient?: Redis) {
-    this.redis = redisClient || new Redis({
-      host: config.REDIS_HOST,
-      port: config.REDIS_PORT,
-      password: config.REDIS_PASSWORD || undefined,
-    });
+  constructor(redisClient?: any) {
+    this.redis = redisClient || factory.getClient() as any;
 
     this.bot = new Telegraf(config.TELEGRAM_BOT_TOKEN || "");
     this.setupMiddleware();
@@ -764,7 +760,24 @@ export class TelegramBotService {
       return true;
     }
 
-    // TODO: Check application role system here when available
+    // Check the application role system: operator or super_admin with a linked telegram_chat_id
+    try {
+      const row = await this.db("admin_accounts")
+        .where("telegram_chat_id", chatId)
+        .where("is_active", true)
+        .first();
+
+      if (row) {
+        const roles: string[] = Array.isArray(row.roles) ? row.roles : JSON.parse(row.roles ?? "[]");
+        if (roles.includes("operator") || roles.includes("super_admin")) {
+          logger.debug({ chatId }, "Admin access granted via application role system");
+          return true;
+        }
+      }
+    } catch (err) {
+      logger.warn({ chatId, err }, "Role system check failed, denying access");
+    }
+
     return false;
   }
 
@@ -842,11 +855,7 @@ export class TelegramBotService {
    * Subscribe to alert events from Redis
    */
   private subscribeToAlertEvents(): void {
-    const alertChannel = new Redis({
-      host: config.REDIS_HOST,
-      port: config.REDIS_PORT,
-      password: config.REDIS_PASSWORD || undefined,
-    });
+    const alertChannel = factory.getSubscriber();
 
     alertChannel.subscribe("bw:alerts:created", (err) => {
       if (err) {

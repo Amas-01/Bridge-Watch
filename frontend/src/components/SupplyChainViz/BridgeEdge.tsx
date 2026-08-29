@@ -11,10 +11,10 @@ interface Props {
   onHover: (id: string | null) => void;
 }
 
-const STATUS_COLORS: Record<BridgeEdgeType["status"], string> = {
-  healthy: "#22c55e",
-  degraded: "#f59e0b",
-  offline: "#ef4444",
+const STATUS_CLASSES: Record<BridgeEdgeType["status"], string> = {
+  healthy: "text-status-success",
+  degraded: "text-status-warning",
+  offline: "text-status-danger",
 };
 
 function formatVolume(value: number): string {
@@ -63,7 +63,8 @@ export default function BridgeEdge({
 
   if (!src || !tgt || !path) return null;
 
-  const color = STATUS_COLORS[edge.status];
+  const strokeClass = STATUS_CLASSES[edge.status].replace("text-", "stroke-");
+  const fillClass = STATUS_CLASSES[edge.status].replace("text-", "fill-");
   const strokeWidth = isSelected || isHovered ? 2.5 : edge.status === "offline" ? 0.8 : 1.5;
   const opacity = isDimmed ? 0.15 : edge.status === "offline" ? 0.35 : 1;
   const dashLen = Math.max(4, Math.min(12, edge.volume24hUsd / 3_000_000));
@@ -87,7 +88,7 @@ export default function BridgeEdge({
       <path
         d={path}
         fill="none"
-        stroke={color}
+        className={strokeClass}
         strokeWidth={strokeWidth}
         strokeOpacity={0.3}
         style={{ transition: "stroke-width 0.15s" }}
@@ -98,7 +99,7 @@ export default function BridgeEdge({
         <path
           d={path}
           fill="none"
-          stroke={color}
+          className={strokeClass}
           strokeWidth={strokeWidth}
           strokeDasharray={`${dashLen} ${dashLen * 2.5}`}
           style={{
@@ -110,20 +111,20 @@ export default function BridgeEdge({
       {/* Bidirectional arrow markers */}
       {edge.flowDirection === "bidirectional" && (
         <>
-          <circle cx={src.position.x} cy={src.position.y} r={3} fill={color} opacity={0.6} />
-          <circle cx={tgt.position.x} cy={tgt.position.y} r={3} fill={color} opacity={0.6} />
+          <circle cx={src.position.x} cy={src.position.y} r={3} className={fillClass} opacity={0.6} />
+          <circle cx={tgt.position.x} cy={tgt.position.y} r={3} className={fillClass} opacity={0.6} />
         </>
       )}
 
       {/* Volume label at mid-point */}
       {(isSelected || isHovered) && (
         <g transform={`translate(${mx},${my})`}>
-          <rect x={-28} y={-10} width={56} height={20} rx={4} fill="#1e293b" stroke={color} strokeWidth={1} />
+          <rect x={-28} y={-10} width={56} height={20} rx={4} fill="#1e293b" className={strokeClass} strokeWidth={1} />
           <text
             textAnchor="middle"
             dominantBaseline="central"
             fontSize={9}
-            fill={color}
+            className={fillClass}
             fontWeight="600"
             style={{ userSelect: "none", pointerEvents: "none" }}
           >

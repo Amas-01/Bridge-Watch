@@ -392,6 +392,23 @@ export async function registerRateLimiting(server: FastifyInstance): Promise<voi
     );
     reply.header("X-RateLimit-Tier", tier);
 
+    // ---- Warn when approaching the rate limit threshold (≤10% remaining) --
+    if (!denied && bindingResult.remaining <= Math.ceil(bindingResult.limit * 0.1)) {
+      logger.warn(
+        {
+          ip,
+          hasApiKey: apiKey !== undefined,
+          tier,
+          routeGroup,
+          remaining: bindingResult.remaining,
+          limit: bindingResult.limit,
+          threshold: "10%",
+          resetAt: new Date(bindingResult.resetMs).toISOString(),
+        },
+        "Rate limit threshold approaching"
+      );
+    }
+
     // ---- Reject if over limit --------------------------------------------
     if (denied) {
       metrics.blockedRequests++;

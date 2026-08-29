@@ -105,7 +105,7 @@ function buildHeatmapData(entries: AuditEntry[]): HeatmapData {
 
   users.sort((a, b) => b.totalActions - a.totalActions);
 
-  return { users, maxCount, hours: HOURS, days: DAY_LABELS };
+  return { users, maxCount: Math.max(maxCount, 1), hours: HOURS, days: DAY_LABELS };
 }
 
 export function useUserActivityHeatmap(options: { days?: number } = {}) {

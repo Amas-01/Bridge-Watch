@@ -82,10 +82,13 @@ function TopologyDetailPanel({
   return null;
 }
 
+export type StatusFilterType = "all" | "healthy" | "degraded" | "offline";
+
 export default function BridgeTopologyExplorer() {
   const { data, isLoading, error } = useSupplyChainData();
   const [chainFilter, setChainFilter] = useState("");
   const [bridgeFilter, setBridgeFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilterType>("all");
 
   const graph = data ?? {
     nodes: [],
@@ -101,6 +104,13 @@ export default function BridgeTopologyExplorer() {
 
     let nodes = graph.nodes;
     let edges = graph.edges;
+
+    // Filter by bridge status; keep only chains connected by a matching bridge
+    if (statusFilter !== "all") {
+      edges = edges.filter((edge) => edge.status === statusFilter);
+      const connected = new Set(edges.flatMap((e) => [e.source, e.target]));
+      nodes = nodes.filter((node) => connected.has(node.id));
+    }
 
     if (chainQuery) {
       nodes = nodes.filter(
@@ -123,7 +133,7 @@ export default function BridgeTopologyExplorer() {
     }
 
     return { ...graph, nodes, edges };
-  }, [graph, chainFilter, bridgeFilter]);
+  }, [graph, chainFilter, bridgeFilter, statusFilter]);
 
   const highlightedEdge = filteredGraph.edges[0] ?? null;
   const detailNode = filteredGraph.nodes[0] ?? null;
@@ -165,6 +175,20 @@ export default function BridgeTopologyExplorer() {
             placeholder="allbridge, wormhole..."
             aria-label="Filter bridges"
           />
+        </label>
+        <label className="text-sm text-stellar-text-secondary">
+          Filter by status
+          <select
+            className="ml-2 rounded-md border border-stellar-border bg-stellar-dark px-3 py-1.5 text-white cursor-pointer"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as StatusFilterType)}
+            aria-label="Filter by status"
+          >
+            <option value="all">All</option>
+            <option value="healthy">Healthy</option>
+            <option value="degraded">Degraded</option>
+            <option value="offline">Offline</option>
+          </select>
         </label>
       </div>
 

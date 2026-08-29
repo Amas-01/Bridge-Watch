@@ -1,11 +1,14 @@
 import { randomUUID } from "crypto";
+import { config } from "../config/index.js";
 
-const MAX_HISTORY_PER_TOPIC = 50;
-const MAX_HISTORY_AGE_MS = 5 * 60 * 1000;
-const BATCH_INTERVAL_MS = 120;
-const MAX_BATCH_SIZE = 20;
-const MESSAGE_RATE_LIMIT_WINDOW_MS = 1000;
-const MAX_MESSAGES_PER_WINDOW = 20;
+const MAX_HISTORY_PER_TOPIC = config.WS_MAX_HISTORY_PER_TOPIC;
+const MAX_HISTORY_AGE_MS = config.WS_MAX_HISTORY_AGE_MS;
+const BATCH_INTERVAL_MS = config.WS_BATCH_INTERVAL_MS;
+const MAX_BATCH_SIZE = config.WS_MAX_BATCH_SIZE;
+const MESSAGE_RATE_LIMIT_WINDOW_MS = config.WS_RATE_LIMIT_WINDOW_MS;
+const MAX_MESSAGES_PER_WINDOW = config.WS_RATE_LIMIT_MAX_MESSAGES;
+const HEARTBEAT_INTERVAL_MS = config.WS_HEARTBEAT_INTERVAL_MS;
+const HEARTBEAT_TIMEOUT_MS = config.WS_HEARTBEAT_TIMEOUT_MS;
 
 export type WebsocketMessageType =
   | "price_update"
@@ -61,6 +64,8 @@ export interface WebsocketReplayMetrics {
 
 interface SocketConnection {
   send: (message: string) => void;
+  ping(data?: Buffer): void;
+  terminate(): void;
   on: (event: string, callback: (...args: unknown[]) => void) => void;
   readyState?: number;
 }
@@ -76,6 +81,7 @@ interface ClientState {
   pendingAcks: Map<string, number>;
   rateLimitWindowStart: number;
   rateLimitCount: number;
+  pendingPing: boolean;
 }
 
 interface QueuedMessage {
@@ -104,9 +110,11 @@ export class WebsocketService {
   };
   private queue: QueuedMessage[] = [];
   private batchTimer: ReturnType<typeof setInterval>;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
   private constructor() {
     this.batchTimer = setInterval(() => this.flushQueue(), BATCH_INTERVAL_MS);
+    this.startHeartbeat();
   }
 
   public static getInstance(): WebsocketService {
@@ -126,6 +134,8 @@ export class WebsocketService {
       existing.lastSeen = now;
       existing.rateLimitWindowStart = now;
       existing.rateLimitCount = 0;
+      existing.pendingPing = false;
+      this.registerSocketHandlers(existing, socket);
       this.sendSystem(socket, {
         message: "resumed",
         clientId: existing.id,
@@ -147,9 +157,12 @@ export class WebsocketService {
       pendingAcks: new Map(),
       rateLimitWindowStart: now,
       rateLimitCount: 0,
+      pendingPing: false,
     };
 
     this.clients.set(clientId, client);
+    this.registerSocketHandlers(client, socket);
+
     this.sendSystem(socket, {
       message: "connected",
       clientId,
@@ -162,12 +175,48 @@ export class WebsocketService {
   public removeClient(clientId: string): void {
     const client = this.clients.get(clientId);
     if (!client) return;
+    this.cleanupSubscriptions(client);
+
+    // Purge disconnected client from all topic subscriber sets
+    for (const [topic, subscribers] of this.topicSubscribers.entries()) {
+      subscribers.delete(clientId);
+      if (subscribers.size === 0) {
+        this.topicSubscribers.delete(topic);
+      }
+    }
+
     client.presence = "offline";
     client.socket = undefined;
-    client.lastSeen = Date.now();
+    // Intentionally do NOT update lastSeen so the heartbeat sweep can
+    // detect and purge stale clients that silently disconnected.
   }
 
-  public subscribe(clientId: string, topic: string, filter: Record<string, unknown> = {}): void {
+  private registerSocketHandlers(
+    client: ClientState,
+    socket: SocketConnection,
+  ): void {
+    socket.on("pong", () => {
+      client.lastSeen = Date.now();
+      client.pendingPing = false;
+    });
+
+    socket.on("close", () => {
+      this.removeClient(client.id);
+    });
+  }
+
+  public touchClient(clientId: string): void {
+    const client = this.clients.get(clientId);
+    if (client) {
+      client.lastSeen = Date.now();
+    }
+  }
+
+  public subscribe(
+    clientId: string,
+    topic: string,
+    filter: Record<string, unknown> = {},
+  ): void {
     const client = this.clients.get(clientId);
     if (!client) return;
 
@@ -217,7 +266,9 @@ export class WebsocketService {
   ): void {
     const timestamp = options.timestamp ?? new Date().toISOString();
     const createdAtMs = Date.parse(timestamp);
-    const expiresAtMs = (Number.isFinite(createdAtMs) ? createdAtMs : Date.now()) + MAX_HISTORY_AGE_MS;
+    const expiresAtMs =
+      (Number.isFinite(createdAtMs) ? createdAtMs : Date.now()) +
+      MAX_HISTORY_AGE_MS;
     const message: WebsocketBroadcastMessage = {
       id: randomUUID(),
       sequence: ++this.sequenceCounter,
@@ -269,16 +320,23 @@ export class WebsocketService {
     options: {
       limit?: number;
       sinceSequence?: number;
-    } = {}
+    } = {},
   ): WebsocketBroadcastMessage[] {
     const replayTopics = topics.length > 0 ? topics : ["*"];
-    const limit = Math.min(Math.max(options.limit ?? MAX_BATCH_SIZE, 1), MAX_HISTORY_PER_TOPIC);
+    const limit = Math.min(
+      Math.max(options.limit ?? MAX_BATCH_SIZE, 1),
+      MAX_HISTORY_PER_TOPIC,
+    );
     const sinceSequence = options.sinceSequence ?? 0;
 
     const replayMessages: WebsocketBroadcastMessage[] = [];
     for (const [topic, history] of this.history.entries()) {
       this.pruneExpired(topic, history);
-      if (!replayTopics.some((subscription) => this.topicMatches(subscription, topic))) {
+      if (
+        !replayTopics.some((subscription) =>
+          this.topicMatches(subscription, topic),
+        )
+      ) {
         continue;
       }
 
@@ -327,7 +385,11 @@ export class WebsocketService {
       targets,
       enqueuedAt: Date.now(),
     });
-    this.queue.sort((a, b) => PRIORITY_WEIGHT[b.message.priority] - PRIORITY_WEIGHT[a.message.priority]);
+    this.queue.sort(
+      (a, b) =>
+        PRIORITY_WEIGHT[b.message.priority] -
+        PRIORITY_WEIGHT[a.message.priority],
+    );
     if (message.priority === "critical" || message.priority === "high") {
       this.flushQueue();
     }
@@ -375,7 +437,10 @@ export class WebsocketService {
     }
   }
 
-  private sendBatch(clientId: string, messages: WebsocketBroadcastMessage[]): void {
+  private sendBatch(
+    clientId: string,
+    messages: WebsocketBroadcastMessage[],
+  ): void {
     const client = this.clients.get(clientId);
     if (!client || client.presence !== "online" || !client.socket) return;
     this.sendMessage(client.socket, {
@@ -418,7 +483,10 @@ export class WebsocketService {
     return false;
   }
 
-  private filterMatches(filter: Record<string, unknown>, payload: unknown): boolean {
+  private filterMatches(
+    filter: Record<string, unknown>,
+    payload: unknown,
+  ): boolean {
     if (typeof payload !== "object" || payload === null) return false;
 
     for (const [key, value] of Object.entries(filter)) {
@@ -426,7 +494,9 @@ export class WebsocketService {
       if (payloadValue === undefined) return false;
       if (Array.isArray(value)) {
         if (Array.isArray(payloadValue)) {
-          if (!value.some((item) => (payloadValue as unknown[]).includes(item))) {
+          if (
+            !value.some((item) => (payloadValue as unknown[]).includes(item))
+          ) {
             return false;
           }
         } else if (!value.includes(payloadValue)) {
@@ -454,8 +524,11 @@ export class WebsocketService {
     const client = this.clients.get(clientId);
     if (!client || client.presence !== "online" || !client.socket) return;
 
-    const replayTopics = topics.length > 0 ? topics : Array.from(client.subscriptions);
-    const replayMessages = this.getReplayMessages(replayTopics, { limit: MAX_BATCH_SIZE });
+    const replayTopics =
+      topics.length > 0 ? topics : Array.from(client.subscriptions);
+    const replayMessages = this.getReplayMessages(replayTopics, {
+      limit: MAX_BATCH_SIZE,
+    });
 
     if (replayMessages.length === 0) {
       return;
@@ -467,9 +540,14 @@ export class WebsocketService {
     });
   }
 
-  private pruneExpired(topic: string, history: WebsocketBroadcastMessage[]): void {
+  private pruneExpired(
+    topic: string,
+    history: WebsocketBroadcastMessage[],
+  ): void {
     const now = Date.now();
-    const kept = history.filter((message) => Date.parse(message.expiresAt) > now);
+    const kept = history.filter(
+      (message) => Date.parse(message.expiresAt) > now,
+    );
     const removed = history.length - kept.length;
     if (removed > 0) {
       this.replayMetrics.totalExpired += removed;
@@ -483,6 +561,54 @@ export class WebsocketService {
     this.history.delete(topic);
   }
 
+  private cleanupSubscriptions(client: ClientState): void {
+    for (const topic of client.subscriptions) {
+      const subscribers = this.topicSubscribers.get(topic);
+      subscribers?.delete(client.id);
+      if (subscribers && subscribers.size === 0) {
+        this.topicSubscribers.delete(topic);
+      }
+    }
+    client.subscriptions.clear();
+    client.filters.clear();
+  }
+
+  private startHeartbeat(): void {
+    this.heartbeatTimer = setInterval(() => {
+      const now = Date.now();
+
+      for (const [clientId, client] of this.clients) {
+        if (client.pendingPing) {
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[WebsocketService] Client ${clientId} missed pong – terminating connection`,
+          );
+          client.socket?.terminate();
+          this.cleanupSubscriptions(client);
+          this.clients.delete(clientId);
+          continue;
+        }
+
+        const cutoffMs = now - (HEARTBEAT_INTERVAL_MS + HEARTBEAT_TIMEOUT_MS);
+        if (client.lastSeen < cutoffMs) {
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[WebsocketService] Client ${clientId} heartbeat timeout – terminating connection`,
+          );
+          client.socket?.terminate();
+          this.cleanupSubscriptions(client);
+          this.clients.delete(clientId);
+          continue;
+        }
+
+        if (client.socket && client.presence === "online") {
+          client.pendingPing = true;
+          client.socket.ping();
+        }
+      }
+    }, HEARTBEAT_INTERVAL_MS);
+  }
+
   private sendMessage(connection: SocketConnection, payload: unknown): void {
     try {
       connection.send(JSON.stringify(payload));
@@ -491,7 +617,20 @@ export class WebsocketService {
     }
   }
 
-  private sendSystem(connection: SocketConnection, payload: Record<string, unknown>): void {
+  private sendSystem(
+    connection: SocketConnection,
+    payload: Record<string, unknown>,
+  ): void {
     this.sendMessage(connection, { type: "system", ...payload });
+  }
+
+  public shutdown(): void {
+    if (this.heartbeatTimer !== null) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+    if (this.batchTimer) {
+      clearInterval(this.batchTimer);
+    }
   }
 }

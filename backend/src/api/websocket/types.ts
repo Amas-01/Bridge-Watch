@@ -83,6 +83,19 @@ export interface ClientSubscribeMessage {
     symbols?: string[];
     assetCode?: string;
   };
+  /**
+   * Snapshot catch-up: the WS sequence number the client last observed (from
+   * the `X-Snapshot-Token` header of a prior REST response).  When provided,
+   * the server replays all buffered events after this boundary or sends a
+   * `snapshot_required` message if the buffer does not reach that far back.
+   */
+  sinceSequence?: number;
+  /**
+   * The opaque snapshot token from `X-Snapshot-Token` on a prior REST
+   * response.  The server decodes it to derive `sinceSequence` when
+   * `sinceSequence` is not provided directly.
+   */
+  snapshotToken?: string;
 }
 
 export interface ClientUnsubscribeMessage {
@@ -236,11 +249,64 @@ export interface BridgeUpdateMessage {
   timestamp: string;
 }
 
+export interface WebhookSystemEventData {
+  event: "circuit_breaker_tripped" | "circuit_breaker_reset";
+  webhookEndpointId: string;
+  endpointName: string;
+  endpointUrl: string;
+  ownerAddress: string;
+  consecutiveFailures?: number;
+  threshold?: number;
+}
+
+export interface WebhookSystemEventMessage {
+  type: "webhook_system_event";
+  channel: "events";
+  data: WebhookSystemEventData;
+  timestamp: string;
+}
+
 export type OutboundDataMessage =
   | PriceUpdateMessage
   | HealthUpdateMessage
   | AlertTriggeredMessage
-  | BridgeUpdateMessage;
+  | BridgeUpdateMessage
+  | WebhookSystemEventMessage;
+
+// ─── Snapshot-consistency outbound messages ────────────────────────────────────
+
+/**
+ * Sent when the client requested catch-up via `sinceSequence` / `snapshotToken`
+ * but the WS replay buffer does not reach far enough back to fill the gap.
+ * The client must perform a fresh REST snapshot request.
+ */
+export interface SnapshotRequiredMessage {
+  type: "snapshot_required";
+  channel: ChannelName;
+  /** The sequence boundary the client requested. */
+  requestedSinceSequence: number;
+  /** The earliest sequence currently in the replay buffer. */
+  bufferLowSequence: number;
+  /** Human-readable explanation. */
+  reason: string;
+  timestamp: string;
+}
+
+/**
+ * Sent after the server has delivered all buffered replay events for a channel.
+ * Signals to the client that it is now fully caught up and live events follow.
+ */
+export interface ReplayCompleteMessage {
+  type: "replay_complete";
+  channel: ChannelName;
+  /** Sequence boundary the replay started from. */
+  fromSequence: number;
+  /** High-watermark at the time replay was served. */
+  toSequence: number;
+  /** Number of replay events delivered. */
+  count: number;
+  timestamp: string;
+}
 
 export type OutboundMessage =
   | WelcomeMessage
@@ -248,6 +314,8 @@ export type OutboundMessage =
   | UnsubscribedAck
   | PongMessage
   | WsErrorMessage
+  | SnapshotRequiredMessage
+  | ReplayCompleteMessage
   | OutboundDataMessage;
 
 // ─── Client state ─────────────────────────────────────────────────────────────
@@ -273,6 +341,15 @@ export interface ClientState {
   windowStart: number;
   /** Remote IP address of the client. */
   ip: string;
+  /**
+   * Set to `true` when a WebSocket-protocol ping has been sent and we are
+   * waiting for the corresponding pong.  Cleared when a pong arrives or the
+   * connection is terminated.  Used by the heartbeat sweep to detect clients
+   * that silently disappeared (e.g. mobile network handoff without TCP close).
+   */
+  pendingPing: boolean;
+  /** Tenant identifier for cryptographic tenant isolation. */
+  tenantId?: string;
 }
 
 // ─── Metrics ──────────────────────────────────────────────────────────────────

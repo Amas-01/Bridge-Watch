@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 
 export interface SparklineTooltipPayload {
   value: number;
@@ -14,7 +14,7 @@ interface SparklineTooltipProps {
   header?: ReactNode;
 }
 
-export default function SparklineTooltip({
+function SparklineTooltipImpl({
   active,
   payload,
   formatter,
@@ -43,3 +43,6 @@ export default function SparklineTooltip({
     </div>
   );
 }
+
+const SparklineTooltip = memo(SparklineTooltipImpl);
+export default SparklineTooltip;

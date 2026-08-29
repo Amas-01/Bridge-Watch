@@ -156,6 +156,8 @@ stellar-bridge-watch/
 
 ## Quick Start
 
+### Standard Setup
+
 ```bash
 # Clone the repository
 git clone https://github.com/StellaBridge/Bridge-Watch.git
@@ -173,6 +175,65 @@ docker-compose up -d
 # Run the development server
 npm run dev
 ```
+
+### Local Sandbox (for Contract Development)
+
+If you're developing Soroban smart contracts, you can spin up a local Stellar network with deployed contracts using a single command:
+
+```bash
+# Start local Soroban sandbox with contracts deployed
+npm run sandbox:start
+```
+
+This command will:
+1. Check prerequisites (Docker, soroban-cli, Rust toolchain)
+2. Start a local Stellar Quickstart container with Soroban RPC
+3. Compile all contracts to WASM
+4. Deploy contracts to the local network
+5. Generate and fund test accounts
+6. Initialize contract state with mock data
+
+**Prerequisites:**
+- Docker (running)
+- [soroban-cli](https://soroban.stellar.org/docs/getting-started/setup) — `cargo install --locked soroban-cli`
+- Rust toolchain — `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+- wasm32-unknown-unknown target — `rustup target add wasm32-unknown-unknown`
+
+**Generated Files:**
+- `.env.sandbox` — Contains deployed contract addresses and test account public keys (gitignored)
+- Private keys are managed by soroban-cli in `~/.config/soroban/identity/`
+
+**Network Endpoints:**
+- RPC: `http://127.0.0.1:8000/soroban/rpc`
+- Horizon: `http://127.0.0.1:8000`
+
+**Test Accounts:** admin, operator, test_user, treasury (all funded via friendbot)
+
+**Companion Commands:**
+```bash
+npm run sandbox:stop    # Stop the sandbox
+npm run sandbox:reset   # Reset to clean state
+npm run sandbox:logs    # View container logs
+```
+
+**Example Usage:**
+```bash
+# Invoke a contract function
+soroban contract invoke \
+  --id <CONTRACT_ID_FROM_.env.sandbox> \
+  --source-account admin \
+  --rpc-url http://127.0.0.1:8000/soroban/rpc \
+  --network-passphrase "Standalone Network ; February 2017" \
+  -- \
+  get_health \
+  --asset_code "USDC"
+```
+
+**Troubleshooting:**
+- **Container fails to start:** Check Docker daemon with `docker info`
+- **Compilation fails:** Verify Rust toolchain version with `cargo --version` and ensure wasm target is installed
+- **Deployment fails:** Check container health with `docker logs bridge-watch-soroban-sandbox`
+- **Reset state:** Run `npm run sandbox:reset` to start fresh
 
 
 ## API Endpoints (MVP)

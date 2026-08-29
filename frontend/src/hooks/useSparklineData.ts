@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { getAssetHealthHistory } from "../services/api";
+import { getAssetHealthHistory, getAssetPriceSparkline, getAssetVolumeSparkline } from "../services/api";
 
 export type SparklinePeriod = "24h" | "7d" | "30d";
 export type SparklineMetric = "health" | "price" | "volume";
@@ -21,6 +21,12 @@ function downsample(points: SparklinePoint[], maxPoints: number): SparklinePoint
 
 function normalizePeriod(period: SparklinePeriod | undefined): SparklinePeriod {
   return period ?? "7d";
+}
+
+function sortByTimestamp(points: SparklinePoint[]): SparklinePoint[] {
+  return [...points].sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+  );
 }
 
 export function useSparklineData({
@@ -46,17 +52,23 @@ export function useSparklineData({
         const res = await getAssetHealthHistory(symbol, p);
         const points = res?.points ?? [];
         const normalized = points
-          .map((pt) => ({ timestamp: pt.timestamp, value: pt.score }))
-          .sort(
-            (a, b) =>
-              new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-          );
+          .map((pt) => ({ timestamp: pt.timestamp, value: pt.score }));
 
-        return downsample(normalized, maxPoints);
+        return downsample(sortByTimestamp(normalized), maxPoints);
       }
 
-      // Price/volume history endpoints are not implemented yet.
-      // Consumers should pass `data` to <Sparkline /> for these metrics.
+      if (metric === "price") {
+        const res = await getAssetPriceSparkline(symbol, p);
+        const points = res?.points ?? [];
+        return downsample(sortByTimestamp(points), maxPoints);
+      }
+
+      if (metric === "volume") {
+        const res = await getAssetVolumeSparkline(symbol, p);
+        const points = res?.points ?? [];
+        return downsample(sortByTimestamp(points), maxPoints);
+      }
+
       return [];
     },
     staleTime: 60_000,

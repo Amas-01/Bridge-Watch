@@ -1,6 +1,6 @@
 import { screen } from "../../test/utils";
 import { render } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router-dom";
 import { Breadcrumb } from "./Breadcrumb";
 
 // Helper to render Breadcrumb with a specific route
@@ -36,6 +36,26 @@ describe("Breadcrumb", () => {
 
     expect(screen.getByText("Assets")).toBeInTheDocument();
     expect(screen.getByText("Xlm Usd")).toBeInTheDocument();
+  });
+
+  it("updates breadcrumb items when the route changes to an asset subroute", async () => {
+    const router = createMemoryRouter([
+      {
+        path: "*",
+        element: <Breadcrumb />,
+      },
+    ], {
+      initialEntries: ["/assets/usdc"],
+    });
+
+    render(<RouterProvider router={router} />);
+
+    expect(screen.getByText("Assets")).toBeInTheDocument();
+    expect(screen.getByText("Usdc")).toBeInTheDocument();
+
+    await router.navigate("/assets/usdc/alerts");
+
+    expect(screen.getByText("Alerts")).toBeInTheDocument();
   });
 
   // ── Manual override items ──────────────────────────────

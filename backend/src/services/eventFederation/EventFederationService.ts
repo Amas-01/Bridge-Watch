@@ -22,6 +22,7 @@ import type {
   ReplayRequest,
 } from "./types.js";
 import { logger } from "../../utils/logger.js";
+import { getCrossChainAnomalyEngineService } from "../crossChainAnomalyEngine.service.js";
 
 export const FEDERATION_EVENT = "event" as const;
 export const FEDERATION_HEALTH_EVENT = "health" as const;
@@ -129,6 +130,11 @@ export class EventFederationService extends EventEmitter {
       this.totalProcessed++;
       this.replayBuffer.push(e);
       this.emit(FEDERATION_EVENT, e);
+      getCrossChainAnomalyEngineService()
+        .processEvent(e)
+        .catch((err) => {
+          logger.error({ err, eventId: e.id }, "CrossChainAnomalyEngine failed to process event");
+        });
     }
   }
 }

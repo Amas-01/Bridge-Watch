@@ -264,6 +264,76 @@ export async function webhooksRoutes(server: FastifyInstance) {
   );
 
   // ---------------------------------------------------------------------------
+  // CIRCUIT BREAKER
+  // ---------------------------------------------------------------------------
+
+  // Get circuit breaker status for an endpoint
+  server.get<{ Params: EndpointParams }>(
+    "/endpoints/:id/circuit-breaker",
+    async (request: FastifyRequest<{ Params: EndpointParams }>, reply: FastifyReply) => {
+      const endpoint = await webhookService.getEndpoint(request.params.id);
+      if (!endpoint) {
+        return reply.code(404).send({ error: "Webhook endpoint not found" });
+      }
+      return webhookService.getCircuitBreakerState(endpoint);
+    }
+  );
+
+  // Manually reset the circuit breaker for an endpoint
+  server.post<{ Params: EndpointParams }>(
+    "/endpoints/:id/circuit-breaker/reset",
+    async (request: FastifyRequest<{ Params: EndpointParams }>, reply: FastifyReply) => {
+      try {
+        const endpoint = await webhookService.resetCircuitBreaker(request.params.id);
+        if (!endpoint) {
+          return reply.code(404).send({ error: "Webhook endpoint not found" });
+        }
+        return {
+          message: "Circuit breaker reset successfully",
+          endpoint,
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to reset circuit breaker";
+        return reply.code(400).send({ error: message });
+      }
+    }
+  );
+
+  // ---------------------------------------------------------------------------
+  // BATCH BUFFER
+  // ---------------------------------------------------------------------------
+
+  // Get live status of all open batch windows (or one endpoint's window)
+  server.get<{ Querystring: { endpointId?: string } }>(
+    "/batch-buffer",
+    async (request: FastifyRequest<{ Querystring: { endpointId?: string } }>, reply: FastifyReply) => {
+      const { endpointId } = request.query;
+      const status = webhookService.getBatchBufferStatus(endpointId);
+      if (endpointId && status === null) {
+        return reply.code(404).send({ error: "No open batch window for this endpoint" });
+      }
+      return { status };
+    }
+  );
+
+  // Manually flush the batch buffer for an endpoint before the window expires
+  server.post<{ Params: EndpointParams }>(
+    "/endpoints/:id/flush-batch",
+    async (request: FastifyRequest<{ Params: EndpointParams }>, reply: FastifyReply) => {
+      try {
+        const result = await webhookService.flushBatchBuffer(request.params.id);
+        if (result.flushed === 0) {
+          return reply.code(404).send({ error: "No buffered events for this endpoint" });
+        }
+        return { flushed: result.flushed, message: `Dispatched ${result.flushed} buffered event(s) as a single batch` };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to flush batch buffer";
+        return reply.code(500).send({ error: message });
+      }
+    }
+  );
+
+  // ---------------------------------------------------------------------------
   // SIGNATURE VERIFICATION (utility endpoint for debugging)
   // ---------------------------------------------------------------------------
 

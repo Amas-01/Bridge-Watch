@@ -18,6 +18,10 @@ route:
     - matchers:
         - team="api"
       receiver: api-team
+    # Route for when bull_queue_failed_total grows rapidly
+    - matchers:
+        - alertname="BullQueueFailedGrowingRapidly"
+      receiver: default-slack
 
 receivers:
   - name: default-slack

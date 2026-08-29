@@ -45,7 +45,7 @@ fn setup() -> (
     approvers.push_back(approver_1.clone());
     approvers.push_back(approver_2.clone());
 
-    client.initialize(&admin, &fee_collector, &100u32, &approvers, &2u32);
+    client.initialize_escrow(&admin, &fee_collector, &100u32, &approvers, &2u32);
 
     (env, client, admin, fee_collector, approver_1, approver_2)
 }

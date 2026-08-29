@@ -193,6 +193,235 @@ export async function circuitBreakerRoutes(fastify: FastifyInstance) {
         logger.error({ err: error }, "Recovery operation failed");
         return reply.code(500).send({ error: "Internal server error" });
       }
+    }
+  );
+
+  // ─── Remediation Actions Management ─────────────────────────────────────
+
+  fastify.get(
+    "/actions",
+    {
+      schema: {
+        tags: ["Circuit Breaker"],
+        summary: "List circuit breaker remediation actions",
+        description: "Returns all registered remediation action configurations.",
+      },
     },
+    async (_request, reply) => {
+      try {
+        const { circuitBreakerActionEngine } = await import("../../services/circuitBreakerActionEngine.service.js");
+        const actions = await circuitBreakerActionEngine.getAllActionConfigs();
+        return { actions };
+      } catch (error) {
+        logger.error({ err: error }, "Failed to fetch circuit breaker action configs");
+        return reply.code(500).send({ error: "Internal server error" });
+      }
+    }
+  );
+
+  fastify.get(
+    "/actions/:id",
+    {
+      schema: {
+        tags: ["Circuit Breaker"],
+        summary: "Get circuit breaker remediation action by ID",
+        params: {
+          type: "object",
+          required: ["id"],
+          properties: { id: { type: "string" } },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const { circuitBreakerActionEngine } = await import("../../services/circuitBreakerActionEngine.service.js");
+        const action = await circuitBreakerActionEngine.getActionConfigById(id);
+        if (!action) {
+          return reply.code(404).send({ error: "Action configuration not found" });
+        }
+        return { action };
+      } catch (error) {
+        logger.error({ err: error }, "Failed to fetch circuit breaker action config");
+        return reply.code(500).send({ error: "Internal server error" });
+      }
+    }
+  );
+
+  fastify.post(
+    "/actions",
+    {
+      schema: {
+        tags: ["Circuit Breaker"],
+        summary: "Create circuit breaker remediation action",
+        body: {
+          type: "object",
+          required: ["name", "alert_type", "action_type", "config"],
+          properties: {
+            name: { type: "string" },
+            alert_type: { type: "string" },
+            action_type: { type: "string", enum: ["script", "webhook", "contract_pause"] },
+            config: { type: ["object", "string"] },
+            enabled: { type: "boolean" },
+            timeout_ms: { type: "integer" },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const body = request.body as any;
+        const { circuitBreakerActionEngine } = await import("../../services/circuitBreakerActionEngine.service.js");
+        const action = await circuitBreakerActionEngine.createActionConfig(body);
+        return reply.code(210).send ? reply.code(201).send({ action }) : reply.code(201).send({ action });
+      } catch (error) {
+        logger.error({ err: error }, "Failed to create circuit breaker action config");
+        return reply.code(500).send({ error: "Internal server error" });
+      }
+    }
+  );
+
+  fastify.put(
+    "/actions/:id",
+    {
+      schema: {
+        tags: ["Circuit Breaker"],
+        summary: "Update circuit breaker remediation action",
+        params: {
+          type: "object",
+          required: ["id"],
+          properties: { id: { type: "string" } },
+        },
+        body: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            alert_type: { type: "string" },
+            action_type: { type: "string", enum: ["script", "webhook", "contract_pause"] },
+            config: { type: ["object", "string"] },
+            enabled: { type: "boolean" },
+            timeout_ms: { type: "integer" },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const body = request.body as any;
+        const { circuitBreakerActionEngine } = await import("../../services/circuitBreakerActionEngine.service.js");
+        const updated = await circuitBreakerActionEngine.updateActionConfig(id, body);
+        if (!updated) {
+          return reply.code(404).send({ error: "Action configuration not found" });
+        }
+        return { action: updated };
+      } catch (error) {
+        logger.error({ err: error }, "Failed to update circuit breaker action config");
+        return reply.code(500).send({ error: "Internal server error" });
+      }
+    }
+  );
+
+  fastify.delete(
+    "/actions/:id",
+    {
+      schema: {
+        tags: ["Circuit Breaker"],
+        summary: "Delete circuit breaker remediation action",
+        params: {
+          type: "object",
+          required: ["id"],
+          properties: { id: { type: "string" } },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const { circuitBreakerActionEngine } = await import("../../services/circuitBreakerActionEngine.service.js");
+        const success = await circuitBreakerActionEngine.deleteActionConfig(id);
+        if (!success) {
+          return reply.code(404).send({ error: "Action configuration not found" });
+        }
+        return { success: true };
+      } catch (error) {
+        logger.error({ err: error }, "Failed to delete circuit breaker action config");
+        return reply.code(500).send({ error: "Internal server error" });
+      }
+    }
+  );
+
+  fastify.post(
+    "/actions/:id/test",
+    {
+      schema: {
+        tags: ["Circuit Breaker"],
+        summary: "Test run circuit breaker remediation action",
+        params: {
+          type: "object",
+          required: ["id"],
+          properties: { id: { type: "string" } },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const { circuitBreakerActionEngine } = await import("../../services/circuitBreakerActionEngine.service.js");
+        const actionConfig = await circuitBreakerActionEngine.getActionConfigById(id);
+        if (!actionConfig) {
+          return reply.code(404).send({ error: "Action configuration not found" });
+        }
+
+        const log = await circuitBreakerActionEngine.executeSingleAction(actionConfig, {
+          alertType: actionConfig.alert_type,
+          reason: "Manual test execution from API",
+        });
+
+        return { log };
+      } catch (error) {
+        logger.error({ err: error }, "Failed to test circuit breaker action config");
+        return reply.code(500).send({ error: "Internal server error" });
+      }
+    }
+  );
+
+  fastify.get(
+    "/action-logs",
+    {
+      schema: {
+        tags: ["Circuit Breaker"],
+        summary: "Get circuit breaker action execution logs",
+        querystring: {
+          type: "object",
+          properties: {
+            alert_type: { type: "string" },
+            status: { type: "string" },
+            action_config_id: { type: "string" },
+            limit: { type: "integer", default: 50 },
+            offset: { type: "integer", default: 0 },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const query = request.query as any;
+        const { circuitBreakerActionEngine } = await import("../../services/circuitBreakerActionEngine.service.js");
+        const result = await circuitBreakerActionEngine.getActionLogs({
+          alert_type: query.alert_type,
+          status: query.status,
+          action_config_id: query.action_config_id,
+          limit: query.limit ? parseInt(query.limit, 10) : 50,
+          offset: query.offset ? parseInt(query.offset, 10) : 0,
+        });
+
+        return result;
+      } catch (error) {
+        logger.error({ err: error }, "Failed to fetch circuit breaker action logs");
+        return reply.code(500).send({ error: "Internal server error" });
+      }
+    }
   );
 }
+

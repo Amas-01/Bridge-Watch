@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
+import rateLimit from "@fastify/rate-limit";
 import { OwnershipMatrixService } from "../../services/ownershipMatrix.service.js";
 import { authMiddleware } from "../middleware/auth.js";
 import {
@@ -12,6 +13,11 @@ import {
 } from "../validations/ownershipMatrix.schema.js";
 
 export async function ownershipMatrixRoutes(server: FastifyInstance) {
+  await server.register(rateLimit, {
+    max: 100,
+    timeWindow: "1 minute",
+  });
+
   const service = new OwnershipMatrixService();
 
   // All endpoints require authentication

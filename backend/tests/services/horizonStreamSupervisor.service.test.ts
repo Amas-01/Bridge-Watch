@@ -13,15 +13,19 @@ vi.mock("../../src/services/metrics.service.js", () => ({
 }));
 
 describe("HorizonStreamSupervisor", () => {
-  it("initialises with correct defaults", () => {
+  it("initialises with correct defaults and load balancer fallback nodes", () => {
     const supervisor = new HorizonStreamSupervisor({
       streamId: "test-stream",
       url: "https://horizon.stellar.org/transactions",
+      fallbackUrls: ["https://horizon-fallback.stellar.org/transactions"],
     });
     const metrics = supervisor.getHealthMetrics();
     expect(metrics.streamId).toBe("test-stream");
     expect(metrics.reconnectCount).toBe(0);
     expect(metrics.gapDetected).toBe(false);
+    expect(metrics.isPrimaryNode).toBe(true);
+    expect(metrics.activeNode).toBe("https://horizon.stellar.org/transactions");
+    expect(metrics.fallbackNodes).toContain("https://horizon-fallback.stellar.org/transactions");
   });
 
   it("getCheckpoint returns initial state", () => {

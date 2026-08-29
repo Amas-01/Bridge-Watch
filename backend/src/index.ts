@@ -9,11 +9,7 @@ import { logger } from "./utils/logger.js";
 import { registerRoutes } from "./api/routes/index.js";
 import { registerValidation } from "./api/middleware/validation.js";
 import { registerMetrics } from "./api/middleware/metrics.js";
-import { registerUsageMetrics } from "./api/middleware/usageMetrics.js";
 import { startBridgeVerificationJob } from "./jobs/verification.job.js";
-import { startBatchReconciliationJob, stopBatchReconciliationJob } from "./jobs/batchReconciliation.job.js";
-import { startSourceDecommissionJob, stopSourceDecommissionJob } from "./jobs/sourceDecommission.job.js";
-import { startProviderCircuitBreakerJob, stopProviderCircuitBreakerJob } from "./jobs/providerCircuitBreaker.job.js";
 import { wsServer } from "./api/websocket/websocket.server.js";
 import {
   registerRateLimiting,
@@ -22,15 +18,13 @@ import {
 import { initJobSystem } from "./workers/index.js";
 import { JobQueue } from "./workers/queue.js";
 import { initWebhookWorker, stopWebhookWorker } from "./workers/webhookDelivery.worker.js";
-import { initNotificationQueueWorker, stopNotificationQueueWorker } from "./workers/notificationQueue.worker.js";
 import { getSupplyVerificationQueue } from "./jobs/supplyVerification.job.js";
 import { swaggerOptions, swaggerUiOptions } from "./config/openapi.js";
 import { registerCorrelationMiddleware } from "./api/middleware/correlation.middleware.js";
 import { registerRequestLoggingMiddleware } from "./api/middleware/logging.middleware.js";
 import { registerTracing } from "./api/middleware/tracing.js";
 import { getTelegramBotService } from "./services/telegram.bot.service.js";
-import { startOutboxSystem, stopOutboxSystem } from "./outbox/index.js";
-import { getEventFederationService } from "./services/eventFederation/index.js";
+import { registerCompatibilityMiddleware } from "./api/compatibility/middleware.js";
 
 export async function buildServer() {
   const server = Fastify({
@@ -81,19 +75,25 @@ export async function buildServer() {
   // Register metrics middleware (to capture all requests)
   await registerMetrics(server as any);
 
-  // Register lightweight usage metrics middleware (stores aggregates for queries)
-  await registerUsageMetrics(server as any);
-
   // Register plugins
-  const corsOrigin = config.NODE_ENV === "production"
-    ? (config as any).CORS_ALLOWED_ORIGINS
-      ? (config as any).CORS_ALLOWED_ORIGINS.split(",").map((s: string) => s.trim())
-      : false  // block all cross-origin in production if not configured
-    : true;    // allow all origins in development/test
   await server.register(cors, {
-    origin: corsOrigin,
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      // Check if origin is in the allowed list
+      if (config.CORS_ALLOWED_ORIGINS.includes(origin)) {
+        return callback(null, true);
+      }
+      
+      // Log rejected origins for debugging
+      logger.warn({ msg: 'CORS_REJECTED', origin });
+      return callback(null, false);
+    },
     credentials: true,
   });
+
+  await registerCompatibilityMiddleware(server);
 
   // OpenAPI / Swagger — must be registered before routes so schemas are collected
   await server.register(swagger, swaggerOptions);
@@ -146,61 +146,6 @@ export async function buildServer() {
     },
   );
 
-  // Outbox health check endpoint
-  server.get(
-    "/api/v1/health/outbox",
-    {
-      schema: {
-        tags: ["Health"],
-        summary: "Outbox system health check",
-        response: {
-          200: {
-            type: "object",
-            properties: {
-              status: { type: "string", enum: ["healthy", "degraded", "unhealthy"] },
-              details: {
-                type: "object",
-                properties: {
-                  initialized: { type: "boolean" },
-                  dispatcherRunning: { type: "boolean" },
-                  pendingEvents: { type: "number" },
-                  failedEvents: { type: "number" },
-                  deadLetterEvents: { type: "number" },
-                },
-              },
-              timestamp: { type: "string", format: "date-time" },
-            },
-          },
-        },
-      },
-    },
-    async (request, reply) => {
-      try {
-        const { getOutboxSystem } = await import("./outbox/index.js");
-        const outboxSystem = getOutboxSystem();
-        const healthCheck = await outboxSystem.healthCheck();
-        
-        return {
-          ...healthCheck,
-          timestamp: new Date().toISOString(),
-        };
-      } catch (error) {
-        return reply.code(200 as any).send({
-          status: "unhealthy",
-          details: {
-            initialized: false,
-            dispatcherRunning: false,
-            pendingEvents: 0,
-            failedEvents: 0,
-            deadLetterEvents: 0,
-          },
-          error: "Outbox system not available",
-          timestamp: new Date().toISOString(),
-        });
-      }
-    },
-  );
-
   return server;
 }
 
@@ -219,28 +164,16 @@ async function start() {
     // Initialize webhook delivery worker
     await initWebhookWorker();
 
-    // Initialize notification queue worker
-    await initNotificationQueueWorker();
-
-    // Start outbox dispatcher (after all other systems are ready)
-    await startOutboxSystem();
-    server.log.info("Outbox dispatcher started");
-
-    // Start real-time event stream federation
-    await getEventFederationService().start();
-    server.log.info("Event federation service started");
-
-    // Start batch reconciliation job
-    startBatchReconciliationJob();
-    server.log.info("Batch reconciliation job started");
-
-    // Start source decommission readiness checks
-    startSourceDecommissionJob();
-    server.log.info("Source decommission readiness job started");
-
-    // Start provider circuit breaker recovery probe sweep
-    startProviderCircuitBreakerJob();
-    server.log.info("Provider circuit breaker job started");
+    // Initialize Telegram bot service
+    const telegramService = getTelegramBotService();
+    if (config.TELEGRAM_BOT_ENABLED && config.TELEGRAM_BOT_TOKEN) {
+      try {
+        await telegramService.start();
+      } catch (error) {
+        server.log.error(error, "Failed to start Telegram bot service");
+        // Log error but don't exit - Telegram is a secondary service
+      }
+    }
   } catch (err) {
     server.log.error(err);
     process.exit(1);
@@ -250,23 +183,21 @@ async function start() {
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "Shutdown signal received");
 
-    // Stop event federation first (gracefully drains in-flight events)
-    await getEventFederationService().stop();
-    logger.info("Event federation service stopped");
-
-    // Stop outbox system first
-    await stopOutboxSystem();
-    await stopNotificationQueueWorker();
-    logger.info("Outbox system stopped");
+    // Stop Telegram bot service
+    const telegramService = getTelegramBotService();
+    if (telegramService.isRunning()) {
+      try {
+        await telegramService.stop();
+      } catch (error) {
+        logger.error(error, "Error stopping Telegram bot service");
+      }
+    }
 
     await wsServer.shutdown();
     await server.close();
     await JobQueue.getInstance().stop();
     await getSupplyVerificationQueue().stop();
     await stopWebhookWorker();
-    stopBatchReconciliationJob();
-    stopSourceDecommissionJob();
-    stopProviderCircuitBreakerJob();
     logger.info("Server closed");
     process.exit(0);
   };

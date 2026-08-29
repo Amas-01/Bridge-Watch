@@ -2,6 +2,7 @@ import type * as StellarSdk from "@stellar/stellar-sdk";
 
 export interface BridgeWatchSdkConfig {
   rpcUrl: string;
+  apiUrl?: string;
   contractId: string;
   networkPassphrase: string;
   allowHttp?: boolean;
@@ -33,6 +34,14 @@ export interface EventSubscriptionOptions {
   };
   onEvent: (event: unknown) => void;
   onError?: (error: Error) => void;
+  maxBackoffMs?: number;
+  onBackoffStateChange?: (state: BackoffState) => void;
+}
+
+export interface BackoffState {
+  currentBackoffMs: number;
+  consecutiveFailures: number;
+  isBackingOff: boolean;
 }
 
 export interface EventSubscription {

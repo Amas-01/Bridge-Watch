@@ -1,7 +1,8 @@
 import { lazy, Suspense } from "react";
 import { Routes, Route } from "react-router-dom";
 import Layout from "./components/Layout";
-import { GlobalErrorBoundary } from "./components/ErrorBoundary";
+import { LoadingFallback } from "./components/LoadingFallback";
+import { GlobalErrorBoundary, ComponentErrorBoundary } from "./components/ErrorBoundary";
 import { NotificationProvider } from "./context/NotificationContext";
 import { useNotifications } from "./hooks/useNotifications";
 
@@ -34,12 +35,52 @@ const AlertPlaybookViewer = lazy(() => import("./pages/AlertPlaybookViewer"));
 const DataProvenanceGraph = lazy(() => import("./pages/DataProvenanceGraph"));
 const AlertSimulationSandbox = lazy(() => import("./pages/AlertSimulationSandbox"));
 const LiquidityFragmentation = lazy(() => import("./pages/LiquidityFragmentation"));
+const LiquidityDashboard = lazy(() => import("./pages/LiquidityDashboard"));
+const SchemaDriftMonitor = lazy(() => import("./pages/SchemaDriftMonitor"));
 const OperationalAccessAudit = lazy(() => import("./pages/OperationalAccessAudit"));
 const BridgeHealthTimeline = lazy(() => import("./pages/BridgeHealthTimeline"));
 const ExportScheduler = lazy(() => import("./pages/ExportScheduler"));
 const AssetComparison = lazy(() => import("./pages/AssetComparison"));
 const MetricsSidebarPage = lazy(() => import("./pages/MetricsSidebar"));
 const CrossChainVerification = lazy(() => import("./pages/CrossChainVerification"));
+const FreshnessMonitoring = lazy(() => import("./pages/FreshnessMonitoring"));
+const ServiceAnnotations = lazy(() => import("./pages/ServiceAnnotations"));
+const CircuitBreakerActions = lazy(() => import("./pages/CircuitBreakerActions"));
+const LiquidityConcentration = lazy(() => import("./pages/LiquidityConcentration"));
+const AssetExposureConcentration = lazy(() => import("./pages/AssetExposureConcentration"));
+const BridgeTransferSLATracking = lazy(() => import("./pages/BridgeTransferSLATracking"));
+const DataQualityScoring = lazy(() => import("./pages/DataQualityScoring"));
+const ProviderLatencyComparison = lazy(() => import("./pages/ProviderLatencyComparison"));
+// #1058 — Request Sampling Controls
+const SamplingRules = lazy(() => import("./pages/admin/SamplingRules"));
+// #1059 — Structured Error Catalog
+const ErrorCatalogAdmin = lazy(() => import("./pages/admin/ErrorCatalog"));
+// #1060 — Operational Change Approval Workflow
+const ChangeRequests = lazy(() => import("./pages/admin/ChangeRequests"));
+// #1061 — Config Rollback Preview
+const ConfigRollback = lazy(() => import("./pages/admin/ConfigRollback"));
+// #1148 — Bulk Asset Metadata Editing
+const BulkAssetMetadataEditor = lazy(() => import("./pages/admin/BulkAssetMetadataEditor"));
+// #1146 — Operator Availability Calendar
+const OperatorAvailabilityCalendar = lazy(() => import("./pages/admin/OperatorAvailabilityCalendar"));
+// #1145 — Incident Ownership Transfer
+const IncidentOwnershipTransfer = lazy(() => import("./pages/admin/IncidentOwnershipTransfer"));
+// #1143 — Alert Escalation Policy Preview
+const AlertEscalationPolicyPreview = lazy(() => import("./pages/admin/AlertEscalationPolicyPreview"));
+// #1162 — External Source Response Archive
+const ExternalSourceResponseArchive = lazy(() => import("./pages/admin/ExternalSourceResponseArchive"));
+// #1171 — Dataset Column Lineage
+const DatasetColumnLineage = lazy(() => import("./pages/admin/DatasetColumnLineage"));
+// #1170 — Import Validation Preview
+const ImportValidationPreview = lazy(() => import("./pages/admin/ImportValidationPreview"));
+// #1172 — API Key Scope Templates
+const ApiKeyScopeTemplates = lazy(() => import("./pages/admin/ApiKeyScopeTemplates"));
+// #1168 — Failed Parse Quarantine Queue
+const ParseQuarantineQueue = lazy(() => import("./pages/admin/ParseQuarantineQueue"));
+const DexPoolDiscovery = lazy(() => import("./pages/liquidity/DexPoolDiscovery"));
+const PoolQualityRanking = lazy(() => import("./pages/liquidity/PoolQualityRanking"));
+const MarketImpactPresets = lazy(() => import("./pages/liquidity/MarketImpactPresets"));
+const RouteQuotes = lazy(() => import("./pages/liquidity/RouteQuotes"));
 
 function NotificationInitializer() {
   useNotifications();
@@ -51,13 +92,7 @@ function App() {
     <GlobalErrorBoundary>
       <NotificationProvider>
         <NotificationInitializer />
-        <Suspense
-          fallback={
-            <div className="min-h-screen bg-stellar-dark flex items-center justify-center text-stellar-text-secondary">
-              Loading page...
-            </div>
-          }
-        >
+        <Suspense fallback={<LoadingFallback />}>
           <Routes>
             <Route path="/" element={<Landing />} />
 
@@ -86,16 +121,72 @@ function App() {
               <Route path="/help" element={<Help />} />
               <Route path="/release-notes" element={<ReleaseNotes />} />
               <Route path="/notification-preferences" element={<NotificationPreferencesPage />} />
-              <Route path="/relationship-explorer" element={<RelationshipExplorer />} />
+              <Route
+                path="/relationship-explorer"
+                element={
+                  <ComponentErrorBoundary
+                    severity="medium"
+                    context="relationship-explorer"
+                    title="Relationship Explorer Error"
+                    message="Unable to load the asset relationship graph. Please check your data and try again."
+                  >
+                    <RelationshipExplorer />
+                  </ComponentErrorBoundary>
+                }
+              />
               <Route path="/search" element={<SearchResultsPage />} />
               <Route path="/data-provenance" element={<DataProvenanceGraph />} />
               <Route path="/alert-sandbox" element={<AlertSimulationSandbox />} />
               <Route path="/liquidity-fragmentation" element={<LiquidityFragmentation />} />
+              <Route path="/liquidity-dashboard" element={<LiquidityDashboard />} />
+              <Route path="/schema-drift" element={<SchemaDriftMonitor />} />
               <Route path="/bridge-health-timeline" element={<BridgeHealthTimeline />} />
               <Route path="/export-scheduler" element={<ExportScheduler />} />
               <Route path="/asset-comparison" element={<AssetComparison />} />
               <Route path="/metrics-sidebar" element={<MetricsSidebarPage />} />
               <Route path="/cross-chain-verification" element={<CrossChainVerification />} />
+              <Route path="/freshness" element={<FreshnessMonitoring />} />
+              <Route path="/service-annotations" element={<ServiceAnnotations />} />
+              <Route path="/circuit-breaker-actions" element={<CircuitBreakerActions />} />
+              <Route path="/liquidity-concentration" element={<LiquidityConcentration />} />
+              <Route path="/asset-exposure" element={<AssetExposureConcentration />} />
+              <Route path="/transfer-sla" element={<BridgeTransferSLATracking />} />
+              <Route path="/data-quality" element={<DataQualityScoring />} />
+              <Route path="/provider-latency" element={<ProviderLatencyComparison />} />
+              {/* #1058 — Request Sampling Controls */}
+              <Route path="/admin/sampling-rules" element={<SamplingRules />} />
+              {/* #1059 — Structured Error Catalog */}
+              <Route path="/admin/error-catalog" element={<ErrorCatalogAdmin />} />
+              {/* #1060 — Operational Change Approval Workflow */}
+              <Route path="/admin/change-requests" element={<ChangeRequests />} />
+              {/* #1061 — Config Rollback Preview */}
+              <Route path="/admin/config-rollback" element={<ConfigRollback />} />
+              {/* #1148 — Bulk Asset Metadata Editing */}
+              <Route path="/admin/bulk-asset-metadata" element={<BulkAssetMetadataEditor />} />
+              {/* #1146 — Operator Availability Calendar */}
+              <Route path="/admin/operator-availability" element={<OperatorAvailabilityCalendar />} />
+              {/* #1145 — Incident Ownership Transfer */}
+              <Route path="/admin/incident-ownership-transfer" element={<IncidentOwnershipTransfer />} />
+              {/* #1143 — Alert Escalation Policy Preview */}
+              <Route path="/admin/alert-escalation-preview" element={<AlertEscalationPolicyPreview />} />
+              {/* #1162 — External Source Response Archive */}
+              <Route path="/admin/external-source-archive" element={<ExternalSourceResponseArchive />} />
+              {/* #1171 — Dataset Column Lineage */}
+              <Route path="/admin/dataset-lineage" element={<DatasetColumnLineage />} />
+              {/* #1170 — Import Validation Preview */}
+              <Route path="/admin/import-validation-preview" element={<ImportValidationPreview />} />
+              {/* #1172 — API Key Scope Templates */}
+              <Route path="/admin/api-key-templates" element={<ApiKeyScopeTemplates />} />
+              {/* #1168 — Failed Parse Quarantine Queue */}
+              <Route path="/admin/quarantine" element={<ParseQuarantineQueue />} />
+              {/* #1157 — DEX Pool Discovery Refresh */}
+              <Route path="/liquidity/pool-discovery" element={<DexPoolDiscovery />} />
+              {/* #1158 — Liquidity Pool Quality Ranking */}
+              <Route path="/liquidity/pool-quality" element={<PoolQualityRanking />} />
+              {/* #1159 — Market Impact Scenario Presets */}
+              <Route path="/liquidity/market-impact-presets" element={<MarketImpactPresets />} />
+              {/* #1160 — Route Quote Expiration Handling */}
+              <Route path="/liquidity/route-quotes" element={<RouteQuotes />} />
             </Route>
           </Routes>
         </Suspense>

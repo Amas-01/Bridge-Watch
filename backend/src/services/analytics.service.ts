@@ -557,7 +557,7 @@ export class AnalyticsService {
   }
 
   /**
-   * Get historical comparison data
+   * Get historical comparison data targeting continuous aggregate views for ranges >= 7 days
    */
   async getHistoricalComparison(
     metric: string,
@@ -575,11 +575,49 @@ export class AnalyticsService {
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - days);
 
+        const formatRows = (rows: any[]) =>
+          rows.map((row: any) => ({
+            date: row.date instanceof Date ? row.date.toISOString().split("T")[0] : row.date,
+            value: parseFloat(row.value || "0"),
+          }));
+
         let query;
 
         switch (metric) {
           case "health_score":
             if (!symbol) throw new Error("Symbol required for health_score metric");
+
+            if (days >= 30) {
+              try {
+                const aggResults = await knex("health_scores_daily")
+                  .select(
+                    knex.raw("DATE(bucket) as date"),
+                    knex.raw("avg_overall_score as value")
+                  )
+                  .where("symbol", symbol)
+                  .where("bucket", ">=", startDate)
+                  .orderBy("bucket", "asc");
+                if (aggResults && aggResults.length > 0) return formatRows(aggResults);
+              } catch {
+                // Fallback to raw hypertable query
+              }
+            } else if (days >= 7) {
+              try {
+                const aggResults = await knex("health_scores_hourly")
+                  .select(
+                    knex.raw("DATE(bucket) as date"),
+                    knex.raw("AVG(avg_overall_score) as value")
+                  )
+                  .where("symbol", symbol)
+                  .where("bucket", ">=", startDate)
+                  .groupBy("date")
+                  .orderBy("date", "asc");
+                if (aggResults && aggResults.length > 0) return formatRows(aggResults);
+              } catch {
+                // Fallback to raw hypertable query
+              }
+            }
+
             query = knex("health_scores")
               .select(
                 knex.raw("DATE(time) as date"),
@@ -606,10 +644,87 @@ export class AnalyticsService {
 
           case "liquidity":
             if (!symbol) throw new Error("Symbol required for liquidity metric");
+
+            if (days >= 30) {
+              try {
+                const aggResults = await knex("liquidity_daily")
+                  .select(
+                    knex.raw("DATE(bucket) as date"),
+                    knex.raw("total_tvl as value")
+                  )
+                  .where("symbol", symbol)
+                  .where("bucket", ">=", startDate)
+                  .orderBy("bucket", "asc");
+                if (aggResults && aggResults.length > 0) return formatRows(aggResults);
+              } catch {
+                // Fallback to raw hypertable query
+              }
+            } else if (days >= 7) {
+              try {
+                const aggResults = await knex("liquidity_hourly")
+                  .select(
+                    knex.raw("DATE(bucket) as date"),
+                    knex.raw("AVG(avg_tvl) as value")
+                  )
+                  .where("symbol", symbol)
+                  .where("bucket", ">=", startDate)
+                  .groupBy("date")
+                  .orderBy("date", "asc");
+                if (aggResults && aggResults.length > 0) return formatRows(aggResults);
+              } catch {
+                // Fallback to raw hypertable query
+              }
+            }
+
             query = knex("liquidity_snapshots")
               .select(
                 knex.raw("DATE(time) as date"),
                 knex.raw("AVG(tvl_usd::numeric) as value")
+              )
+              .where("symbol", symbol)
+              .where("time", ">=", startDate)
+              .groupBy("date")
+              .orderBy("date", "asc");
+            break;
+
+          case "price":
+            if (!symbol) throw new Error("Symbol required for price metric");
+
+            if (days >= 30) {
+              try {
+                const aggResults = await knex("prices_daily")
+                  .select(
+                    knex.raw("DATE(bucket) as date"),
+                    knex.raw("avg_price as value")
+                  )
+                  .where("symbol", symbol)
+                  .where("bucket", ">=", startDate)
+                  .orderBy("bucket", "asc");
+                if (aggResults && aggResults.length > 0) return formatRows(aggResults);
+              } catch {
+                // Fallback to raw hypertable query
+              }
+            } else if (days >= 7) {
+              try {
+                const aggResults = await knex("prices_hourly")
+                  .select(
+                    knex.raw("DATE(bucket) as date"),
+                    knex.raw("AVG(avg_price) as value")
+                  )
+                  .where("symbol", symbol)
+                  .where("bucket", ">=", startDate)
+                  .groupBy("date")
+                  .orderBy("date", "asc");
+                if (aggResults && aggResults.length > 0) return formatRows(aggResults);
+              } catch {
+                // Fallback to raw hypertable query
+              }
+            }
+
+            query = knex("prices")
+              .select(
+                knex.raw("DATE(time) as date"),
+                knex.raw("AVG(price) as value")
               )
               .where("symbol", symbol)
               .where("time", ">=", startDate)
@@ -622,10 +737,7 @@ export class AnalyticsService {
         }
 
         const results = await query;
-        return results.map((row: any) => ({
-          date: row.date instanceof Date ? row.date.toISOString().split("T")[0] : row.date,
-          value: parseFloat(row.value || "0"),
-        }));
+        return formatRows(results);
       },
       { bypassCache, tags: ["analytics", "historical"], ttl: CacheTTL.ANALYTICS }
     );

@@ -33,6 +33,15 @@ interface ListPresetsQuery {
   search?: string;
 }
 
+interface VersionParams extends PresetParams {
+  version: string;
+}
+
+interface CompareVersionsQuery {
+  from: string;
+  to: string;
+}
+
 function getRequestUserId(request: FastifyRequest): string {
   return request.apiKeyAuth?.id ?? "00000000-0000-0000-0000-000000000000";
 }
@@ -314,6 +323,94 @@ export async function queryPresetsRoutes(server: FastifyInstance) {
           "Failed to get preset versions",
         );
         reply.status(500).send({ error: "Failed to get preset versions" });
+      }
+    },
+  );
+
+  server.get<{ Params: VersionParams }>(
+    "/:id/versions/:version",
+    {
+      schema: {
+        tags: ["Query Presets"],
+        description: "Get one saved query preset version",
+        params: {
+          type: "object",
+          required: ["id", "version"],
+          properties: {
+            id: { type: "string", format: "uuid" },
+            version: { type: "string" },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const userId = getRequestUserId(request);
+        const version = await queryPresetService.getPresetVersion(
+          request.params.id,
+          request.params.version,
+          userId,
+        );
+
+        if (!version) {
+          return reply.status(404).send({ error: "Preset version not found" });
+        }
+
+        reply.send(version);
+      } catch (error) {
+        logger.error(
+          { error, presetId: request.params.id, version: request.params.version },
+          "Failed to get preset version",
+        );
+        reply.status(500).send({ error: "Failed to get preset version" });
+      }
+    },
+  );
+
+  server.get<{ Params: PresetParams; Querystring: CompareVersionsQuery }>(
+    "/:id/version-comparison",
+    {
+      schema: {
+        tags: ["Query Presets"],
+        description: "Compare two saved query preset versions",
+        params: {
+          type: "object",
+          required: ["id"],
+          properties: {
+            id: { type: "string", format: "uuid" },
+          },
+        },
+        querystring: {
+          type: "object",
+          required: ["from", "to"],
+          properties: {
+            from: { type: "string" },
+            to: { type: "string" },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const userId = getRequestUserId(request);
+        const comparison = await queryPresetService.comparePresetVersions(
+          request.params.id,
+          request.query.from,
+          request.query.to,
+          userId,
+        );
+
+        if (!comparison) {
+          return reply.status(404).send({ error: "Preset versions not found" });
+        }
+
+        reply.send(comparison);
+      } catch (error) {
+        logger.error(
+          { error, presetId: request.params.id, query: request.query },
+          "Failed to compare preset versions",
+        );
+        reply.status(500).send({ error: "Failed to compare preset versions" });
       }
     },
   );

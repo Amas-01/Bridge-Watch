@@ -1,11 +1,15 @@
-import { Suspense, useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { Suspense, useMemo, useRef, useEffect, useState } from "react";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useBridges } from "../hooks/useBridges";
 import { useFavorites } from "../hooks/useFavorites";
 import { useRefreshControls } from "../hooks/useRefreshControls";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
+import { useSearchSuggestions } from "../hooks/useSearchSuggestions";
 import BridgeStatusCard from "../components/BridgeStatusCard";
 import BridgeNotesPanel from "../components/BridgeNotesPanel";
+import BridgePauseReasonPanel from "../components/BridgePauseReasonPanel";
+import EvmLockDetailsPanel from "../components/EvmLockDetailsPanel";
 import FavoriteTagChip from "../components/favorites/FavoriteTagChip";
 import RefreshControls from "../components/RefreshControls";
 import PullToRefresh from "../components/PullToRefresh";
@@ -14,6 +18,7 @@ import { SkeletonCard, ErrorBoundary } from "../components/Skeleton";
 export default function Bridges() {
   const [searchParams] = useSearchParams();
   const selectedBridge = searchParams.get("selected") ?? null;
+  const navigate = useNavigate();
 
   const {
     favoritesFilterMode,
@@ -45,6 +50,60 @@ export default function Bridges() {
     return bridges.filter((b) => favoriteBridges.includes(b.name));
   }, [data?.bridges, favoritesFilterMode, favoriteBridges]);
 
+  const {
+    query,
+    setQuery,
+    suggestions,
+    activeIndex,
+    moveDown,
+    moveUp,
+    resetActiveIndex,
+    addRecentSearch
+  } = useSearchSuggestions();
+  
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setIsSearchFocused(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      moveDown();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      moveUp();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (activeIndex >= 0 && activeIndex < suggestions.length) {
+        handleSuggestionSelect(suggestions[activeIndex]);
+      }
+    } else if (e.key === "Escape") {
+      setIsSearchFocused(false);
+      resetActiveIndex();
+    }
+  };
+
+  const handleSuggestionSelect = (result: any) => {
+    addRecentSearch(result);
+    setQuery("");
+    setIsSearchFocused(false);
+    resetActiveIndex();
+    if (result.category === "bridge") {
+      navigate(`?selected=${encodeURIComponent(result.title)}`);
+    } else if (result.category === "asset") {
+      navigate(`/assets/${encodeURIComponent(result.title)}`);
+    }
+  };
+
   return (
     <div className="space-y-8">
       <PullToRefresh
@@ -59,6 +118,37 @@ export default function Bridges() {
         <p className="mt-2 text-stellar-text-secondary">
           Monitor cross-chain bridge status, supply consistency, and performance
         </p>
+      </div>
+
+      <div className="relative z-10 w-full max-w-2xl" ref={searchContainerRef}>
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onFocus={() => setIsSearchFocused(true)}
+          onKeyDown={handleSearchKeyDown}
+          placeholder="Search bridges by name or asset..."
+          className="w-full rounded-md border border-stellar-border bg-stellar-card px-4 py-2 text-stellar-text-primary placeholder:text-stellar-text-secondary focus:border-stellar-blue focus:outline-none focus:ring-1 focus:ring-stellar-blue"
+        />
+        {isSearchFocused && query.length > 0 && suggestions.length > 0 && (
+          <div className="absolute left-0 mt-1 w-full rounded-md border border-stellar-border bg-stellar-card shadow-lg">
+            <ul className="max-h-60 overflow-auto py-1">
+              {suggestions.map((result, i) => (
+                <li
+                  key={result.id}
+                  onClick={() => handleSuggestionSelect(result)}
+                  className={`cursor-pointer px-4 py-2 text-sm flex flex-col ${
+                    activeIndex === i ? "bg-stellar-blue/20 text-stellar-text-primary" : "text-stellar-text-secondary hover:bg-stellar-border"
+                  }`}
+                >
+                  <span className="font-medium text-stellar-text-primary">{result.title}</span>
+                  {result.subtitle && <span className="text-xs">{result.subtitle}</span>}
+                  <span className="text-xs uppercase mt-0.5 text-stellar-blue/70">{result.category}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
       <RefreshControls
@@ -190,9 +280,13 @@ export default function Bridges() {
           </table>
         </div>
       </div>
-      {/* Bridge notes panel — shown when a bridge card is clicked */}
+      {/* EVM lock details + notes panels — shown when a bridge card is clicked */}
       {selectedBridge && (
-        <BridgeNotesPanel bridgeName={selectedBridge} />
+        <>
+          <BridgePauseReasonPanel bridgeName={selectedBridge} />
+          <EvmLockDetailsPanel bridgeName={selectedBridge} />
+          <BridgeNotesPanel bridgeName={selectedBridge} />
+        </>
       )}
     </div>
   );

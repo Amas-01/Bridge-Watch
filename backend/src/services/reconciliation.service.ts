@@ -1,4 +1,5 @@
 import { getDatabase } from "../database/connection.js";
+import { normalizeJsonObject } from "../utils/json.js";
 import type { ReconciliationStatus } from "../database/types.js";
 
 export type ReconciliationTriageStatus =
@@ -187,23 +188,6 @@ function toIso(value: Date | string | null | undefined): string | null {
   if (!value) return null;
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
-function normalizeJsonObject(value: unknown): Record<string, unknown> {
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
-      return normalizeJsonObject(parsed);
-    } catch {
-      return {};
-    }
-  }
-
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-
-  return {};
 }
 
 function toSourceDetails(value: unknown): Record<string, string | number | boolean | null> {
@@ -468,7 +452,7 @@ export class ReconciliationService {
     const latestRun = sorted[0];
     const previousRun = sorted[1] ?? null;
     const mismatchDelta =
-      latestRun.mismatchPercentage !== null && previousRun?.mismatchPercentage !== null
+      latestRun.mismatchPercentage !== null && previousRun && previousRun.mismatchPercentage !== null
         ? latestRun.mismatchPercentage - previousRun.mismatchPercentage
         : null;
 

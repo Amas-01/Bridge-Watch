@@ -111,7 +111,10 @@ pub struct TimeLockedEscrowContract;
 
 #[contractimpl]
 impl TimeLockedEscrowContract {
-    pub fn initialize(
+    // Named `initialize_escrow` (not `initialize`) because this contract is
+    // compiled into the same Wasm binary as BridgeWatchContract, whose own
+    // `initialize` export would otherwise collide at the symbol level.
+    pub fn initialize_escrow(
         env: Env,
         admin: Address,
         fee_collector: Address,

@@ -2073,4 +2073,149 @@ mod tests {
             ConsumeResult::Rejected(RateLimitError::MonthlyValueLimitExceeded as u32)
         );
     }
+
+    // -----------------------------------------------------------------------
+    // Per-user isolation
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_per_user_isolation() {
+        let (env, client, _admin) = setup();
+        let user_a = Address::generate(&env);
+        let user_b = Address::generate(&env);
+
+        // User A consumes near the daily limit
+        let near_limit = DEFAULT_DAILY_LIMIT - 1;
+        let result_a = client.try_consume_limit(&user_a, &near_limit);
+        assert!(result_a.is_ok());
+
+        // User B is unaffected — still has full capacity
+        let check_b = client.check_limit(&user_b, &DEFAULT_DAILY_LIMIT);
+        assert!(check_b.allowed);
+        assert_eq!(check_b.daily_remaining_value, DEFAULT_DAILY_LIMIT);
+
+        let result_b = client.try_consume_limit(&user_b, &100_000_000);
+        assert!(result_b.is_ok());
+    }
+
+    // -----------------------------------------------------------------------
+    // Rejected consume must not record usage
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_rejected_consume_does_not_record_usage() {
+        let (env, client, _admin) = setup();
+        let user = Address::generate(&env);
+
+        // Attempt to consume more than the daily limit in one call — must be rejected
+        let result = client.consume_limit(&user, &(DEFAULT_DAILY_LIMIT + 1));
+        assert_eq!(
+            result,
+            ConsumeResult::Rejected(RateLimitError::DailyValueLimitExceeded as u32)
+        );
+
+        // Daily remaining must be unchanged — rejected transfers must not be recorded
+        let check = client.check_limit(&user, &1);
+        assert!(check.allowed);
+        assert_eq!(check.daily_remaining_value, DEFAULT_DAILY_LIMIT);
+    }
+
+    // -----------------------------------------------------------------------
+    // Weekly count limit enforcement
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_weekly_count_limit_exceeded() {
+        let (env, client, admin) = setup();
+        let user = Address::generate(&env);
+
+        // Set tight weekly count limit (3 transactions per week)
+        let limits = UserLimits {
+            daily_value: 1_000_000_000_000,
+            weekly_value: 5_000_000_000_000,
+            monthly_value: 15_000_000_000_000,
+            daily_count: 1000,
+            weekly_count: 3,
+            monthly_count: 300,
+        };
+        client.update_user_limit(&admin, &user, &limits);
+
+        // Consume across two different days to avoid daily count limit
+        client.consume_limit(&user, &1);
+        env.ledger().set_timestamp(1_000_000 + DAY_SECS + 1);
+        client.consume_limit(&user, &1);
+        env.ledger().set_timestamp(1_000_000 + 2 * DAY_SECS + 1);
+        client.consume_limit(&user, &1);
+
+        // Fourth transaction this week must be rejected on count
+        env.ledger().set_timestamp(1_000_000 + 3 * DAY_SECS + 1);
+        let result = client.consume_limit(&user, &1);
+        assert_eq!(
+            result,
+            ConsumeResult::Rejected(RateLimitError::WeeklyCountLimitExceeded as u32)
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // check_limit reflects reset after window advance
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_check_limit_reflects_window_reset() {
+        let (env, client, _admin) = setup();
+        let user = Address::generate(&env);
+
+        // Consume some of the daily limit
+        let consumed = 500_000_000i128;
+        client.consume_limit(&user, &consumed);
+
+        // Before reset: remaining is reduced
+        let check_before = client.check_limit(&user, &1);
+        assert_eq!(
+            check_before.daily_remaining_value,
+            DEFAULT_DAILY_LIMIT - consumed
+        );
+
+        // Advance past one full day
+        env.ledger().set_timestamp(1_000_000 + DAY_SECS + 1);
+
+        // After reset: full limit is available again
+        let check_after = client.check_limit(&user, &1);
+        assert!(check_after.allowed);
+        assert_eq!(check_after.daily_remaining_value, DEFAULT_DAILY_LIMIT);
+    }
+
+    // -----------------------------------------------------------------------
+    // Global limit accumulates across distinct users
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_global_limit_accumulates_across_users() {
+        let (env, client, admin) = setup();
+
+        // Set global daily limit equal to exactly 2× a single large transfer
+        let single_transfer = 500_000_000i128;
+        let gl = GlobalLimits {
+            daily_value: single_transfer * 2,
+            weekly_value: single_transfer * 10,
+        };
+        client.update_global_limit(&admin, &gl);
+
+        let user_a = Address::generate(&env);
+        let user_b = Address::generate(&env);
+        let user_c = Address::generate(&env);
+
+        // Two users fill the global daily pool
+        let r1 = client.try_consume_limit(&user_a, &single_transfer);
+        assert!(r1.is_ok());
+        let r2 = client.try_consume_limit(&user_b, &single_transfer);
+        assert!(r2.is_ok());
+
+        // Third user is blocked — global pool exhausted
+        let result = client.consume_limit(&user_c, &1);
+        assert_eq!(
+            result,
+            ConsumeResult::Rejected(RateLimitError::GlobalDailyLimitExceeded as u32)
+        );
+    }
 }

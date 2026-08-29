@@ -150,6 +150,35 @@ export async function alertRoutingAdminRoutes(server: FastifyInstance) {
     }
   );
 
+  server.patch(
+    "/rules/bulk",
+    {
+      preHandler: requireAdmin,
+      schema: {
+        tags: ["Config"],
+        summary: "Bulk update alert routing rules active status",
+        security: [{ ApiKeyAuth: [] }],
+        body: {
+          type: "object",
+          required: ["ruleIds", "isActive"],
+          properties: {
+            ruleIds: { type: "array", items: { type: "string" } },
+            isActive: { type: "boolean" },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const body = request.body as { ruleIds: string[]; isActive: boolean };
+      if (!Array.isArray(body.ruleIds) || typeof body.isActive !== "boolean") {
+        return reply.code(400).send({ error: "Invalid payload: ruleIds array and isActive boolean required" });
+      }
+
+      const rules = await alertRoutingService.bulkUpdateRules(body.ruleIds, body.isActive);
+      return { rules, count: rules.length };
+    }
+  );
+
   server.delete<{ Params: { id: string } }>(
     "/rules/:id",
     {

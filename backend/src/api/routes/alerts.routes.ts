@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
+import rateLimit from "@fastify/rate-limit";
 import { AlertService, type AlertCondition } from "../../services/alert.service.js";
 import { authMiddleware } from "../middleware/auth.js";
 import {
@@ -37,6 +38,11 @@ const alertRuleResponse = {
 };
 
 export async function alertsRoutes(server: FastifyInstance) {
+  await server.register(rateLimit, {
+    max: 100,
+    timeWindow: "1 minute",
+  });
+
   const alertService = new AlertService();
 
   server.addHook("preHandler", authMiddleware());

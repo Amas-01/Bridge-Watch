@@ -1,6 +1,7 @@
 export interface Asset {
   symbol: string;
   name: string;
+  category?: string | null;
 }
 
 export interface HealthFactors {
@@ -12,7 +13,7 @@ export interface HealthFactors {
 }
 
 export interface HealthScore {
-  symbol: string;
+  symbol?: string;
   overallScore: number;
   factors: HealthFactors;
   trend: "improving" | "stable" | "deteriorating";
@@ -38,14 +39,31 @@ export interface Bridge {
   mismatchPercentage: number;
 }
 
+export interface EvmLockDetail {
+  chain: "ethereum" | "polygon" | "base";
+  contractAddress: string;
+  tokenAddress: string;
+  assetSymbol: string;
+  lockedAmount: string;
+  isPaused: boolean;
+  blockNumber: number;
+  timestamp: number;
+  error: string | null;
+}
+
 export interface BridgeStats {
   name: string;
   volume24h: number;
   volume7d: number;
   volume30d: number;
+  customVolume?: number;
+  startDate?: string;
+  endDate?: string;
   totalTransactions: number;
   averageTransferTime: number;
   uptime30d: number;
+  /** Per-chain EVM lock contract balances, present for multi-chain (e.g. Wormhole) bridges. */
+  evmLockDetails?: EvmLockDetail[];
 }
 
 export type ReconciliationTriageStatus =
@@ -154,6 +172,7 @@ export interface ReconciliationMismatchDetail {
     merkleRoot: string;
     totalReserves: number | null;
     status: string;
+    verificationStatus: CommitmentVerificationStatus;
     txHash: string | null;
     committedAt: string | number;
     committedLedger: number;
@@ -173,8 +192,10 @@ export interface BridgeSummary {
   coverage: number;
   /** Performance metric: average transfer time in milliseconds */
   performance: number;
-  /** Total value locked in the bridge */
+  /** Total value locked in the bridge (USD) */
   totalValueLocked: number;
+  /** Total value locked in native token (optional, for USD/Native toggle) */
+  totalValueLockedNative?: number;
   /** Supply on Stellar */
   supplyOnStellar: number;
   /** Supply on source chain */
@@ -350,6 +371,8 @@ export interface ApiKeyRecord {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  clientId?: string | null;
+  oauthEnabled?: boolean;
 }
 
 export interface CreateApiKeyRequest {
@@ -357,11 +380,16 @@ export interface CreateApiKeyRequest {
   scopes: string[];
   rateLimitPerMinute?: number;
   expiresInDays?: number;
+  enableOAuth?: boolean;
+  /** #1172 — Apply a saved scope template by name to populate scopes/rateLimit. */
+  template?: string;
 }
 
 export interface CreateApiKeyResponse {
   apiKey: string;
   key: ApiKeyRecord;
+  clientId?: string;
+  clientSecret?: string;
 }
 
 /** Service dependency graph (`/metadata/dependencies`) */
@@ -385,6 +413,49 @@ export interface DependencyGraph {
   }>;
   edges: Array<{ from: string; to: string; kind: string }>;
 }
+
+export type RuleThresholdOperator = "gt" | "gte" | "lt" | "lte" | "eq" | "neq" | "between";
+export type RuleLogicOperator = "AND" | "OR";
+export type RulePriority = "low" | "medium" | "high" | "critical";
+export type AlertRuleStatus = "active" | "paused" | "disabled";
+
+export interface RuleCondition {
+  metric: string;
+  operator: RuleThresholdOperator;
+  threshold: number;
+  thresholdHigh?: number;
+  label?: string;
+}
+
+export interface AlertRule {
+  id: string;
+  ownerAddress: string;
+  name: string;
+  description?: string | null;
+  assetCode: string;
+  conditions: RuleCondition[];
+  logicOperator: RuleLogicOperator;
+  priority: RulePriority;
+  status: AlertRuleStatus;
+  cooldownSeconds: number;
+  timeWindow?: string | null;
+  version?: number;
+  templateId?: string | null;
+  webhookUrl?: string | null;
+  lastTriggeredAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Alert {
+  id: string;
+  type: string;
+  severity: "info" | "warning" | "critical";
+  message: string;
+  createdAt: string;
+}
+
+export type AssetAlert = Alert;
 
 export type AlertRoutingSeverity = "critical" | "high" | "medium" | "low";
 export type AlertRoutingChannel = "in_app" | "webhook" | "email";
@@ -496,6 +567,7 @@ export interface AuditEvent {
   action: string;
   resourceType: string;
   resourceId: string;
+  severity?: "info" | "warning" | "critical";
   ipAddress?: string;
   userAgent?: string;
   metadata?: Record<string, unknown>;
@@ -525,6 +597,8 @@ export interface StellarChainState {
 
 export type CrossChainVerificationStatus = "verified" | "mismatch" | "error" | "stale" | "pending";
 
+export type CommitmentVerificationStatus = "verified" | "challenged" | "pending" | "invalid" | "unknown";
+
 export interface CrossChainStateResult {
   bridgeId: string;
   bridgeName: string;
@@ -533,6 +607,9 @@ export interface CrossChainStateResult {
   ethereum: EthereumChainState | null;
   stellar: StellarChainState;
   merkleProofValid: boolean | null;
+  proofDepth: number | null;
+  proofLeafHash: string | null;
+  leafCount: number | null;
   latestCommitmentSequence: number | null;
   stateConsistent: boolean;
   mismatchPct: number;
@@ -549,4 +626,156 @@ export interface CrossChainVerificationSummary {
   mismatches: number;
   errors: number;
   results: CrossChainStateResult[];
+}
+
+export interface ServiceAnnotation {
+  id: string;
+  serviceName: string;
+  entityType: string;
+  entityId: string | null;
+  content: string;
+  author: string;
+  startTime: string | null;
+  endTime: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateServiceAnnotationInput {
+  serviceName: string;
+  entityType: string;
+  entityId?: string;
+  content: string;
+  author: string;
+  startTime?: string;
+  endTime?: string;
+}
+
+export interface UpdateServiceAnnotationInput {
+  actor: string;
+  content?: string;
+  active?: boolean;
+  startTime?: string | null;
+  endTime?: string | null;
+}
+
+export interface ServiceAnnotationAuditEntry {
+  id: string;
+  annotation_id: string;
+  action: string;
+  actor: string;
+  changes: string;
+  created_at: string;
+}
+
+// #1171 — Dataset Column Lineage
+export type LineageNodeKind = "dataset" | "column" | "transform";
+
+export interface ColumnLineageNode {
+  id: string;
+  kind: LineageNodeKind;
+  name: string;
+  datasetId: string | null;
+  dataType: string | null;
+  transformKind: string | null;
+}
+
+export interface ColumnLineageEdge {
+  from: string;
+  to: string;
+  transformKind: string;
+  transformOrder: number;
+}
+
+export interface ColumnLineageView {
+  datasetId: string;
+  datasetName: string;
+  columnId: string;
+  columnName: string;
+  nodes: ColumnLineageNode[];
+  edges: ColumnLineageEdge[];
+  generatedAt: string;
+}
+
+export interface DatasetSummary {
+  id: string;
+  name: string;
+  displayName: string;
+  description: string | null;
+  category: string;
+  columnCount: number;
+  isActive: boolean;
+}
+
+export interface DatasetColumn {
+  id: string;
+  datasetId: string;
+  name: string;
+  dataType: string | null;
+  description: string | null;
+  isPrimaryKey: boolean;
+  position: number;
+}
+
+// #1170 — Import Validation Preview
+export interface ImportValidationPreview {
+  id: string;
+  dataType: string;
+  rowCount: number;
+  validCount: number;
+  invalidCount: number;
+  warningCount: number;
+  dataQualityScore: number;
+  errors: Array<Record<string, unknown>>;
+  warnings: Array<Record<string, unknown>>;
+  summary: Record<string, unknown>;
+  createdBy: string | null;
+  applied: boolean;
+  createdAt: string;
+}
+
+// #1172 — API Key Scope Templates
+export interface ApiKeyScopeTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  scopes: string[];
+  rateLimitPerMinute: number | null;
+  isActive: boolean;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// #1168 — Failed Parse Quarantine Queue
+export type QuarantineStatus =
+  | "quarantined"
+  | "in_review"
+  | "resolved"
+  | "disposed"
+  | "failed";
+
+export interface QuarantineRecord {
+  id: string;
+  source: string;
+  dataType: string;
+  rawPayload: Record<string, unknown>;
+  parseError: string;
+  errorCode: string | null;
+  status: QuarantineStatus;
+  retryCount: number;
+  retryHistory: Array<Record<string, unknown>>;
+  priority: number;
+  reviewedBy: string | null;
+  resolutionNote: string | null;
+  quarantinedAt: string;
+  reviewedAt: string | null;
+  resolvedAt: string | null;
+}
+
+export interface QuarantineStats {
+  total: number;
+  byStatus: Record<QuarantineStatus, number>;
+  bySource: Record<string, number>;
 }

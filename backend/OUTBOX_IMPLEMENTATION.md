@@ -145,9 +145,13 @@ await dispatcher.start();
 
 ### Health Check
 
+The official outbox health endpoint is:
+
 ```bash
 GET /api/v1/health/outbox
 ```
+
+The deprecated admin-side health route has been removed; this endpoint is the supported health check for the outbox system.
 
 Response:
 ```json

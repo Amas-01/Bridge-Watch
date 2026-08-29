@@ -1,5 +1,5 @@
 const ASSETS = ["USDC", "USDT", "WBTC", "WETH", "XLM"] as const;
-type Asset = (typeof ASSETS)[number];
+type SupportedAssetSymbol = (typeof ASSETS)[number];
 
 interface Props {
   activeAssets: Set<string>;
@@ -11,7 +11,7 @@ interface Props {
   zoomLevel: number;
 }
 
-const ASSET_COLORS: Record<Asset, string> = {
+const ASSET_COLORS: Record<SupportedAssetSymbol, string> = {
   USDC: "#2775CA",
   USDT: "#26A17B",
   WBTC: "#F7931A",

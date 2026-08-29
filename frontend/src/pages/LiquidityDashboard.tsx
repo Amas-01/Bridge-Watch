@@ -7,7 +7,39 @@ import {
   PriceImpactCalculator,
   PairSelector,
 } from "../components/liquidity";
-import type { TradingPair, VenueLiquidity } from "../types/liquidity";
+import type { DepthData, TradingPair, VenueLiquidity } from "../types/liquidity";
+
+function toCsvValue(value: string | number): string {
+  const str = String(value);
+  return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+}
+
+function buildDepthCsv(depth: DepthData): string {
+  const lines = ["Side,Price,Volume,Venue"];
+  for (const level of depth.bids) {
+    lines.push(
+      ["bid", level.price, level.volume, level.venue].map(toCsvValue).join(",")
+    );
+  }
+  for (const level of depth.asks) {
+    lines.push(
+      ["ask", level.price, level.volume, level.venue].map(toCsvValue).join(",")
+    );
+  }
+  return lines.join("\n");
+}
+
+function downloadCsv(content: string, filename: string) {
+  const blob = new Blob([content], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 export default function LiquidityDashboard() {
   const [pair, setPair] = useLocalStorageState<TradingPair>(
@@ -80,11 +112,31 @@ export default function LiquidityDashboard() {
       >
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-white">Order Book Depth</h2>
-          {lastUpdated && (
-            <span className="text-xs text-stellar-text-secondary">
-              Updated {new Date(lastUpdated).toLocaleTimeString()}
-            </span>
-          )}
+          <div className="flex items-center gap-3">
+            {lastUpdated && (
+              <span className="text-xs text-stellar-text-secondary">
+                Updated {new Date(lastUpdated).toLocaleTimeString()}
+              </span>
+            )}
+            <button
+              onClick={() => {
+                if (!depth) return;
+                const date = new Date().toISOString().slice(0, 10);
+                const safePair = pair.replace("/", "-");
+                downloadCsv(
+                  buildDepthCsv(depth),
+                  `liquidity-depth-${safePair}-${date}.csv`
+                );
+              }}
+              disabled={!depth}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-stellar-border bg-stellar-card text-xs font-medium text-white hover:border-stellar-blue/60 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Export CSV
+            </button>
+          </div>
         </div>
         <LiquidityDepthChart data={depth} isLoading={isLoading} pair={pair} />
       </section>
