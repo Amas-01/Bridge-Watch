@@ -1,0 +1,57 @@
+{
+  "chainId": "ethereum",
+  "contractIdentity": "0x3ee18B2214AFF97000D974cf647E7C347E8fa585",
+  "contractAlias": "wormhole-token-bridge",
+  "epoch": 1,
+  "registryVersion": "ethereum:0x3ee18b2214aff97000d974cf647e7c347e8fa585:1",
+  "decimals": 18,
+  "deploymentFromBlock": 12000000,
+  "abi": [
+    "event TokensLocked(address indexed token, address indexed sender, uint256 amount, bytes32 recipient, uint16 targetChain)",
+    "event TokensUnlocked(address indexed token, address indexed recipient, uint256 amount)"
+  ],
+  "samples": [
+    {
+      "description": "TokensLocked at deployment height",
+      "blockNumber": 12500000,
+      "rawLog": {
+        "topics": [
+          "0xd1dadd4425ffc8401dd9476e7e952bbfa392610827775a95b86f6b750038baa7",
+          "0x000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+          "0x0000000000000000000000001111111111111111111111111111111111111111"
+        ],
+        "data": "0x0000000000000000000000000000000000000000000000000de0b6b3a764000000000000000000000000000000000000000000000000000000000000000000990000000000000000000000000000000000000000000000000000000000000002"
+      },
+      "expected": {
+        "eventName": "TokensLocked",
+        "args": {
+          "token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          "sender": "0x1111111111111111111111111111111111111111",
+          "amount": "1000000000000000000",
+          "recipient": "0x0000000000000000000000000000000000000000000000000000000000000099",
+          "targetChain": "2"
+        }
+      }
+    },
+    {
+      "description": "TokensUnlocked",
+      "blockNumber": 13000000,
+      "rawLog": {
+        "topics": [
+          "0xece684e11f49f06d351439e63189ad1703238b8040d90cf994901ca2b3da8d44",
+          "0x000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+          "0x0000000000000000000000002222222222222222222222222222222222222222"
+        ],
+        "data": "0x00000000000000000000000000000000000000000000000006f05b59d3b20000"
+      },
+      "expected": {
+        "eventName": "TokensUnlocked",
+        "args": {
+          "token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          "recipient": "0x2222222222222222222222222222222222222222",
+          "amount": "500000000000000000"
+        }
+      }
+    }
+  ]
+}

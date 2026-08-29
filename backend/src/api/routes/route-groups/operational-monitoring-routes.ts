@@ -3,6 +3,7 @@ import { ledgerCloseDelayRoutes } from "../ledgerCloseDelay.routes.js";
 import { horizonCursorAuditRoutes } from "../horizonCursorAudit.routes.js";
 import { reserveAttestationsRoutes } from "../reserveAttestations.routes.js";
 import { contractStorageFootprintRoutes } from "../contractStorageFootprint.routes.js";
+import { chainAdapterRegistryRoutes } from "../chainAdapterRegistry.routes.js";
 
 export async function registerOperationalMonitoringRoutes(server: FastifyInstance): Promise<void> {
   server.register(ledgerCloseDelayRoutes, {
@@ -16,5 +17,8 @@ export async function registerOperationalMonitoringRoutes(server: FastifyInstanc
   });
   server.register(contractStorageFootprintRoutes, {
     prefix: "/api/v1/contract-storage",
+  });
+  server.register(chainAdapterRegistryRoutes, {
+    prefix: "/api/v1/chain-adapters",
   });
 }
