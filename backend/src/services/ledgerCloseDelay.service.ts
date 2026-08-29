@@ -1,4 +1,4 @@
-import { database } from "../database/index.js";
+import { getDatabase } from "../database/connection.js";
 import { logger } from "../utils/logger.js";
 
 export interface LedgerCloseRecord {
@@ -20,7 +20,8 @@ export interface DelayAlert {
 
 export class LedgerCloseDelayService {
   async recordClosureEvent(record: LedgerCloseRecord) {
-    logger.info("Recording ledger close event", { ledgerSequence: record.ledgerSequence });
+    const database = getDatabase();
+    logger.info({ ledgerSequence: record.ledgerSequence }, "Recording ledger close event");
 
     try {
       const delaySeconds = Math.floor((record.actualCloseTime.getTime() - record.expectedCloseTime.getTime()) / 1000);
@@ -64,7 +65,7 @@ export class LedgerCloseDelayService {
 
       return ledgerEvent;
     } catch (error) {
-      logger.error("Failed to record ledger close event", { error });
+      logger.error({ error }, "Failed to record ledger close event");
       throw error;
     }
   }
@@ -80,11 +81,15 @@ export class LedgerCloseDelayService {
   }
 
   private async createDelayAlert(alert: DelayAlert) {
-    logger.info("Creating ledger close delay alert", {
-      ledgerSequence: alert.ledgerSequence,
-      delaySeconds: alert.delaySeconds,
-      severity: alert.severity,
-    });
+    const database = getDatabase();
+    logger.info(
+      {
+        ledgerSequence: alert.ledgerSequence,
+        delaySeconds: alert.delaySeconds,
+        severity: alert.severity,
+      },
+      "Creating ledger close delay alert"
+    );
 
     const alertType = alert.delaySeconds > 10 ? "critical_delay" : alert.delaySeconds > 6 ? "significant_delay" : "minor_delay";
 
@@ -100,7 +105,8 @@ export class LedgerCloseDelayService {
   }
 
   async updateAlertStatus(alertId: string, status: "open" | "investigating" | "resolved" | "dismissed", notes?: string) {
-    logger.info("Updating delay alert status", { alertId, status });
+    const database = getDatabase();
+    logger.info({ alertId, status }, "Updating delay alert status");
 
     await database("ledger_close_delay_alerts").where("id", alertId).update({
       status,
@@ -111,7 +117,8 @@ export class LedgerCloseDelayService {
   }
 
   async computeDelayStats(granularity: "hourly" | "daily" | "weekly" | "monthly" = "daily") {
-    logger.info("Computing ledger close delay statistics", { granularity });
+    const database = getDatabase();
+    logger.info({ granularity }, "Computing ledger close delay statistics");
 
     const now = new Date();
     const lookbackDays = granularity === "hourly" ? 1 : granularity === "daily" ? 7 : granularity === "weekly" ? 30 : 90;
@@ -161,6 +168,7 @@ export class LedgerCloseDelayService {
   }
 
   async getDelayStats(granularity?: string, limit = 52) {
+    const database = getDatabase();
     let query = database("ledger_close_delay_stats");
 
     if (granularity) {
@@ -172,9 +180,9 @@ export class LedgerCloseDelayService {
   }
 
   async detectPatterns() {
+    const database = getDatabase();
     logger.info("Detecting ledger close delay patterns");
 
-    // Get recent delays
     const recentDelays = await database("ledger_close_events")
       .orderBy("actual_close_time", "desc")
       .limit(1000)
@@ -195,7 +203,6 @@ export class LedgerCloseDelayService {
       likelihood: "rare" | "occasional" | "frequent" | "persistent";
     }> = [];
 
-    // Time-of-day pattern
     const hourCounts = new Map<number, number>();
     recentDelays.forEach((d) => {
       const hour = new Date(d.actual_close_time).getHours();
@@ -216,7 +223,6 @@ export class LedgerCloseDelayService {
       });
     }
 
-    // Burst pattern
     const sortedByTime = [...recentDelays].sort(
       (a, b) => new Date(a.actual_close_time).getTime() - new Date(b.actual_close_time).getTime(),
     );
@@ -246,7 +252,6 @@ export class LedgerCloseDelayService {
       });
     }
 
-    // Persist patterns
     for (const pattern of patterns) {
       await database("ledger_close_patterns").insert({
         pattern_type: pattern.patternType,
