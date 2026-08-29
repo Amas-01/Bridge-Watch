@@ -18,6 +18,7 @@ import { registerUtilityRoutes } from "./route-groups/utility-routes.js";
 import { registerCompatibilityRoutes } from "./route-groups/compatibility-routes.js";
 import { registerOperationalRoutes } from "./route-groups/operational-routes.js";
 import { registerOperationalMonitoringRoutes } from "./route-groups/operational-monitoring-routes.js";
+import { registerDbPoolRoutes } from "./route-groups/db-pool-routes.js";
 
 export async function registerRoutes(server: FastifyInstance): Promise<void> {
   // Core routes: health, websocket, config, preferences, caching
@@ -64,6 +65,9 @@ export async function registerRoutes(server: FastifyInstance): Promise<void> {
 
   // Operational monitoring: ledger delays, cursor audit
   await registerOperationalMonitoringRoutes(server);
+
+  // Database pool dashboard: metrics, events, controls
+  await registerDbPoolRoutes(server);
 
   // Administrative functions
   await registerAdminRoutes(server);
