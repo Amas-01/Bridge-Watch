@@ -135,5 +135,10 @@ export async function registerAdminRoutes(server: FastifyInstance): Promise<void
   server.register(permissionChangeNotificationRoutes, {
     prefix: "/api/v1/notifications/permission-changes",
   });
-}
 
+  // #1187 — Graceful Shutdown Drain Protocol
+  const { drainProtocolRoutes } = await import("../drainProtocol.routes.js");
+  server.register(drainProtocolRoutes, {
+    prefix: "/api/v1/admin/shutdown/drain",
+  });
+}

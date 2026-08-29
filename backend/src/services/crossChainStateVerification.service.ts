@@ -4,6 +4,7 @@ import { redis } from "../utils/redis.js";
 import { getStellarAssetSupply } from "../utils/stellar.js";
 import { getEthereumRpcClient } from "./ethereum/client.js";
 import { ReserveVerificationService, type MerkleProofInput } from "./reserveVerification.service.js";
+import { rpcEvidenceQuorumService } from "./rpcEvidenceQuorum.service.js";
 import type { ChainId } from "./ethereum/types.js";
 
 export type VerificationStatus = "verified" | "mismatch" | "error" | "stale" | "pending";
@@ -37,6 +38,7 @@ export interface CrossChainStateResult {
   status: VerificationStatus;
   cacheHit: boolean;
   freshnessSeconds: number;
+  quorumEvidence?: unknown;
   error?: string;
 }
 
