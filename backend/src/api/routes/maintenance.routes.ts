@@ -1,9 +1,9 @@
 import { FastifyInstance } from "fastify";
 import { MaintenanceCalendarService } from "../../services/maintenanceCalendar.service.js";
-import { getDb } from "../../database/connection.js";
+import { getDatabase } from "../../database/connection.js";
 
 export async function maintenanceRoutes(fastify: FastifyInstance) {
-  const db = getDb();
+  const db = getDatabase();
   const service = new MaintenanceCalendarService(db);
 
   fastify.get("/maintenance/upcoming", async (request, reply) => {

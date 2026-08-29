@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { useLocalStorageState } from "../../hooks/useLocalStorageState";
 
 // =============================================================================

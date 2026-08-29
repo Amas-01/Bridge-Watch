@@ -1,4 +1,4 @@
-import { database } from "../database/index.js";
+import { getDatabase } from "../database/connection.js";
 import { logger } from "../utils/logger.js";
 
 export interface InvocationCostRecord {
@@ -31,7 +31,8 @@ export interface CostTrendData {
 
 export class SorobanInvocationCostService {
   async recordInvocation(record: InvocationCostRecord) {
-    logger.info("Recording Soroban invocation cost", { contract: record.contractId, function: record.functionName });
+    const database = getDatabase();
+    logger.info({ contract: record.contractId, function: record.functionName }, "Recording Soroban invocation cost");
 
     try {
       const totalCost = record.cpuCost + record.memoryCost + record.networkCost;
@@ -55,18 +56,17 @@ export class SorobanInvocationCostService {
         })
         .returning("*");
 
-      // Check for anomalies
       await this.detectCostAnomalies(invocation.id, record.contractId, record.functionName, totalCost);
 
       return invocation;
     } catch (error) {
-      logger.error("Failed to record invocation cost", { error });
+      logger.error({ error }, "Failed to record invocation cost");
       throw error;
     }
   }
 
   private async detectCostAnomalies(invocationId: string, contractId: string, functionName: string, totalCost: number) {
-    // Get baseline (p95 from last 1000 invocations)
+    const database = getDatabase();
     const baseline = await database("soroban_invocation_costs")
       .where({ contract_id: contractId, function_name: functionName })
       .orderBy("invoked_at", "desc")
@@ -98,17 +98,21 @@ export class SorobanInvocationCostService {
         status: "open",
       });
 
-      logger.warn("Cost anomaly detected", {
-        contract: contractId,
-        function: functionName,
-        deviation: deviationPercent,
-        severity,
-      });
+      logger.warn(
+        {
+          contract: contractId,
+          function: functionName,
+          deviation: deviationPercent,
+          severity,
+        },
+        "Cost anomaly detected"
+      );
     }
   }
 
   async computeTrends(contractId: string, functionName: string, granularity: "hourly" | "daily" | "weekly" | "monthly" = "daily") {
-    logger.info("Computing cost trends", { contractId, functionName, granularity });
+    const database = getDatabase();
+    logger.info({ contractId, functionName, granularity }, "Computing cost trends");
 
     const now = new Date();
     const lookbackDays = granularity === "hourly" ? 1 : granularity === "daily" ? 7 : granularity === "weekly" ? 30 : 90;
@@ -144,7 +148,6 @@ export class SorobanInvocationCostService {
       avgMemoryBytes: memoryAvg,
     };
 
-    // Upsert trend record
     await database("soroban_cost_trends")
       .insert({
         contract_id: contractId,
@@ -169,6 +172,7 @@ export class SorobanInvocationCostService {
   }
 
   async getTrends(contractId: string, functionName: string, granularity?: "hourly" | "daily" | "weekly" | "monthly") {
+    const database = getDatabase();
     let query = database("soroban_cost_trends").where({ contract_id: contractId, function_name: functionName });
 
     if (granularity) {
@@ -180,6 +184,7 @@ export class SorobanInvocationCostService {
   }
 
   async getAnomalies(contractId: string, functionName: string, status: string = "open") {
+    const database = getDatabase();
     const anomalies = await database("soroban_cost_anomalies")
       .where({ contract_id: contractId, function_name: functionName, status })
       .orderBy("detected_at", "desc")
@@ -189,7 +194,8 @@ export class SorobanInvocationCostService {
   }
 
   async resolveAnomaly(anomalyId: string) {
-    logger.info("Resolving cost anomaly", { anomalyId });
+    const database = getDatabase();
+    logger.info({ anomalyId }, "Resolving cost anomaly");
 
     await database("soroban_cost_anomalies").where("id", anomalyId).update({
       status: "resolved",

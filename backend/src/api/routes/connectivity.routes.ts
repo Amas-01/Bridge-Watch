@@ -1,9 +1,9 @@
 import { FastifyInstance } from "fastify";
 import { ChainConnectivityService } from "../../services/chainConnectivity.service.js";
-import { getDb } from "../../database/connection.js";
+import { getDatabase } from "../../database/connection.js";
 
 export async function connectivityRoutes(fastify: FastifyInstance) {
-  const db = getDb();
+  const db = getDatabase();
   const service = new ChainConnectivityService(db);
 
   fastify.get(

@@ -1521,3 +1521,156 @@ export function getServiceAnnotationAudit(
 ): Promise<ServiceAnnotationAuditEntry[]> {
   return fetchApi<ServiceAnnotationAuditEntry[]>(`/service-annotations/${id}/audit`);
 }
+
+// #1040 — Asset Lifecycle State Timeline
+export function getAssetLifecycleTimeline(assetId?: string, state?: string) {
+  const params = new URLSearchParams();
+  if (assetId) params.set("assetId", assetId);
+  if (state) params.set("state", state);
+  const qs = params.toString();
+  return fetchApi<{ records: import("../types").AssetLifecycleRecord[] }>(
+    `/assets/lifecycle-timeline${qs ? `?${qs}` : ""}`
+  );
+}
+
+export function getAssetLifecycleStats() {
+  return fetchApi<{ stats: import("../types").AssetLifecycleStats }>(
+    "/assets/lifecycle-timeline/stats"
+  );
+}
+
+export function recordAssetLifecycleTransition(payload: {
+  assetId: string;
+  assetSymbol: string;
+  state: import("../types").AssetState;
+  previousState?: import("../types").AssetState;
+  reason?: string;
+  triggeredBy?: string;
+}) {
+  return fetchApi<{ record: import("../types").AssetLifecycleRecord }>(
+    "/assets/lifecycle-timeline",
+    { method: "POST", body: JSON.stringify(payload) }
+  );
+}
+
+// #1176 — Permission Change Notifications
+export function listPermissionNotifications(targetUserId?: string, unreadOnly?: boolean) {
+  const params = new URLSearchParams();
+  if (targetUserId) params.set("targetUserId", targetUserId);
+  if (unreadOnly) params.set("unreadOnly", "true");
+  const qs = params.toString();
+  return fetchApi<{ notifications: import("../types").PermissionChangeNotificationRecord[] }>(
+    `/notifications/permission-changes${qs ? `?${qs}` : ""}`
+  );
+}
+
+export function markPermissionNotificationRead(id: string, targetUserId?: string) {
+  return fetchApi<{ notification: import("../types").PermissionChangeNotificationRecord }>(
+    `/notifications/permission-changes/${id}/read`,
+    { method: "PATCH", body: JSON.stringify({ targetUserId }) }
+  );
+}
+
+export function getPermissionNotificationStats() {
+  return fetchApi<{ stats: import("../types").PermissionNotificationStats }>(
+    "/notifications/permission-changes/stats"
+  );
+}
+
+export function createPermissionNotification(payload: {
+  targetUserId: string;
+  actorId?: string;
+  action: import("../types").PermissionAction;
+  permissionOrRole: string;
+  channels?: import("../types").NotificationChannel[];
+}) {
+  return fetchApi<{ notification: import("../types").PermissionChangeNotificationRecord }>(
+    "/notifications/permission-changes",
+    { method: "POST", body: JSON.stringify(payload) }
+  );
+}
+
+// #1173 — Session Device Management
+export function listSessionDevices(userId?: string) {
+  const qs = userId ? `?userId=${encodeURIComponent(userId)}` : "";
+  return fetchApi<{ devices: import("../types").SessionDeviceRecord[] }>(
+    `/user/devices${qs}`
+  );
+}
+
+export function registerSessionDevice(payload: {
+  deviceFingerprint: string;
+  deviceName: string;
+  deviceType?: import("../types").DeviceType;
+  ipAddress?: string;
+}) {
+  return fetchApi<{ device: import("../types").SessionDeviceRecord }>(
+    "/user/devices/register",
+    { method: "POST", body: JSON.stringify(payload) }
+  );
+}
+
+export function revokeSessionDevice(deviceId: string, userId?: string) {
+  const qs = userId ? `?userId=${encodeURIComponent(userId)}` : "";
+  return fetchApi<{ device: import("../types").SessionDeviceRecord }>(
+    `/user/devices/${deviceId}${qs}`,
+    { method: "DELETE" }
+  );
+}
+
+export function revokeOtherSessionDevices(currentDeviceId: string, userId?: string) {
+  return fetchApi<{ revokedCount: number }>(
+    "/user/devices/revoke-others",
+    { method: "POST", body: JSON.stringify({ currentDeviceId, userId }) }
+  );
+}
+
+export function setSessionDeviceTrust(deviceId: string, isTrusted: boolean) {
+  return fetchApi<{ device: import("../types").SessionDeviceRecord }>(
+    `/user/devices/${deviceId}/trust`,
+    { method: "PATCH", body: JSON.stringify({ isTrusted }) }
+  );
+}
+
+// #1175 — Admin Impersonation Safeguards
+export function startAdminImpersonation(
+  apiKey: string,
+  payload: {
+    adminId?: string;
+    impersonatedUserId: string;
+    reason: string;
+    approvalTicketId?: string;
+    durationMinutes?: number;
+  }
+) {
+  return fetchApi<{ session: import("../types").AdminImpersonationSession; token: string }>(
+    "/admin/impersonation/start",
+    { method: "POST", body: JSON.stringify(payload) },
+    apiKey
+  );
+}
+
+export function stopAdminImpersonation(apiKey: string, sessionId: string) {
+  return fetchApi<{ session: import("../types").AdminImpersonationSession }>(
+    "/admin/impersonation/stop",
+    { method: "POST", body: JSON.stringify({ sessionId }) },
+    apiKey
+  );
+}
+
+export function listAdminImpersonationSessions(apiKey: string, status?: string) {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  return fetchApi<{ sessions: import("../types").AdminImpersonationSession[] }>(
+    `/admin/impersonation/sessions${qs}`,
+    undefined,
+    apiKey
+  );
+}
+
+export function getAdminImpersonationAuditLogs(apiKey: string, sessionId: string) {
+  return fetchApi<{ auditLogs: import("../types").ImpersonationAuditLog[] }>(
+    `/admin/impersonation/audit-logs?sessionId=${encodeURIComponent(sessionId)}`,
+    undefined,
+    apiKey
+  );
+}

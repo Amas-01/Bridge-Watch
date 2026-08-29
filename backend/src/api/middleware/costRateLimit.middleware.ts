@@ -334,7 +334,7 @@ async function getDebtAdjustedBudget(
     if (nextDebt < 1) {
       await redis.del(debtKey);
     } else {
-      await redis.set(debtKey, String(nextDebt), { PX: windowMs * 2 });
+      await redis.psetex(debtKey, windowMs * 2, String(nextDebt));
     }
     return Math.max(1, baseBudget - reduction);
   } catch {

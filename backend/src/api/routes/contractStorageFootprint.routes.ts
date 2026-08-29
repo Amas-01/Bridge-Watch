@@ -88,7 +88,7 @@ export async function contractStorageFootprintRoutes(server: FastifyInstance) {
     ) => {
       try {
         const body = snapshotBodySchema.parse(request.body);
-        const snapshot = await contractStorageFootprintService.recordSnapshot(body);
+        const snapshot = await contractStorageFootprintService.recordSnapshot(body as any);
         reply.code(201);
         return { success: true, snapshot };
       } catch (error) {

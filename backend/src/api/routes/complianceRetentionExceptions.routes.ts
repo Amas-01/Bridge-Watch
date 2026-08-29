@@ -38,7 +38,7 @@ export async function complianceRetentionExceptionRoutes(
           ...parsed.data,
           startDate: parsed.data.startDate ? new Date(parsed.data.startDate) : undefined,
           endDate: parsed.data.endDate ? new Date(parsed.data.endDate) : undefined,
-        });
+        } as any);
         return reply.code(201).send({ exception: record });
       } catch (error) {
         logger.error({ error }, "Failed to create compliance retention exception");

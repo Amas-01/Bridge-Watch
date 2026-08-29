@@ -30,7 +30,7 @@ export async function maintenanceRoutes(server: FastifyInstance) {
       });
     }
 
-    const preview = await maintenanceImpactPreviewService.previewImpact(parsed.data);
+    const preview = await maintenanceImpactPreviewService.previewImpact(parsed.data as any);
     return preview;
   });
 

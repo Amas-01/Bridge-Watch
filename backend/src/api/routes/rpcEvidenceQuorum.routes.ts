@@ -52,7 +52,7 @@ export async function rpcEvidenceQuorumRoutes(server: FastifyInstance): Promise<
     }
 
     try {
-      const result = await rpcEvidenceQuorumService.evaluateQuorum(parsed.data);
+      const result = await rpcEvidenceQuorumService.evaluateQuorum(parsed.data as any);
       return reply.status(200).send(result);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -78,7 +78,7 @@ export async function rpcEvidenceQuorumRoutes(server: FastifyInstance): Promise<
       return sendApiError(reply, 400, "Invalid quorum config payload", { issues: parsed.error.errors });
     }
 
-    const config = await rpcEvidenceQuorumService.setConfig(parsed.data);
+    const config = await rpcEvidenceQuorumService.setConfig(parsed.data as any);
     return reply.status(200).send(config);
   });
 

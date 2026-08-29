@@ -32,7 +32,7 @@ const verifyMmrProofBodySchema = z.object({
   /** Domain-separated leaf hash (SHA-256(0x00 || raw_commitment)). */
   leafHash: hex32Schema,
   /** 0-indexed leaf position in the MMR. */
-  leafIndex: z.number().int().nonneg(),
+  leafIndex: z.number().int().min(0),
   /** Sibling hashes along the path from the leaf to its local subtree peak. */
   siblings: z.array(hexAnySchema).max(64),
   /**
@@ -41,7 +41,7 @@ const verifyMmrProofBodySchema = z.object({
    */
   peaksSnapshot: z.array(z.string()).min(1).max(64),
   /** Index within peaksSnapshot where the proven leaf's local tree root sits. */
-  localPeakPos: z.number().int().nonneg(),
+  localPeakPos: z.number().int().min(0),
   /** Expected MMR root to verify against. */
   expectedRoot: hex32Schema,
 });
@@ -60,7 +60,7 @@ const batchAppendBodySchema = z.object({
 });
 
 const generateProofBodySchema = z.object({
-  leafIndex: z.number().int().nonneg(),
+  leafIndex: z.number().int().min(0),
 });
 
 // Module-level accumulator for simulation / testing (not persisted across
@@ -105,7 +105,7 @@ export async function mmrVerificationRoutes(
           localPeakPos,
         };
 
-        const { valid, reconstructedRoot } = svc.verifyProof(proof, expectedRoot);
+        const { valid, reconstructedRoot } = svc.verifyProof(proof as any, expectedRoot);
 
         logger.info(
           { leafIndex, valid, expectedRoot, reconstructedRoot },
@@ -197,7 +197,7 @@ export async function mmrVerificationRoutes(
       }
 
       try {
-        const proof = simulationAccumulator.generateProof(parsed.data.leafIndex);
+        const proof = simulationAccumulator.generateProof(parsed.data.leafIndex as number);
         return reply.code(200).send({
           proof,
           root: simulationAccumulator.getRoot(),
