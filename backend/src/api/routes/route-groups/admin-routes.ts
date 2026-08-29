@@ -33,6 +33,10 @@ import { importValidationPreviewRoutes } from "../importValidationPreview.routes
 import { apiKeyScopeTemplateRoutes } from "../apiKeyScopeTemplate.routes.js";
 // #1168 — Failed Parse Quarantine Queue
 import { parseQuarantineQueueRoutes } from "../parseQuarantineQueue.routes.js";
+// #1175 — Admin Impersonation Safeguards
+import { adminImpersonationRoutes } from "../adminImpersonation.routes.js";
+// #1176 — Permission Change Notifications
+import { permissionChangeNotificationRoutes } from "../permissionChangeNotification.routes.js";
 
 export async function registerAdminRoutes(server: FastifyInstance): Promise<void> {
   server.register(apiKeysRoutes, { prefix: "/api/v1/admin/api-keys" });
@@ -120,6 +124,16 @@ export async function registerAdminRoutes(server: FastifyInstance): Promise<void
   // #1168 — Failed Parse Quarantine Queue
   server.register(parseQuarantineQueueRoutes, {
     prefix: "/api/v1/admin/quarantine",
+  });
+
+  // #1175 — Admin Impersonation Safeguards
+  server.register(adminImpersonationRoutes, {
+    prefix: "/api/v1/admin/impersonation",
+  });
+
+  // #1176 — Permission Change Notifications
+  server.register(permissionChangeNotificationRoutes, {
+    prefix: "/api/v1/notifications/permission-changes",
   });
 }
 
