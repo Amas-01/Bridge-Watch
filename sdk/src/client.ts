@@ -16,9 +16,16 @@ import type {
 } from "./types";
 import type { ApiCapabilities, ApiContract, ApiContractSummary, ApiVersion } from "./compatibility";
 import { compatibilityHeaders } from "./compatibility";
+import { injectTraceHeaders, type TraceContextOptions } from "./tracecontext";
 
 export class BridgeWatchContractSdk {
-  private readonly config: Required<BridgeWatchSdkConfig>;
+  /**
+   * `tracing` is deliberately left optional rather than `Required<>`-ed:
+   * trace propagation is opt-in, and forcing a default would make the
+   * no-tracing case a lie.
+   */
+  private readonly config: Required<Omit<BridgeWatchSdkConfig, "tracing">> &
+    Pick<BridgeWatchSdkConfig, "tracing">;
   private readonly server: StellarSdk.rpc.Server;
   private connected = false;
 
@@ -49,8 +56,15 @@ export class BridgeWatchContractSdk {
   }
 
   private async fetchCompatibility<T>(path: string, version?: ApiVersion): Promise<T> {
+    // Propagate W3C trace context so the backend can correlate this request
+    // with the caller's trace. An explicit per-call context wins over config.
+    const headers = injectTraceHeaders(
+      compatibilityHeaders(version),
+      this.config.tracing as TraceContextOptions | undefined
+    );
+
     const response = await fetch(`${this.config.apiUrl.replace(/\/$/, "")}/api/v1/compatibility${path}`, {
-      headers: compatibilityHeaders(version),
+      headers,
     });
     if (!response.ok) throw new BridgeWatchConnectionError(`Compatibility request failed: ${response.status}`);
     return response.json() as Promise<T>;

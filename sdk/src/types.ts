@@ -1,3 +1,4 @@
+import type { TraceContextOptions } from "./tracecontext";
 import type * as StellarSdk from "@stellar/stellar-sdk";
 
 export interface BridgeWatchSdkConfig {
@@ -8,7 +9,15 @@ export interface BridgeWatchSdkConfig {
   allowHttp?: boolean;
   defaultFee?: string;
   defaultTimeoutSeconds?: number;
+  /**
+   * W3C trace context to propagate on outgoing API requests. Supply the
+   * inbound `traceparent`/`tracestate` from the current HTTP request to
+   * correlate SDK calls with the caller's trace.
+   */
+  tracing?: TraceContextOptions;
 }
+
+
 
 export interface InvokeContractParams {
   sourcePublicKey: string;
