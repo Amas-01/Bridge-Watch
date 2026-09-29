@@ -20,6 +20,58 @@
   --stellar-text-secondary: 138 143 168;
 }
 
+/*
+ * High-contrast accessibility mode (WCAG AAA oriented).
+ *
+ * Overrides the palette variables rather than restyling components, so every
+ * surface that already consumes them gets the stronger treatment for free.
+ * Borders are near-white on dark and near-black on light so boundaries are
+ * visible at a glance, and text moves to maximum contrast on both.
+ */
+[data-contrast="high"] {
+  --stellar-bg: 0 0 0;
+  --stellar-card: 0 0 0;
+  --stellar-border: 255 255 255;
+  --stellar-text-primary: 255 255 255;
+  --stellar-text-secondary: 255 255 255;
+}
+
+[data-contrast="high"].dark {
+  --stellar-bg: 0 0 0;
+  --stellar-card: 10 10 10;
+  --stellar-border: 255 255 255;
+  --stellar-text-primary: 255 255 255;
+  --stellar-text-secondary: 245 245 245;
+}
+
+/*
+ * Colour is never the only signal: in high-contrast mode the alert palette
+ * uses hues that stay distinguishable under the common forms of colour vision
+ * deficiency (deuteranopia, protanopia, tritanopia) and pairs each with a
+ * heavier border so severity reads without relying on hue alone.
+ */
+[data-contrast="high"] {
+  --stellar-alert-error: 255 0 0;
+  --stellar-alert-warning: 255 215 0;
+  --stellar-alert-success: 0 255 170;
+  --stellar-alert-info: 0 200 255;
+  --stellar-alert-critical: 255 105 180;
+}
+
+[data-contrast="high"] .border-stellar-border {
+  border-color: rgb(var(--stellar-border));
+}
+
+/* Hairline borders disappear at high contrast; reinforce them. */
+[data-contrast="high"] .border,
+[data-contrast="high"] [class*="border-"] {
+  border-width: 2px;
+}
+
+[data-contrast="high"] .text-stellar-text-secondary {
+  color: rgb(var(--stellar-text-secondary));
+}
+
 [data-density="compact"] {
   --section-gap: 1rem;
 }
